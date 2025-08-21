@@ -1,0 +1,28 @@
+gold:
+  geopolitics: 0.18
+  inflation: 0.12
+  real_rates: -0.22
+  usd_strength: -0.14
+  liquidity: 0.10
+  equity_flows: -0.06
+  bond_yields: -0.08
+  regulation: 0.00
+  adoption: 0.02
+  currency_instability: 0.12
+  recession_probability: 0.12
+  energy_prices: 0.02
+  tail_risk_event: 0.20
+bitcoin:
+  geopolitics: 0.08
+  inflation: 0.10
+  real_rates: -0.10
+  usd_strength: -0.06
+  liquidity: 0.18
+  equity_flows: 0.12
+  bond_yields: -0.06
+  regulation: 0.18
+  adoption: 0.20
+  currency_instability: 0.10
+  recession_probability: -0.04
+  energy_prices: -0.02
+  tail_risk_event: 0.06
