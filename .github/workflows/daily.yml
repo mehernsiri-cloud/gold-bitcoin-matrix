@@ -4,16 +4,18 @@ name: Daily Predictions Update
 on:
   schedule:
     - cron: '0 0 * * *'  # daily at midnight UTC
-  workflow_dispatch:      # allows manual trigger
+  workflow_dispatch:      # manual trigger
 
 jobs:
   daily-predictions:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout repo
+    # 1. Checkout repository with full history
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
     # 2. Setup Python 3.10
     - name: Setup Python
