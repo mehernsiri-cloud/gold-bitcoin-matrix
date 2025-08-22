@@ -15,3 +15,7 @@ timestamp,asset,predicted_price,volatility,risk
 2025-08-22 15:15:44,Bitcoin,359.58,0.0068,Placeholder
 2025-08-22 15:15:44,Real_Estate_France,232.23,0.0348,Placeholder
 2025-08-22 15:15:45,Real_Estate_Dubai,250.87,0.026,Placeholder
+2025-08-22 15:21:57,Gold,825.83,0.0204,Placeholder
+2025-08-22 15:21:58,Bitcoin,575.08,0.0063,Placeholder
+2025-08-22 15:21:58,Real_Estate_France,767.24,0.0182,Placeholder
+2025-08-22 15:21:58,Real_Estate_Dubai,701.6,0.0096,Placeholder
