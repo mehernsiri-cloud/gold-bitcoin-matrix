@@ -1,70 +1,89 @@
 import streamlit as st
 import pandas as pd
 import os
-from fetch_data import save_actual_data, DATA_DIR
+from datetime import datetime
+import matplotlib.pyplot as plt
 
-PRED_CSV = os.path.join(DATA_DIR, "predictions_log.csv")
-ACTUAL_CSV = os.path.join(DATA_DIR, "actual_data.csv")
+# -----------------------------
+# Paths
+# -----------------------------
+DATA_DIR = "data"
+PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
+# -----------------------------
+# Load Data Functions
+# -----------------------------
+@st.cache_data
+def load_predictions():
+    if os.path.exists(PREDICTION_FILE) and os.path.getsize(PREDICTION_FILE) > 0:
+        df = pd.read_csv(PREDICTION_FILE, parse_dates=["timestamp"])
+        return df
+    return pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
+
+@st.cache_data
+def load_actuals():
+    if os.path.exists(ACTUAL_FILE) and os.path.getsize(ACTUAL_FILE) > 0:
+        df = pd.read_csv(ACTUAL_FILE, parse_dates=["timestamp"])
+        return df
+    return pd.DataFrame(columns=["timestamp","date","gold_actual","bitcoin_actual"])
+
+# -----------------------------
+# Streamlit App
+# -----------------------------
 st.set_page_config(page_title="Gold & Bitcoin Predictions", layout="wide")
-st.title("Gold & Bitcoin Dashboard")
+st.title("Gold & Bitcoin Predictions Dashboard")
 
-# ------------------------------
-# Load data
-# ------------------------------
-save_actual_data()  # refresh actual prices
+pred_df = load_predictions()
+act_df = load_actuals()
 
-def load_csv(file_path):
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        return pd.read_csv(file_path)
-    return pd.DataFrame()
-
-pred_df = load_csv(PRED_CSV)
-actual_df = load_csv(ACTUAL_CSV)
-
-# ------------------------------
-# Latest Predictions Table
-# ------------------------------
-if not pred_df.empty and not actual_df.empty:
-    latest_pred_time = pred_df["timestamp"].max()
-    latest_pred = pred_df[pred_df["timestamp"] == latest_pred_time]
-
-    latest_actual = actual_df.sort_values("date").iloc[-1]
-
-    # Build table with actuals
-    table_data = []
-    for idx, row in latest_pred.iterrows():
-        asset = row['asset']
-        actual = latest_actual.get(f"{asset.lower()}_actual", None)
-        signal = "Hold"
-        if actual and row["predicted_price"]:
-            if row["predicted_price"] > actual*1.01:
-                signal = "Buy"
-            elif row["predicted_price"] < actual*0.99:
-                signal = "Sell"
-        table_data.append({
-            "Asset": asset,
-            "Predicted Price": row["predicted_price"],
-            "Actual Price": actual,
-            "Volatility": row["volatility"],
-            "Risk": row["risk"],
-            "Signal": signal
-        })
-
-    st.subheader("Latest Predictions vs Actuals")
-    st.dataframe(pd.DataFrame(table_data))
-else:
+if pred_df.empty or act_df.empty:
     st.info("No prediction or actual data available yet.")
+else:
+    # Get latest timestamp
+    latest_timestamp = pred_df["timestamp"].max()
+    latest_pred = pred_df[pred_df["timestamp"] == latest_timestamp].set_index("asset")
+    latest_actual = act_df[act_df["timestamp"] == act_df["timestamp"].max()].iloc[0]
 
-# ------------------------------
-# Charts
-# ------------------------------
-if not actual_df.empty:
-    st.subheader("📊 Actual Prices Over Time")
-    actual_plot = actual_df.set_index("date")[["gold_actual","bitcoin_actual"]]
-    st.line_chart(actual_plot)
+    # -----------------------------
+    # Columns layout: Gold | Bitcoin
+    # -----------------------------
+    col1, col2 = st.columns(2)
 
-if not pred_df.empty:
-    st.subheader("📈 Predicted Prices Over Time")
-    pred_plot = pred_df.pivot(index="timestamp", columns="asset", values="predicted_price")
-    st.line_chart(pred_plot)
+    # Gold Portlet
+    with col1:
+        st.subheader("Gold")
+        gold_pred = latest_pred.loc["Gold", "predicted_price"]
+        gold_actual = latest_actual["gold_actual"]
+
+        st.metric(label="Predicted Price (USD)", value=f"${gold_pred:,.2f}")
+        st.metric(label="Actual Price (USD)", value=f"${gold_actual:,.2f}")
+        st.metric(label="Risk", value=latest_pred.loc["Gold", "risk"])
+
+        # Gold Chart
+        gold_chart_df = pred_df[pred_df["asset"] == "Gold"].copy()
+        gold_chart_df["actual"] = act_df["gold_actual"].iloc[-len(gold_chart_df):].values
+        st.line_chart(
+            gold_chart_df.set_index("timestamp")[["predicted_price","actual"]],
+            use_container_width=True
+        )
+
+    # Bitcoin Portlet
+    with col2:
+        st.subheader("Bitcoin")
+        btc_pred = latest_pred.loc["Bitcoin", "predicted_price"]
+        btc_actual = latest_actual["bitcoin_actual"]
+
+        st.metric(label="Predicted Price (USD)", value=f"${btc_pred:,.2f}")
+        st.metric(label="Actual Price (USD)", value=f"${btc_actual:,.2f}")
+        st.metric(label="Risk", value=latest_pred.loc["Bitcoin", "risk"])
+
+        # Bitcoin Chart
+        btc_chart_df = pred_df[pred_df["asset"] == "Bitcoin"].copy()
+        btc_chart_df["actual"] = act_df["bitcoin_actual"].iloc[-len(btc_chart_df):].values
+        st.line_chart(
+            btc_chart_df.set_index("timestamp")[["predicted_price","actual"]],
+            use_container_width=True
+        )
+
+    st.caption(f"Last updated: {latest_timestamp}")
