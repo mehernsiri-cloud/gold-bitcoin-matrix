@@ -10,7 +10,6 @@ import yaml
 # ------------------------------
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
-
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
 # ------------------------------
@@ -52,7 +51,7 @@ def fetch_indicators():
 def save_actual_data():
     prices = fetch_prices()
     indicators = fetch_indicators()
-    timestamp = pd.Timestamp.now().floor('H')  # hourly timestamp
+    timestamp = pd.Timestamp.now().floor('H')
     date_str = timestamp.date()
 
     columns = [
@@ -73,11 +72,12 @@ def save_actual_data():
 
     df = pd.DataFrame([row], columns=columns)
 
-    if os.path.exists(ACTUAL_FILE):
-        df.to_csv(ACTUAL_FILE, mode='a', index=False, header=False)
-    else:
+    if not os.path.exists(ACTUAL_FILE) or os.path.getsize(ACTUAL_FILE) == 0:
         df.to_csv(ACTUAL_FILE, index=False)
-    print("Actual data saved.")
+        print("Actual data CSV created.")
+    else:
+        df.to_csv(ACTUAL_FILE, mode='a', index=False, header=False)
+        print("Actual data appended.")
 
 if __name__ == "__main__":
     save_actual_data()
