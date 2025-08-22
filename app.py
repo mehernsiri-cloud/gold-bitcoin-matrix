@@ -1,72 +1,91 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import os
+import plotly.express as px
 
+# ------------------------------
+# PAGE CONFIG (MUST BE FIRST)
+# ------------------------------
+st.set_page_config(page_title="Gold & Bitcoin Predictions", layout="wide")
+
+# ------------------------------
+# DATA FILES
+# ------------------------------
 DATA_DIR = "data"
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
 # ------------------------------
-# Ensure CSV files exist
+# LOAD PREDICTIONS
 # ------------------------------
-os.makedirs(DATA_DIR, exist_ok=True)
-
-for f, columns in [(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "actual_price"]),
-                   (ACTUAL_FILE, ["timestamp", "date", "gold_actual", "bitcoin_actual",
-                                  "inflation", "real_rates","usd_strength","liquidity",
-                                  "equity_flows","bond_yields","regulation","adoption",
-                                  "currency_instability","recession_probability",
-                                  "tail_risk_event","geopolitics","energy_prices"])]:
-    if not os.path.exists(f) or os.path.getsize(f) == 0:
-        pd.DataFrame(columns=columns).to_csv(f, index=False)
+if os.path.exists(PREDICTION_FILE):
+    df_pred = pd.read_csv(PREDICTION_FILE, parse_dates=["timestamp"])
+else:
+    df_pred = pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "volatility", "risk"])
 
 # ------------------------------
-# Load CSVs
+# LOAD ACTUALS
 # ------------------------------
-@st.cache_data
-def load_predictions():
-    return pd.read_csv(PREDICTION_FILE)
-
-@st.cache_data
-def load_actuals():
-    return pd.read_csv(ACTUAL_FILE)
-
-df = load_predictions()
-act_df = load_actuals()
+if os.path.exists(ACTUAL_FILE):
+    df_actual = pd.read_csv(ACTUAL_FILE, parse_dates=["timestamp"])
+else:
+    df_actual = pd.DataFrame(columns=["timestamp", "gold_actual", "bitcoin_actual"])
 
 # ------------------------------
-# Streamlit Layout
+# MERGE PREDICTIONS WITH ACTUALS
 # ------------------------------
-st.set_page_config(page_title="Gold & Bitcoin Predictions", layout="wide")
+def merge_data(asset_name, actual_col):
+    asset_pred = df_pred[df_pred["asset"] == asset_name].copy()
+    if not df_actual.empty and actual_col in df_actual.columns:
+        # Align by timestamp if possible, else fill NaN
+        asset_pred["actual"] = df_actual[actual_col].reindex(asset_pred.index, fill_value=None)
+    else:
+        asset_pred["actual"] = None
+    return asset_pred
+
+gold_df = merge_data("Gold", "gold_actual")
+btc_df = merge_data("Bitcoin", "bitcoin_actual")
+
+# ------------------------------
+# LAYOUT
+# ------------------------------
 st.title("Gold & Bitcoin Predictions Dashboard")
 
-if df.empty:
-    st.info("No prediction data yet. Run fetch_data.py and predict_headless.py first.")
-else:
-    # Separate Gold and Bitcoin
-    gold_df = df[df["asset"] == "Gold"].copy()
-    bitcoin_df = df[df["asset"] == "Bitcoin"].copy()
+col1, col2 = st.columns(2)
 
-    # Merge actual prices safely
-    if not act_df.empty:
-        gold_df["actual_price"] = act_df["gold_actual"].iloc[-len(gold_df):].values
-        bitcoin_df["actual_price"] = act_df["bitcoin_actual"].iloc[-len(bitcoin_df):].values
-
-    # Layout columns
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Gold")
-        st.dataframe(gold_df[["timestamp", "predicted_price", "actual_price"]])
-        st.line_chart(
-            gold_df.set_index("timestamp")[["predicted_price", "actual_price"]],
-            use_container_width=True
+# Gold Section
+with col1:
+    st.subheader("Gold")
+    if not gold_df.empty:
+        st.dataframe(gold_df[["timestamp","predicted_price","actual","volatility","risk"]])
+        fig_gold = px.line(
+            gold_df,
+            x="timestamp",
+            y=["predicted_price","actual"],
+            labels={"value": "Price", "timestamp": "Timestamp"},
+            title="Gold: Predicted vs Actual"
         )
+        st.plotly_chart(fig_gold, use_container_width=True)
+    else:
+        st.info("No Gold data available yet.")
 
-    with col2:
-        st.subheader("Bitcoin")
-        st.dataframe(bitcoin_df[["timestamp", "predicted_price", "actual_price"]])
-        st.line_chart(
-            bitcoin_df.set_index("timestamp")[["predicted_price", "actual_price"]],
-            use_container_width=True
+# Bitcoin Section
+with col2:
+    st.subheader("Bitcoin")
+    if not btc_df.empty:
+        st.dataframe(btc_df[["timestamp","predicted_price","actual","volatility","risk"]])
+        fig_btc = px.line(
+            btc_df,
+            x="timestamp",
+            y=["predicted_price","actual"],
+            labels={"value": "Price", "timestamp": "Timestamp"},
+            title="Bitcoin: Predicted vs Actual"
         )
+        st.plotly_chart(fig_btc, use_container_width=True)
+    else:
+        st.info("No Bitcoin data available yet.")
+
+# ------------------------------
+# END
+# ------------------------------
