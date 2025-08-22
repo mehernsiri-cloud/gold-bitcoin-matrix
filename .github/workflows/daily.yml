@@ -19,7 +19,7 @@ jobs:
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
-        python-version: 3.10
+        python-version: '3.10'
 
     # 3. Install dependencies
     - name: Install dependencies
@@ -39,3 +39,4 @@ jobs:
         git add predictions_log.csv
         git commit -m "Daily predictions update" || echo "No changes to commit"
         git push https://x-access-token:${{ secrets.GH_PAT }}@github.com/mehernsiri-cloud/gold-bitcoin-matrix.git main
+
