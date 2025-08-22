@@ -6,7 +6,6 @@ from datetime import datetime
 DATA_DIR = "data"
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
-# Ensure data folder exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def fetch_prices():
@@ -24,49 +23,49 @@ def fetch_prices():
     return prices
 
 def fetch_indicators():
-    """Fetch key macro indicators for prediction"""
+    """Fetch macro indicators for dynamic prediction"""
     indicators = {}
 
-    # Inflation (CPI YoY)
     try:
+        # Inflation (US CPI proxy)
         cpi = yf.Ticker("^CPI").history(period="1d")['Close'].iloc[-1]
         indicators['inflation'] = float(cpi)
     except:
         indicators['inflation'] = 0.03
 
-    # USD strength (DXY)
     try:
+        # USD strength (DXY)
         dxy = yf.Ticker("DX-Y.NYB").history(period="1d")['Close'].iloc[-1]
         indicators['usd_strength'] = float(dxy)
     except:
         indicators['usd_strength'] = 1.0
 
-    # Real rates (US 10Y - CPI)
     try:
+        # Real rates (TNX - CPI)
         tn10 = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]/100
         indicators['real_rates'] = tn10 - indicators['inflation']
     except:
         indicators['real_rates'] = 0.01
 
-    # Bond yields
     try:
+        # Bond yields
         indicators['bond_yields'] = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]/100
     except:
         indicators['bond_yields'] = 0.03
 
-    # Energy prices (WTI Crude)
     try:
+        # Energy prices (WTI Crude)
         indicators['energy_prices'] = yf.Ticker("CL=F").history(period="1d")['Close'].iloc[-1]
     except:
         indicators['energy_prices'] = 70.0
 
-    # Tail risk (VIX)
     try:
+        # Tail risk (VIX)
         indicators['tail_risk_event'] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
     except:
         indicators['tail_risk_event'] = 20.0
 
-    # Default/fixed values for remaining indicators
+    # Default/fixed values for other indicators
     indicators.update({
         'geopolitics': 0.1,
         'equity_flows': 0.01,
@@ -76,21 +75,20 @@ def fetch_indicators():
         'recession_probability': 0.05,
         'liquidity': 0.05
     })
-
     return indicators
 
 def save_actual_data():
     prices = fetch_prices()
     indicators = fetch_indicators()
-    timestamp = datetime.utcnow()
+    timestamp = pd.Timestamp.now().floor('H')  # round to the hour
 
-    # Save to CSV
     df = pd.DataFrame([{
         "timestamp": timestamp,
         "gold_actual": prices.get("Gold"),
         "bitcoin_actual": prices.get("Bitcoin"),
         **indicators
     }])
+
     if os.path.exists(ACTUAL_FILE):
         df.to_csv(ACTUAL_FILE, mode='a', index=False, header=False)
     else:
