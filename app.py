@@ -1,66 +1,72 @@
 import streamlit as st
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 
 DATA_DIR = "data"
-PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
-ACT_FILE = os.path.join(DATA_DIR, "actual_data.csv")
-
-st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
-st.title("Gold and Bitcoin Predictions vs Actuals")
+PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
 # ------------------------------
-# Load CSVs safely
+# Ensure CSV files exist
 # ------------------------------
-if os.path.exists(PRED_FILE):
-    pred_df = pd.read_csv(PRED_FILE, parse_dates=["timestamp"])
+os.makedirs(DATA_DIR, exist_ok=True)
+
+for f, columns in [(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "actual_price"]),
+                   (ACTUAL_FILE, ["timestamp", "date", "gold_actual", "bitcoin_actual",
+                                  "inflation", "real_rates","usd_strength","liquidity",
+                                  "equity_flows","bond_yields","regulation","adoption",
+                                  "currency_instability","recession_probability",
+                                  "tail_risk_event","geopolitics","energy_prices"])]:
+    if not os.path.exists(f) or os.path.getsize(f) == 0:
+        pd.DataFrame(columns=columns).to_csv(f, index=False)
+
+# ------------------------------
+# Load CSVs
+# ------------------------------
+@st.cache_data
+def load_predictions():
+    return pd.read_csv(PREDICTION_FILE)
+
+@st.cache_data
+def load_actuals():
+    return pd.read_csv(ACTUAL_FILE)
+
+df = load_predictions()
+act_df = load_actuals()
+
+# ------------------------------
+# Streamlit Layout
+# ------------------------------
+st.set_page_config(page_title="Gold & Bitcoin Predictions", layout="wide")
+st.title("Gold & Bitcoin Predictions Dashboard")
+
+if df.empty:
+    st.info("No prediction data yet. Run fetch_data.py and predict_headless.py first.")
 else:
-    pred_df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
+    # Separate Gold and Bitcoin
+    gold_df = df[df["asset"] == "Gold"].copy()
+    bitcoin_df = df[df["asset"] == "Bitcoin"].copy()
 
-if os.path.exists(ACT_FILE):
-    act_df = pd.read_csv(ACT_FILE, parse_dates=["timestamp","date"])
-else:
-    act_df = pd.DataFrame()
+    # Merge actual prices safely
+    if not act_df.empty:
+        gold_df["actual_price"] = act_df["gold_actual"].iloc[-len(gold_df):].values
+        bitcoin_df["actual_price"] = act_df["bitcoin_actual"].iloc[-len(bitcoin_df):].values
 
-# ------------------------------
-# Layout
-# ------------------------------
-gold_df = pred_df[pred_df["asset"]=="Gold"]
-bitcoin_df = pred_df[pred_df["asset"]=="Bitcoin"]
+    # Layout columns
+    col1, col2 = st.columns(2)
 
-if not act_df.empty:
-    gold_df = gold_df.merge(act_df[["timestamp","gold_actual"]], on="timestamp", how="left")
-    bitcoin_df = bitcoin_df.merge(act_df[["timestamp","bitcoin_actual"]], on="timestamp", how="left")
+    with col1:
+        st.subheader("Gold")
+        st.dataframe(gold_df[["timestamp", "predicted_price", "actual_price"]])
+        st.line_chart(
+            gold_df.set_index("timestamp")[["predicted_price", "actual_price"]],
+            use_container_width=True
+        )
 
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Gold")
-    if not gold_df.empty:
-        st.dataframe(gold_df[["timestamp","predicted_price","gold_actual","volatility","risk"]])
-        fig, ax = plt.subplots()
-        ax.plot(gold_df["timestamp"], gold_df["predicted_price"], label="Predicted", marker='o')
-        if "gold_actual" in gold_df:
-            ax.plot(gold_df["timestamp"], gold_df["gold_actual"], label="Actual", marker='x')
-        ax.set_ylabel("Price")
-        ax.set_xlabel("Timestamp")
-        ax.legend()
-        st.pyplot(fig)
-    else:
-        st.info("No Gold data available.")
-
-with col2:
-    st.subheader("Bitcoin")
-    if not bitcoin_df.empty:
-        st.dataframe(bitcoin_df[["timestamp","predicted_price","bitcoin_actual","volatility","risk"]])
-        fig, ax = plt.subplots()
-        ax.plot(bitcoin_df["timestamp"], bitcoin_df["predicted_price"], label="Predicted", marker='o')
-        if "bitcoin_actual" in bitcoin_df:
-            ax.plot(bitcoin_df["timestamp"], bitcoin_df["bitcoin_actual"], label="Actual", marker='x')
-        ax.set_ylabel("Price")
-        ax.set_xlabel("Timestamp")
-        ax.legend()
-        st.pyplot(fig)
-    else:
-        st.info("No Bitcoin data available.")
+    with col2:
+        st.subheader("Bitcoin")
+        st.dataframe(bitcoin_df[["timestamp", "predicted_price", "actual_price"]])
+        st.line_chart(
+            bitcoin_df.set_index("timestamp")[["predicted_price", "actual_price"]],
+            use_container_width=True
+        )
