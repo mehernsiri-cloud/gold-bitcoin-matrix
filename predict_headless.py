@@ -1,67 +1,90 @@
 #!/usr/bin/env python3
-import pandas as pd
 import os
-from datetime import datetime
+import pandas as pd
 import yaml
+from datetime import datetime
 
+# ------------------------------
+# Config
+# ------------------------------
 DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
 # ------------------------------
-# Load indicator weights
+# Load weights
 # ------------------------------
+if not os.path.exists(WEIGHT_FILE):
+    raise FileNotFoundError(f"{WEIGHT_FILE} not found!")
+
 with open(WEIGHT_FILE, "r") as f:
     weights = yaml.safe_load(f)
 
-ASSETS = ["Gold", "Bitcoin"]
+# ------------------------------
+# Predict function
+# ------------------------------
+def predict_price(actual_df, asset_name):
+    """
+    Predict next price based on latest actual price and weighted score.
+    """
+    asset_map = {"Gold": "gold_actual", "Bitcoin": "bitcoin_actual"}
+    col = asset_map.get(asset_name)
+    if col not in actual_df.columns:
+        raise KeyError(f"{col} not found in actual data CSV.")
 
-def safe_read_actuals():
-    if os.path.exists(ACTUAL_FILE) and os.path.getsize(ACTUAL_FILE) > 0:
-        return pd.read_csv(ACTUAL_FILE)
-    else:
-        return pd.DataFrame()
+    # Get latest price as float
+    price_actual = actual_df[col].iloc[-1]
+    try:
+        price_actual = float(price_actual)
+    except Exception:
+        price_actual = 0.0
 
-def predict_price(latest_actual, asset_name):
-    """Simple weighted prediction based on indicators"""
-    if latest_actual.empty or asset_name.lower() not in weights:
-        return None
-    w = weights[asset_name.lower()]
-    indicators = latest_actual.iloc[-1].to_dict()
-    price_actual = indicators[f"{asset_name.lower()}_actual"]
-    score = sum([indicators.get(k,0)*v for k,v in w.items()])
+    # Compute simple weighted score from weight.yaml
+    score = sum(weights[asset_name.lower()].values())
     predicted_price = price_actual * (1 + score)
+
     return round(predicted_price, 2)
 
+# ------------------------------
+# Main
+# ------------------------------
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
-    actual_df = safe_read_actuals()
-    if actual_df.empty:
-        print("No actual data available. Run fetch_data.py first.")
+
+    # Ensure prediction CSV exists
+    if not os.path.exists(PREDICTION_FILE):
+        pd.DataFrame(columns=["timestamp", "asset", "predicted_price"]).to_csv(PREDICTION_FILE, index=False)
+
+    # Load actual data
+    try:
+        actual_df = pd.read_csv(ACTUAL_FILE)
+    except Exception as e:
+        print(f"Error reading {ACTUAL_FILE}: {e}")
         return
 
-    timestamp = pd.Timestamp.now().floor('H')
+    if actual_df.empty:
+        print("Actual data CSV is empty. Cannot predict.")
+        return
+
+    timestamp = pd.Timestamp.now().floor('h')  # hourly rounded timestamp
+
     results = []
-    for asset in ASSETS:
+    for asset in ["Gold", "Bitcoin"]:
         pred_price = predict_price(actual_df, asset)
-        price_actual = actual_df[f"{asset.lower()}_actual"].iloc[-1]
         results.append({
             "timestamp": timestamp,
             "asset": asset,
-            "predicted_price": pred_price,
-            "actual_price": price_actual
+            "predicted_price": pred_price
         })
 
+    # Append predictions safely
     df_pred = pd.DataFrame(results)
+    df_pred.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
+    print(f"Predictions appended successfully at {timestamp}.")
 
-    if not os.path.exists(PREDICTION_FILE) or os.path.getsize(PREDICTION_FILE) == 0:
-        df_pred.to_csv(PREDICTION_FILE, index=False)
-        print("Prediction CSV created.")
-    else:
-        df_pred.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
-        print("Prediction appended.")
-
+# ------------------------------
+# Entry point
+# ------------------------------
 if __name__ == "__main__":
     main()
