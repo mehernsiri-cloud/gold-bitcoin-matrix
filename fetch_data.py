@@ -1,98 +1,101 @@
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
 import os
+from datetime import datetime
 
-# -----------------------------
-# Paths
-# -----------------------------
 DATA_DIR = "data"
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+
+# Ensure data folder exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# -----------------------------
-# Fetch live prices
-# -----------------------------
 def fetch_prices():
+    """Fetch latest Gold and Bitcoin prices"""
     prices = {}
-    tickers = {"Gold": "GC=F", "Bitcoin": "BTC-USD"}
-
-    for asset, ticker in tickers.items():
-        try:
-            df = yf.Ticker(ticker).history(period="1d")
-            if df.empty:
-                raise ValueError(f"No data for {ticker}")
-            prices[asset] = float(df['Close'].iloc[-1])
-        except Exception as e:
-            print(f"⚠️ Warning fetching price for {asset} ({ticker}): {e}")
-            prices[asset] = None
+    try:
+        gold = yf.Ticker("GC=F").history(period="1d")['Close'].iloc[-1]
+        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
+        prices["Gold"] = gold
+        prices["Bitcoin"] = btc
+    except Exception as e:
+        print(f"Error fetching prices: {e}")
+        prices["Gold"] = None
+        prices["Bitcoin"] = None
     return prices
 
-# -----------------------------
-# Fetch macro indicators
-# -----------------------------
 def fetch_indicators():
+    """Fetch key macro indicators for prediction"""
     indicators = {}
+
+    # Inflation (CPI YoY)
     try:
-        # Example values; can be replaced with real-time APIs
+        cpi = yf.Ticker("^CPI").history(period="1d")['Close'].iloc[-1]
+        indicators['inflation'] = float(cpi)
+    except:
         indicators['inflation'] = 0.03
-        indicators['real_rates'] = 0.01
+
+    # USD strength (DXY)
+    try:
+        dxy = yf.Ticker("DX-Y.NYB").history(period="1d")['Close'].iloc[-1]
+        indicators['usd_strength'] = float(dxy)
+    except:
         indicators['usd_strength'] = 1.0
-        indicators['liquidity'] = 0.05
-        indicators['equity_flows'] = 0.01
+
+    # Real rates (US 10Y - CPI)
+    try:
+        tn10 = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]/100
+        indicators['real_rates'] = tn10 - indicators['inflation']
+    except:
+        indicators['real_rates'] = 0.01
+
+    # Bond yields
+    try:
+        indicators['bond_yields'] = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]/100
+    except:
         indicators['bond_yields'] = 0.03
-        indicators['regulation'] = 0.0
-        indicators['adoption'] = 0.1
-        indicators['currency_instability'] = 0.02
-        indicators['recession_probability'] = 0.05
-        indicators['tail_risk_event'] = 0.1
-        indicators['geopolitics'] = 0.1
-        # Energy price: WTI Crude
-        try:
-            energy = yf.Ticker("CL=F").history(period="1d")
-            indicators['energy_prices'] = float(energy['Close'].iloc[-1])
-        except:
-            indicators['energy_prices'] = 70.0
-    except Exception as e:
-        print(f"⚠️ Warning fetching indicators: {e}")
+
+    # Energy prices (WTI Crude)
+    try:
+        indicators['energy_prices'] = yf.Ticker("CL=F").history(period="1d")['Close'].iloc[-1]
+    except:
+        indicators['energy_prices'] = 70.0
+
+    # Tail risk (VIX)
+    try:
+        indicators['tail_risk_event'] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+    except:
+        indicators['tail_risk_event'] = 20.0
+
+    # Default/fixed values for remaining indicators
+    indicators.update({
+        'geopolitics': 0.1,
+        'equity_flows': 0.01,
+        'regulation': 0.0,
+        'adoption': 0.1,
+        'currency_instability': 0.02,
+        'recession_probability': 0.05,
+        'liquidity': 0.05
+    })
+
     return indicators
 
-# -----------------------------
-# Save actual data safely
-# -----------------------------
 def save_actual_data():
-    now = datetime.utcnow()
-    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    today = now.strftime("%Y-%m-%d")
-
     prices = fetch_prices()
     indicators = fetch_indicators()
+    timestamp = datetime.utcnow()
 
-    row = {
+    # Save to CSV
+    df = pd.DataFrame([{
         "timestamp": timestamp,
-        "date": today,
         "gold_actual": prices.get("Gold"),
         "bitcoin_actual": prices.get("Bitcoin"),
         **indicators
-    }
-
-    # Read existing CSV safely
-    if os.path.exists(ACTUAL_FILE) and os.path.getsize(ACTUAL_FILE) > 0:
-        try:
-            df = pd.read_csv(ACTUAL_FILE)
-            # Avoid duplicate timestamp entries
-            if timestamp not in df['timestamp'].values:
-                df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-        except pd.errors.EmptyDataError:
-            df = pd.DataFrame([row])
+    }])
+    if os.path.exists(ACTUAL_FILE):
+        df.to_csv(ACTUAL_FILE, mode='a', index=False, header=False)
     else:
-        df = pd.DataFrame([row])
+        df.to_csv(ACTUAL_FILE, index=False)
+    print("Actual data saved.")
 
-    df.to_csv(ACTUAL_FILE, index=False)
-    print(f"✅ Actual data updated: {row}")
-
-# -----------------------------
-# Main
-# -----------------------------
 if __name__ == "__main__":
     save_actual_data()
