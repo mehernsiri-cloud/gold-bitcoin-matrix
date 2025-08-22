@@ -20,30 +20,36 @@ act_df = load_csv(ACTUAL_FILE)
 if pred_df.empty or act_df.empty:
     st.info("No data available yet.")
 else:
-    latest_ts = pred_df["timestamp"].max()
-    latest_pred = pred_df[pred_df["timestamp"]==latest_ts].set_index("asset")
-    latest_act = act_df.iloc[-1]
+    # Align predictions and actuals on hourly timestamp
+    pred_df["timestamp"] = pd.to_datetime(pred_df["timestamp"])
+    act_df["timestamp"] = pd.to_datetime(act_df["timestamp"])
+    merged = pd.merge_asof(
+        pred_df.sort_values("timestamp"),
+        act_df.sort_values("timestamp"),
+        on="timestamp",
+        direction="backward"
+    )
 
     col1, col2 = st.columns(2)
 
+    # Gold
     with col1:
+        gold_df = merged[merged["asset"]=="Gold"].copy()
         st.subheader("Gold")
-        st.metric("Predicted Price (USD)", f"${latest_pred.loc['Gold','predicted_price']:,.2f}")
-        st.metric("Actual Price (USD)", f"${latest_act['gold_actual']:,.2f}")
-        st.metric("Risk", latest_pred.loc['Gold','risk'])
+        if not gold_df.empty:
+            st.metric("Predicted Price (USD)", f"${gold_df['predicted_price'].iloc[-1]:,.2f}")
+            st.metric("Actual Price (USD)", f"${gold_df['gold_actual'].iloc[-1]:,.2f}")
+            st.metric("Risk", gold_df['risk'].iloc[-1])
+            st.line_chart(gold_df.set_index("timestamp")[["predicted_price","gold_actual"]])
 
-        gold_df = pred_df[pred_df["asset"]=="Gold"].copy()
-        gold_df["actual"] = act_df["gold_actual"].iloc[-len(gold_df):].values
-        st.line_chart(gold_df.set_index("timestamp")[["predicted_price","actual"]])
-
+    # Bitcoin
     with col2:
+        btc_df = merged[merged["asset"]=="Bitcoin"].copy()
         st.subheader("Bitcoin")
-        st.metric("Predicted Price (USD)", f"${latest_pred.loc['Bitcoin','predicted_price']:,.2f}")
-        st.metric("Actual Price (USD)", f"${latest_act['bitcoin_actual']:,.2f}")
-        st.metric("Risk", latest_pred.loc['Bitcoin','risk'])
+        if not btc_df.empty:
+            st.metric("Predicted Price (USD)", f"${btc_df['predicted_price'].iloc[-1]:,.2f}")
+            st.metric("Actual Price (USD)", f"${btc_df['bitcoin_actual'].iloc[-1]:,.2f}")
+            st.metric("Risk", btc_df['risk'].iloc[-1])
+            st.line_chart(btc_df.set_index("timestamp")[["predicted_price","bitcoin_actual"]])
 
-        btc_df = pred_df[pred_df["asset"]=="Bitcoin"].copy()
-        btc_df["actual"] = act_df["bitcoin_actual"].iloc[-len(btc_df):].values
-        st.line_chart(btc_df.set_index("timestamp")[["predicted_price","actual"]])
-
-    st.caption(f"Last updated: {latest_ts}")
+    st.caption(f"Last updated: {merged['timestamp'].max()}")
