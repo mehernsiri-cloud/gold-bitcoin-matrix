@@ -1,39 +1,55 @@
 name: Hourly Predictions Update
 
+# Trigger every hour
 on:
   schedule:
-    - cron: '0 * * * *'  # Every hour
-  workflow_dispatch:
+    - cron: '0 * * * *'   # every hour at minute 0
+  workflow_dispatch:       # manual trigger option
 
 jobs:
-  update-data:
+  hourly-predictions:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+    # 1️⃣ Checkout repo
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        persist-credentials: false  # We'll use PAT for push
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+    # 2️⃣ Setup Python 3.10
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    # 3️⃣ Install dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pandas yfinance pyyaml
 
-      - name: Fetch Actual Data
-        run: python fetch_data.py
+    # 4️⃣ Ensure data directory exists
+    - name: Create data directory
+      run: |
+        mkdir -p data
 
-      - name: Generate Predictions
-        run: python predict_headless.py
+    # 5️⃣ Run fetch_data.py to get actual prices and indicators
+    - name: Fetch actual data
+      run: python fetch_data.py
 
-      - name: Commit & Push
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-          git add data/
-          git commit -m "Hourly update" || echo "No changes to commit"
-          git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+    # 6️⃣ Run headless prediction script
+    - name: Run predictions
+      run: python predict_headless.py
+
+    # 7️⃣ Commit & push updated CSVs using Personal Access Token
+    - name: Commit & push predictions
+      env:
+        GH_PAT: ${{ secrets.GH_PAT }}
+      run: |
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        git add data/
+        git commit -m "Hourly update" || echo "No changes to commit"
+        git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
