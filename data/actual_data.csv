@@ -1,1 +1,6 @@
 date,gold_actual,bitcoin_actual,real_estate_france_actual,real_estate_dubai_actual,france_studio_actual,france_2bed_actual,france_3bed_actual,dubai_studio_actual,dubai_2bed_actual,dubai_3bed_actual
+2025-08-22,"Ticker
+GC=F    3421.8
+Name: 2025-08-22 00:00:00, dtype: float64","Ticker
+BTC-USD    116708.21
+Name: 2025-08-22 00:00:00, dtype: float64",,,120000,220000,320000,150000,300000,450000
