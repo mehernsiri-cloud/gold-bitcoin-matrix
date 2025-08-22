@@ -1,4 +1,4 @@
-# predict_headless.py
+#!/usr/bin/env python3
 import pandas as pd
 import yfinance as yf
 import os
@@ -8,9 +8,9 @@ from datetime import datetime
 # Config
 # ------------------------------
 ASSETS = {
-    "gold": "GC=F",        # Gold futures
-    "bitcoin": "BTC-USD",  # Bitcoin
-    "fr_real_estate": "^FCHI",  # proxy France RE via CAC40 real estate ETF / index
+    "gold": "GC=F",              # Gold futures
+    "bitcoin": "BTC-USD",        # Bitcoin
+    "fr_real_estate": "^FCHI",   # proxy France RE via CAC40 real estate ETF / index
     "dubai_real_estate": "^DFMGI"  # placeholder index, replace if real data
 }
 
@@ -34,15 +34,13 @@ def fetch_data(symbol):
 def compute_volatility(df):
     """Daily volatility as std of returns"""
     df['returns'] = df['Adj Close'].pct_change()
-    vol = df['returns'].std()
-    return vol
+    return df['returns'].std()
 
 def predict_price(df):
     """Simple forecast: latest price adjusted by last return"""
     last_price = df['Adj Close'].iloc[-1]
     last_return = df['Adj Close'].pct_change().iloc[-1]
-    predicted_price = last_price * (1 + last_return)
-    return predicted_price
+    return last_price * (1 + last_return)
 
 def compute_risk(vol, threshold):
     if vol < threshold:
@@ -52,39 +50,55 @@ def compute_risk(vol, threshold):
     else:
         return "High"
 
+def ensure_csv_exists(file_path):
+    """Create CSV with headers if missing"""
+    if not os.path.exists(file_path):
+        df = pd.DataFrame(columns=[
+            "timestamp", "asset", "predicted_price", "volatility", "risk"
+        ])
+        df.to_csv(file_path, index=False)
+        print(f"Created CSV: {file_path}")
+
 # ------------------------------
 # Main
 # ------------------------------
-results = []
+def main():
+    ensure_csv_exists(CSV_FILE)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    results = []
 
-for asset, symbol in ASSETS.items():
-    try:
-        df = fetch_data(symbol)
-        if df.empty:
-            raise ValueError(f"No data fetched for {asset}")
-        
-        vol = compute_volatility(df)
-        predicted_price = predict_price(df)
-        risk = compute_risk(vol, VOL_THRESHOLDS[asset])
-        
-        results.append({
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "asset": asset,
-            "predicted_price": round(predicted_price, 2),
-            "volatility": round(vol, 4),
-            "risk": risk
-        })
-    except Exception as e:
-        print(f"Error fetching {asset}: {e}")
+    for asset, symbol in ASSETS.items():
+        try:
+            df = fetch_data(symbol)
+            if df.empty:
+                raise ValueError(f"No data fetched for {asset}")
 
-# ------------------------------
-# Save to CSV (append)
-# ------------------------------
-df_results = pd.DataFrame(results)
+            vol = compute_volatility(df)
+            predicted_price = predict_price(df)
+            risk = compute_risk(vol, VOL_THRESHOLDS[asset])
 
-if os.path.exists(CSV_FILE):
-    df_old = pd.read_csv(CSV_FILE, parse_dates=["date"])
-    df_results = pd.concat([df_old, df_results], ignore_index=True)
+            results.append({
+                "timestamp": timestamp,
+                "asset": asset,
+                "predicted_price": round(predicted_price, 2),
+                "volatility": round(vol, 4),
+                "risk": risk
+            })
+        except Exception as e:
+            print(f"Error fetching {asset}: {e}")
+            # Still log a placeholder to avoid empty CSV
+            results.append({
+                "timestamp": timestamp,
+                "asset": asset,
+                "predicted_price": None,
+                "volatility": None,
+                "risk": "Error"
+            })
 
-df_results.to_csv(CSV_FILE, index=False)
-print(f"Saved daily predictions to {CSV_FILE}")
+    # Append to CSV
+    df_results = pd.DataFrame(results)
+    df_results.to_csv(CSV_FILE, mode='a', index=False, header=False)
+    print(f"Appended predictions to {CSV_FILE}")
+
+if __name__ == "__main__":
+    main()
