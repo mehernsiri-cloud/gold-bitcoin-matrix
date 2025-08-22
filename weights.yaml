@@ -12,6 +12,7 @@ gold:
   recession_probability: 0.12
   energy_prices: 0.02
   tail_risk_event: 0.20
+
 bitcoin:
   geopolitics: 0.08
   inflation: 0.10
@@ -26,3 +27,27 @@ bitcoin:
   recession_probability: -0.04
   energy_prices: -0.02
   tail_risk_event: 0.06
+
+real_estate_france:
+  interest_rates: -0.25
+  inflation: 0.15
+  gdp_growth: 0.20
+  housing_supply: -0.10
+  foreign_investment: 0.10
+  currency_stability: 0.05
+  regulation: 0.05
+  energy_prices: 0.05
+  recession_probability: -0.20
+  geopolitics: 0.05
+
+real_estate_dubai:
+  interest_rates: -0.20
+  inflation: 0.10
+  gdp_growth: 0.25
+  housing_supply: -0.15
+  foreign_investment: 0.15
+  currency_stability: 0.10
+  regulation: 0.10
+  energy_prices: 0.05
+  recession_probability: -0.10
+  geopolitics: 0.05

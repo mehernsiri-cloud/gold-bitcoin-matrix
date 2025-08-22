@@ -1,66 +1,55 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import os
-from urllib.error import URLError
+import yaml
+from fetch_data import save_actual_data
 
-# ------------------------------
-# Config
-# ------------------------------
-LOCAL_CSV = "predictions_log.csv"
-GITHUB_CSV_URL = ""  # Optional: add your raw GitHub URL here if you want to load remotely
+st.set_page_config(layout="wide", page_title="Gold / Bitcoin / Real Estate Predictions")
+st.title("📊 Predictions Dashboard")
 
-# ------------------------------
-# Load predictions function
-# ------------------------------
+# Paths
+PRED_CSV="data/predictions_log.csv"
+ACTUAL_CSV="data/actual_data.csv"
+WEIGHT_FILE="weight.yaml"
+
+# Load CSVs
 @st.cache_data
-def load_predictions():
-    """
-    Load predictions CSV either locally or from GitHub URL.
-    Returns a DataFrame with 'timestamp', 'asset', 'predicted_price', 'volatility', 'risk'
-    """
-    # Try local CSV first
-    if os.path.exists(LOCAL_CSV):
-        try:
-            df = pd.read_csv(LOCAL_CSV, parse_dates=["timestamp"])
-            return df
-        except Exception as e:
-            st.warning(f"Error reading local CSV: {e}")
+def load_csv(path):
+    if os.path.exists(path):
+        return pd.read_csv(path, parse_dates=["timestamp"] if "predictions" in path else ["date"])
+    return pd.DataFrame()
 
-    # Fallback: try GitHub URL
-    if GITHUB_CSV_URL:
-        try:
-            df = pd.read_csv(GITHUB_CSV_URL, parse_dates=["timestamp"])
-            return df
-        except URLError as e:
-            st.error(f"Cannot fetch CSV from URL: {e}")
-        except Exception as e:
-            st.error(f"Error reading CSV from URL: {e}")
+predictions=load_csv(PRED_CSV)
+actuals=load_csv(ACTUAL_CSV)
 
-    # If all fails, return empty DataFrame
-    st.warning("No predictions CSV available. Showing empty table.")
-    columns = ["timestamp", "asset", "predicted_price", "volatility", "risk"]
-    return pd.DataFrame(columns=columns)
+# Load weights
+with open(WEIGHT_FILE,"r") as f:
+    weights=yaml.safe_load(f)
 
-# ------------------------------
-# Streamlit App
-# ------------------------------
-st.set_page_config(page_title="Gold/Bitcoin/Real Estate Predictions", layout="wide")
-st.title("Predictions Dashboard")
+sections=["Gold","Bitcoin","Real_Estate_France","Real_Estate_Dubai"]
 
-df = load_predictions()
+def merge_data(pred_df, actual_df, asset):
+    pred_asset=pred_df[pred_df["asset"]==asset].copy()
+    col_name=asset.lower()+"_actual"
+    actual_subset=actual_df[["date",col_name]].rename(columns={col_name:"actual_price"})
+    return pd.merge(pred_asset,actual_subset,left_on="timestamp",right_on="date",how="left")
 
-if df.empty:
-    st.info("No prediction data available yet.")
-else:
-    # Show latest predictions only
-    latest_timestamp = df["timestamp"].max()
-    st.subheader(f"Latest predictions: {latest_timestamp}")
-    latest_df = df[df["timestamp"] == latest_timestamp]
-    st.dataframe(latest_df)
+for asset in sections:
+    st.header(asset)
+    merged=merge_data(predictions,actuals,asset)
+    if merged.empty:
+        st.info(f"No data for {asset}")
+        continue
+    st.subheader("Latest predictions")
+    latest_date=merged["timestamp"].max()
+    st.dataframe(merged.tail(5)[["timestamp","predicted_price","actual_price","volatility","risk"]])
+    st.subheader("Price Trend")
+    st.line_chart(merged.set_index("timestamp")[["predicted_price","actual_price"]])
+    if asset in ["Gold","Bitcoin"]:
+        st.subheader("Weighted Prediction Factors")
+        st.write(weights[asset.lower()])
 
-    # Optional: chart over time
-    st.subheader("Prediction Trends Over Time")
-    for asset in df["asset"].unique():
-        asset_df = df[df["asset"] == asset]
-        st.line_chart(asset_df.set_index("timestamp")["predicted_price"], use_container_width=True)
+st.sidebar.header("Data Refresh")
+if st.sidebar.button("Fetch Latest Actuals"):
+    save_actual_data()
+    st.sidebar.success("Actuals updated!")
