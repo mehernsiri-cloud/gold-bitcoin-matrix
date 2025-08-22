@@ -1,53 +1,80 @@
-import streamlit as st
 import pandas as pd
 import os
-import yaml
-from fetch_data import save_actual_data
+import streamlit as st
+from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Gold / Bitcoin / Real Estate Predictions")
-st.title("📊 Predictions Dashboard")
+# Paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PREDICTIONS_FILE = os.path.join(BASE_DIR, "data", "predictions_log.csv")
+ACTUALS_FILE = os.path.join(BASE_DIR, "data", "actual_data.csv")
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "data")
-PRED_CSV = os.path.join(DATA_DIR, "predictions_log.csv")
-ACTUAL_CSV = os.path.join(DATA_DIR, "actual_data.csv")
-WEIGHT_FILE = os.path.join(SCRIPT_DIR, "weight.yaml")
+def load_latest_predictions():
+    if not os.path.exists(PREDICTIONS_FILE):
+        return pd.DataFrame()
 
-@st.cache_data
-def load_csv(path):
-    if os.path.exists(path):
-        return pd.read_csv(path, parse_dates=["timestamp"] if "predictions" in path else ["date"])
-    return pd.DataFrame()
+    preds = pd.read_csv(PREDICTIONS_FILE)
+    if preds.empty:
+        return pd.DataFrame()
 
-predictions = load_csv(PRED_CSV)
-actuals = load_csv(ACTUAL_CSV)
+    # Get most recent timestamp per asset
+    latest_time = preds["timestamp"].max()
+    latest_preds = preds[preds["timestamp"] == latest_time]
 
-with open(WEIGHT_FILE,"r") as f:
-    weights = yaml.safe_load(f)
+    return latest_preds
 
-sections=["Gold","Bitcoin","Real_Estate_France","Real_Estate_Dubai"]
+def load_actuals():
+    if not os.path.exists(ACTUALS_FILE):
+        return pd.DataFrame()
 
-def merge_data(pred_df, actual_df, asset):
-    pred_asset = pred_df[pred_df["asset"]==asset].copy()
-    col_name = asset.lower()+"_actual"
-    actual_subset = actual_df[["date",col_name]].rename(columns={col_name:"actual_price"})
-    return pd.merge(pred_asset, actual_subset, left_on="timestamp", right_on="date", how="left")
+    actuals = pd.read_csv(ACTUALS_FILE)
+    if actuals.empty:
+        return pd.DataFrame()
 
-for asset in sections:
-    st.header(asset)
-    merged = merge_data(predictions, actuals, asset)
-    if merged.empty:
-        st.info(f"No data for {asset}")
-        continue
-    st.subheader("Latest predictions")
-    st.dataframe(merged.tail(5)[["timestamp","predicted_price","actual_price","volatility","risk"]])
-    st.subheader("Price Trend")
-    st.line_chart(merged.set_index("timestamp")[["predicted_price","actual_price"]])
-    if asset in ["Gold","Bitcoin"]:
-        st.subheader("Weighted Prediction Factors")
-        st.write(weights[asset.lower()])
+    # Take today’s row (latest date)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    todays_actuals = actuals[actuals["date"] == today]
 
-st.sidebar.header("Data Refresh")
-if st.sidebar.button("Fetch Latest Actuals"):
-    save_actual_data()
-    st.sidebar.success("Actuals updated!")
+    return todays_actuals
+
+def build_predictions_table():
+    preds = load_latest_predictions()
+    actuals = load_actuals()
+
+    if preds.empty or actuals.empty:
+        return pd.DataFrame()
+
+    # Map actuals into tidy format
+    actuals_tidy = pd.melt(
+        actuals,
+        id_vars=["date"],
+        var_name="asset",
+        value_name="actual_price"
+    )
+
+    # Normalize asset names to match predictions
+    actuals_tidy["asset"] = actuals_tidy["asset"].str.replace("_actual", "", regex=False)
+    actuals_tidy["asset"] = actuals_tidy["asset"].str.replace("_", " ").str.title()
+
+    preds["asset_norm"] = preds["asset"].str.replace("_", " ").str.title()
+
+    # Merge predictions with actuals
+    merged = preds.merge(
+        actuals_tidy,
+        left_on="asset_norm",
+        right_on="asset",
+        how="left"
+    )
+
+    # Final clean-up
+    merged = merged[["asset_x", "predicted_price", "actual_price", "volatility", "risk"]]
+    merged.columns = ["Asset", "Predicted Price", "Actual Price", "Volatility", "Risk"]
+
+    return merged
+
+# Streamlit usage
+st.subheader("📊 Latest Predictions with Actuals")
+table = build_predictions_table()
+if table.empty:
+    st.info("No prediction data available yet.")
+else:
+    st.dataframe(table, use_container_width=True)
