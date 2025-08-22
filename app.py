@@ -1,69 +1,40 @@
-import streamlit as st
 import pandas as pd
-import os
+import streamlit as st
+from datetime import datetime
 
-# Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
-PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+# Load actuals
+actual_data = pd.read_csv("data/actual_data.csv")
+latest_actual = actual_data.iloc[-1] if not actual_data.empty else None
 
-st.set_page_config(page_title="Predictions Dashboard", layout="wide")
-st.title("📊 Predictions vs Actuals Dashboard")
+# Load predictions
+predictions = pd.read_csv("data/predictions_log.csv")
 
-# --- Load Data ---
-@st.cache_data
-def load_csv(file):
-    if os.path.exists(file):
-        return pd.read_csv(file)
-    return pd.DataFrame()
+# Merge latest actuals with predictions
+if latest_actual is not None:
+    today_actuals = {
+        "Gold": latest_actual["gold_actual"],
+        "Bitcoin": latest_actual["bitcoin_actual"],
+        "France Studio": latest_actual["france_studio_actual"],
+        "France 2-Bed": latest_actual["france_2bed_actual"],
+        "France 3-Bed": latest_actual["france_3bed_actual"],
+        "Dubai Studio": latest_actual["dubai_studio_actual"],
+        "Dubai 2-Bed": latest_actual["dubai_2bed_actual"],
+        "Dubai 3-Bed": latest_actual["dubai_3bed_actual"],
+    }
 
-actual_df = load_csv(ACTUAL_FILE)
-pred_df = load_csv(PRED_FILE)
+    latest_preds = predictions[predictions["timestamp"] == predictions["timestamp"].max()]
 
-# --- Latest Actuals ---
-if not actual_df.empty:
-    latest_actual = actual_df.sort_values("date").iloc[-1]
-    st.subheader("Latest Market Actuals")
-    st.table(pd.DataFrame([latest_actual]))
-else:
-    st.warning("No actual data available yet. Run `fetch_data.py` or wait for the workflow.")
+    # Build table with actuals included
+    table_data = []
+    for _, row in latest_preds.iterrows():
+        asset_name = row["asset"]
+        table_data.append({
+            "Asset": asset_name,
+            "Predicted Price": row["predicted_price"],
+            "Actual Price": today_actuals.get(asset_name.replace("_", " "), None),
+            "Volatility": row["volatility"],
+            "Risk": row["risk"],
+        })
 
-# --- Latest Predictions + Compare ---
-if not pred_df.empty and not actual_df.empty:
-    latest_pred = pred_df.sort_values("timestamp").iloc[-1].copy()
-    # Match prediction date with actuals
-    latest_pred["date"] = pd.to_datetime(latest_pred["timestamp"]).date()
-    latest_actual_date = actual_df["date"].iloc[-1]
-
-    st.subheader("Latest Predictions vs Actuals")
-    merged = pd.DataFrame([{
-        "date": latest_actual_date,
-        "gold_predicted": latest_pred.get("gold_pred", None),
-        "gold_actual": latest_actual["gold_actual"],
-        "bitcoin_predicted": latest_pred.get("bitcoin_pred", None),
-        "bitcoin_actual": latest_actual["bitcoin_actual"],
-        "france_studio_pred": latest_pred.get("france_studio_pred", None),
-        "france_studio_actual": latest_actual["france_studio_price"],
-        "france_2bed_pred": latest_pred.get("france_2bed_pred", None),
-        "france_2bed_actual": latest_actual["france_2bed_price"],
-        "dubai_studio_pred": latest_pred.get("dubai_studio_pred", None),
-        "dubai_studio_actual": latest_actual["dubai_studio_price"],
-        "dubai_2bed_pred": latest_pred.get("dubai_2bed_pred", None),
-        "dubai_2bed_actual": latest_actual["dubai_2bed_price"],
-    }])
-    st.dataframe(merged, use_container_width=True)
-else:
-    st.info("Waiting for both predictions and actuals to display comparison.")
-
-# --- History Charts ---
-if not actual_df.empty:
-    st.subheader("📈 Historical Actual Prices")
-    st.line_chart(actual_df.set_index("date")[[
-        "gold_actual",
-        "bitcoin_actual",
-        "france_studio_price",
-        "france_2bed_price",
-        "dubai_studio_price",
-        "dubai_2bed_price"
-    ]])
+    st.subheader("📊 Latest Predictions with Actuals")
+    st.dataframe(pd.DataFrame(table_data))
