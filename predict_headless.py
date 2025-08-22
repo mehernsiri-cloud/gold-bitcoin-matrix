@@ -1,59 +1,90 @@
 # predict_headless.py
-import yfinance as yf
 import pandas as pd
-import datetime
+import yfinance as yf
 import os
-from statsmodels.tsa.arima.model import ARIMA
-import warnings
-warnings.filterwarnings("ignore")
+from datetime import datetime
 
-assets = {
-    "Gold": "GC=F",
-    "Bitcoin": "BTC-USD",
-    "France_RE": "BNP.PA",
-    "Dubai_RE": "EMAAR.DU"
+# ------------------------------
+# Config
+# ------------------------------
+ASSETS = {
+    "gold": "GC=F",        # Gold futures
+    "bitcoin": "BTC-USD",  # Bitcoin
+    "fr_real_estate": "^FCHI",  # proxy France RE via CAC40 real estate ETF / index
+    "dubai_real_estate": "^DFMGI"  # placeholder index, replace if real data
 }
 
-log_file = "predictions_log.csv"
-if os.path.exists(log_file):
-    df_log = pd.read_csv(log_file)
-else:
-    df_log = pd.DataFrame(columns=["date", "asset", "actual", "prediction", "risk"])
+CSV_FILE = "predictions_log.csv"
 
-today = datetime.date.today()
+VOL_THRESHOLDS = {
+    "gold": 0.005,
+    "bitcoin": 0.02,
+    "fr_real_estate": 0.01,
+    "dubai_real_estate": 0.01
+}
 
-for name, ticker in assets.items():
-    data = yf.download(ticker, period="6mo", interval="1d")
-    if not data.empty:
-        actual_price = data["Close"].iloc[-1]
+# ------------------------------
+# Helper functions
+# ------------------------------
+def fetch_data(symbol):
+    """Fetch last 30 days data"""
+    df = yf.download(symbol, period="30d", interval="1d")
+    return df
 
-        # Prediction with ARIMA
-        try:
-            series = data["Close"].dropna()
-            model = ARIMA(series, order=(2,1,2))
-            model_fit = model.fit()
-            prediction = float(model_fit.forecast(steps=1).iloc[0])
-        except:
-            prediction = series.rolling(window=5).mean().iloc[-1]
+def compute_volatility(df):
+    """Daily volatility as std of returns"""
+    df['returns'] = df['Adj Close'].pct_change()
+    vol = df['returns'].std()
+    return vol
 
-        # Compute risk based on 14-day rolling volatility
-        returns = series.pct_change().dropna()
-        vol = returns.rolling(window=14).std().iloc[-1]
-        if vol < 0.005:
-            risk = "Low"
-        elif vol < 0.015:
-            risk = "Medium"
-        else:
-            risk = "High"
+def predict_price(df):
+    """Simple forecast: latest price adjusted by last return"""
+    last_price = df['Adj Close'].iloc[-1]
+    last_return = df['Adj Close'].pct_change().iloc[-1]
+    predicted_price = last_price * (1 + last_return)
+    return predicted_price
 
-        new_row = {
-            "date": today,
-            "asset": name,
-            "actual": round(actual_price,2),
-            "prediction": round(prediction,2),
+def compute_risk(vol, threshold):
+    if vol < threshold:
+        return "Low"
+    elif vol < threshold * 2:
+        return "Medium"
+    else:
+        return "High"
+
+# ------------------------------
+# Main
+# ------------------------------
+results = []
+
+for asset, symbol in ASSETS.items():
+    try:
+        df = fetch_data(symbol)
+        if df.empty:
+            raise ValueError(f"No data fetched for {asset}")
+        
+        vol = compute_volatility(df)
+        predicted_price = predict_price(df)
+        risk = compute_risk(vol, VOL_THRESHOLDS[asset])
+        
+        results.append({
+            "date": datetime.today().strftime("%Y-%m-%d"),
+            "asset": asset,
+            "predicted_price": round(predicted_price, 2),
+            "volatility": round(vol, 4),
             "risk": risk
-        }
-        df_log = pd.concat([df_log, pd.DataFrame([new_row])], ignore_index=True)
+        })
+    except Exception as e:
+        print(f"Error fetching {asset}: {e}")
 
-df_log.to_csv(log_file, index=False)
-print("✅ Predictions with risk updated:", today)
+# ------------------------------
+# Save to CSV (append)
+# ------------------------------
+df_results = pd.DataFrame(results)
+
+if os.path.exists(CSV_FILE):
+    df_old = pd.read_csv(CSV_FILE, parse_dates=["date"])
+    df_results = pd.concat([df_old, df_results], ignore_index=True)
+
+df_results.to_csv(CSV_FILE, index=False)
+print(f"Saved daily predictions to {CSV_FILE}")
