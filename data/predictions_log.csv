@@ -33,3 +33,5 @@ timestamp,asset,predicted_price,volatility,risk
 2025-08-22 15:41:42,Real_Estate_Dubai,669.57,0.0346,Placeholder
 2025-08-22 16:21:23,Gold,7467.56,0.0105,Medium
 2025-08-22 16:21:23,Bitcoin,-33503.62,0.0167,Low
+2025-08-22 16:28:08,Gold,7457.89,0.0104,Medium
+2025-08-22 16:28:08,Bitcoin,-33266.1,0.0167,Low
