@@ -1,39 +1,66 @@
-import pandas as pd
+# app.py
 import streamlit as st
-import matplotlib.pyplot as plt
+import pandas as pd
+import os
+from urllib.error import URLError
 
+# ------------------------------
+# Config
+# ------------------------------
+LOCAL_CSV = "predictions_log.csv"
+GITHUB_CSV_URL = ""  # Optional: add your raw GitHub URL here if you want to load remotely
+
+# ------------------------------
+# Load predictions function
+# ------------------------------
 @st.cache_data
 def load_predictions():
-    url = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/predictions_log.csv"
-    return pd.read_csv(url, parse_dates=["date"])
+    """
+    Load predictions CSV either locally or from GitHub URL.
+    Returns a DataFrame with 'timestamp', 'asset', 'predicted_price', 'volatility', 'risk'
+    """
+    # Try local CSV first
+    if os.path.exists(LOCAL_CSV):
+        try:
+            df = pd.read_csv(LOCAL_CSV, parse_dates=["timestamp"])
+            return df
+        except Exception as e:
+            st.warning(f"Error reading local CSV: {e}")
 
-st.title("📊 Gold, Bitcoin & Real Estate Prediction Dashboard")
+    # Fallback: try GitHub URL
+    if GITHUB_CSV_URL:
+        try:
+            df = pd.read_csv(GITHUB_CSV_URL, parse_dates=["timestamp"])
+            return df
+        except URLError as e:
+            st.error(f"Cannot fetch CSV from URL: {e}")
+        except Exception as e:
+            st.error(f"Error reading CSV from URL: {e}")
+
+    # If all fails, return empty DataFrame
+    st.warning("No predictions CSV available. Showing empty table.")
+    columns = ["timestamp", "asset", "predicted_price", "volatility", "risk"]
+    return pd.DataFrame(columns=columns)
+
+# ------------------------------
+# Streamlit App
+# ------------------------------
+st.set_page_config(page_title="Gold/Bitcoin/Real Estate Predictions", layout="wide")
+st.title("Predictions Dashboard")
 
 df = load_predictions()
 
-# Latest predictions with risk
-st.subheader("🔮 Latest Predictions")
-latest = df.groupby("asset").tail(1)
-st.dataframe(latest)
+if df.empty:
+    st.info("No prediction data available yet.")
+else:
+    # Show latest predictions only
+    latest_timestamp = df["timestamp"].max()
+    st.subheader(f"Latest predictions: {latest_timestamp}")
+    latest_df = df[df["timestamp"] == latest_timestamp]
+    st.dataframe(latest_df)
 
-# Color-coded risk
-def risk_color(r):
-    if r=="Low": return "green"
-    if r=="Medium": return "orange"
-    return "red"
-
-for _, row in latest.iterrows():
-    st.markdown(f"**{row['asset']}** → Predicted: {row['prediction']} | Risk: "
-                f"<span style='color:{risk_color(row['risk'])}'>{row['risk']}</span>", 
-                unsafe_allow_html=True)
-
-# Plot comparison chart
-asset_choice = st.selectbox("Choose an asset:", df["asset"].unique())
-df_asset = df[df["asset"]==asset_choice]
-
-fig, ax = plt.subplots()
-ax.plot(df_asset["date"], df_asset["actual"], label="Actual", marker="o")
-ax.plot(df_asset["date"], df_asset["prediction"], label="Prediction", linestyle="--")
-ax.set_title(f"{asset_choice}: Actual vs Prediction")
-ax.legend()
-st.pyplot(fig)
+    # Optional: chart over time
+    st.subheader("Prediction Trends Over Time")
+    for asset in df["asset"].unique():
+        asset_df = df[df["asset"] == asset]
+        st.line_chart(asset_df.set_index("timestamp")["predicted_price"], use_container_width=True)
