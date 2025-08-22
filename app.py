@@ -7,41 +7,39 @@ from fetch_data import save_actual_data
 st.set_page_config(layout="wide", page_title="Gold / Bitcoin / Real Estate Predictions")
 st.title("📊 Predictions Dashboard")
 
-# Paths
-PRED_CSV="data/predictions_log.csv"
-ACTUAL_CSV="data/actual_data.csv"
-WEIGHT_FILE="weight.yaml"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+PRED_CSV = os.path.join(DATA_DIR, "predictions_log.csv")
+ACTUAL_CSV = os.path.join(DATA_DIR, "actual_data.csv")
+WEIGHT_FILE = os.path.join(SCRIPT_DIR, "weight.yaml")
 
-# Load CSVs
 @st.cache_data
 def load_csv(path):
     if os.path.exists(path):
         return pd.read_csv(path, parse_dates=["timestamp"] if "predictions" in path else ["date"])
     return pd.DataFrame()
 
-predictions=load_csv(PRED_CSV)
-actuals=load_csv(ACTUAL_CSV)
+predictions = load_csv(PRED_CSV)
+actuals = load_csv(ACTUAL_CSV)
 
-# Load weights
 with open(WEIGHT_FILE,"r") as f:
-    weights=yaml.safe_load(f)
+    weights = yaml.safe_load(f)
 
 sections=["Gold","Bitcoin","Real_Estate_France","Real_Estate_Dubai"]
 
 def merge_data(pred_df, actual_df, asset):
-    pred_asset=pred_df[pred_df["asset"]==asset].copy()
-    col_name=asset.lower()+"_actual"
-    actual_subset=actual_df[["date",col_name]].rename(columns={col_name:"actual_price"})
-    return pd.merge(pred_asset,actual_subset,left_on="timestamp",right_on="date",how="left")
+    pred_asset = pred_df[pred_df["asset"]==asset].copy()
+    col_name = asset.lower()+"_actual"
+    actual_subset = actual_df[["date",col_name]].rename(columns={col_name:"actual_price"})
+    return pd.merge(pred_asset, actual_subset, left_on="timestamp", right_on="date", how="left")
 
 for asset in sections:
     st.header(asset)
-    merged=merge_data(predictions,actuals,asset)
+    merged = merge_data(predictions, actuals, asset)
     if merged.empty:
         st.info(f"No data for {asset}")
         continue
     st.subheader("Latest predictions")
-    latest_date=merged["timestamp"].max()
     st.dataframe(merged.tail(5)[["timestamp","predicted_price","actual_price","volatility","risk"]])
     st.subheader("Price Trend")
     st.line_chart(merged.set_index("timestamp")[["predicted_price","actual_price"]])

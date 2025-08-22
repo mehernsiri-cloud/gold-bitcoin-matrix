@@ -3,23 +3,18 @@ import pandas as pd
 from datetime import datetime
 import os
 
-DATA_FILE = "data/actual_data.csv"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def fetch_gold_price():
-    url = "https://metals-api.com/api/latest?access_key=YOUR_API_KEY&base=USD&symbols=XAU"
-    try:
-        r = requests.get(url).json()
-        return r['rates']['XAU']
-    except:
-        return None
+    # Replace with your API key if needed
+    return 1950  # placeholder
 
 def fetch_bitcoin_price():
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-    try:
-        r = requests.get(url).json()
-        return r['bitcoin']['usd']
-    except:
-        return None
+    return 30000  # placeholder
 
 def fetch_real_estate_france():
     return 4000  # €/m2 placeholder
@@ -36,11 +31,10 @@ def save_actual_data():
         "real_estate_dubai_actual": fetch_real_estate_dubai()
     }
     df = pd.DataFrame([data])
-    os.makedirs("data", exist_ok=True)
-    if os.path.exists(DATA_FILE):
-        df.to_csv(DATA_FILE, mode='a', index=False, header=False)
+    if os.path.exists(ACTUAL_FILE):
+        df.to_csv(ACTUAL_FILE, mode='a', index=False, header=False)
     else:
-        df.to_csv(DATA_FILE, index=False)
+        df.to_csv(ACTUAL_FILE, index=False)
 
-if __name__ == "__main__":
+if __name__=="__main__":
     save_actual_data()
