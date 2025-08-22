@@ -1,70 +1,67 @@
 #!/usr/bin/env python3
 import pandas as pd
-import yfinance as yf
 import os
 from datetime import datetime
 import yaml
 
-# ------------------------------
-# Config
-# ------------------------------
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
-
-CSV_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
 # ------------------------------
-# Load weights
+# Load indicator weights
 # ------------------------------
 with open(WEIGHT_FILE, "r") as f:
     weights = yaml.safe_load(f)
 
-# ------------------------------
-# Helper functions
-# ------------------------------
+ASSETS = ["Gold", "Bitcoin"]
 
-ASSETS = {
-    "Gold": "GC=F",
-    "Bitcoin": "BTC-USD"
-}
-
-def fetch_data(symbol):
-    try:
-        df = yf.download(symbol, period="30d", interval="1h", progress=False)
-        return df
-    except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
-        return None
-
-def predict_price(df, asset):
-    """Predict using weighted indicators"""
-    last_price = df["Adj Close"].iloc[-1]
-    # Use indicators weights as a rough multiplier
-    weight_sum = sum(abs(v) for v in weights.get(asset.lower(), {}).values())
-    adjustment = 0.01 * weight_sum  # simplified adjustment
-    return last_price * (1 + adjustment)
-
-def compute_volatility(df):
-    df["returns"] = df["Adj Close"].pct_change()
-    return df["returns"].std()
-
-def ensure_csv_exists(file_path):
-    if not os.path.exists(file_path):
-        df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
-        df.to_csv(file_path, index=False)
-
-def compute_risk(vol):
-    if vol < 0.02:
-        return "Low"
-    elif vol < 0.05:
-        return "Medium"
+def safe_read_actuals():
+    if os.path.exists(ACTUAL_FILE) and os.path.getsize(ACTUAL_FILE) > 0:
+        return pd.read_csv(ACTUAL_FILE)
     else:
-        return "High"
+        return pd.DataFrame()
 
-# ------------------------------
-# Main
-# ------------------------------
+def predict_price(latest_actual, asset_name):
+    """Simple weighted prediction based on indicators"""
+    if latest_actual.empty or asset_name.lower() not in weights:
+        return None
+    w = weights[asset_name.lower()]
+    indicators = latest_actual.iloc[-1].to_dict()
+    price_actual = indicators[f"{asset_name.lower()}_actual"]
+    score = sum([indicators.get(k,0)*v for k,v in w.items()])
+    predicted_price = price_actual * (1 + score)
+    return round(predicted_price, 2)
+
 def main():
-    ensure_csv_exists(CSV_FILE)
-    re
+    os.makedirs(DATA_DIR, exist_ok=True)
+    actual_df = safe_read_actuals()
+    if actual_df.empty:
+        print("No actual data available. Run fetch_data.py first.")
+        return
+
+    timestamp = pd.Timestamp.now().floor('H')
+    results = []
+    for asset in ASSETS:
+        pred_price = predict_price(actual_df, asset)
+        price_actual = actual_df[f"{asset.lower()}_actual"].iloc[-1]
+        results.append({
+            "timestamp": timestamp,
+            "asset": asset,
+            "predicted_price": pred_price,
+            "actual_price": price_actual
+        })
+
+    df_pred = pd.DataFrame(results)
+
+    if not os.path.exists(PREDICTION_FILE) or os.path.getsize(PREDICTION_FILE) == 0:
+        df_pred.to_csv(PREDICTION_FILE, index=False)
+        print("Prediction CSV created.")
+    else:
+        df_pred.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
+        print("Prediction appended.")
+
+if __name__ == "__main__":
+    main()
