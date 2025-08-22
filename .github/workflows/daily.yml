@@ -3,8 +3,8 @@ name: Daily Predictions Update
 # Trigger every day at 08:00 UTC
 on:
   schedule:
-    - cron: "0 8 * * *"
-  workflow_dispatch:      # Manual trigger
+    - cron: '0 8 * * *'  # daily at 08:00 UTC
+  workflow_dispatch:      # allows manual trigger
 
 jobs:
   daily-predictions:
@@ -15,7 +15,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        persist-credentials: false  # We'll use token explicitly for push
+        persist-credentials: false  # We'll use PAT explicitly for push
 
     # 2. Setup Python 3.10
     - name: Setup Python
@@ -34,13 +34,13 @@ jobs:
     - name: Run daily predictions
       run: python predict_headless.py
 
-    # 5. Commit & push predictions
-    - name: Commit and push predictions
+    # 5. Commit & push predictions using GH_PAT
+    - name: Commit & push predictions
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_PAT: ${{ secrets.GH_PAT }}
       run: |
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         git add predictions_log.csv
         git commit -m "Daily predictions update" || echo "No changes to commit"
-        git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }} HEAD:main
+        git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
