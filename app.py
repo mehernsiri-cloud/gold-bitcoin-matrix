@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 @st.cache_data
 def load_predictions():
-    url = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO/main/predictions_log.csv"
+    url = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/predictions_log.csv"
     return pd.read_csv(url, parse_dates=["date"])
 
 st.title("📊 Gold, Bitcoin & Real Estate Prediction Dashboard")
