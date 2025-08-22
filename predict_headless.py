@@ -1,90 +1,77 @@
-#!/usr/bin/env python3
+# predict_headless.py
 import os
 import pandas as pd
-import yaml
 from datetime import datetime
+import yaml
 
 # ------------------------------
-# Config
+# CONFIG
 # ------------------------------
 DATA_DIR = "data"
-ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
-PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
+ASSETS = ["Gold", "Bitcoin"]
+
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
-# Load weights
+# LOAD WEIGHTS
 # ------------------------------
-if not os.path.exists(WEIGHT_FILE):
-    raise FileNotFoundError(f"{WEIGHT_FILE} not found!")
-
 with open(WEIGHT_FILE, "r") as f:
     weights = yaml.safe_load(f)
 
 # ------------------------------
-# Predict function
+# LOAD ACTUAL DATA
 # ------------------------------
-def predict_price(actual_df, asset_name):
-    """
-    Predict next price based on latest actual price and weighted score.
-    """
-    asset_map = {"Gold": "gold_actual", "Bitcoin": "bitcoin_actual"}
-    col = asset_map.get(asset_name)
-    if col not in actual_df.columns:
-        raise KeyError(f"{col} not found in actual data CSV.")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+if os.path.exists(ACTUAL_FILE):
+    actual_df = pd.read_csv(ACTUAL_FILE)
+else:
+    actual_df = pd.DataFrame(columns=["timestamp","gold_actual","bitcoin_actual"])
 
-    # Get latest price as float
-    price_actual = actual_df[col].iloc[-1]
-    try:
-        price_actual = float(price_actual)
-    except Exception:
-        price_actual = 0.0
+# Get latest actual prices
+latest_actual = actual_df.iloc[-1] if not actual_df.empty else {"gold_actual": None, "bitcoin_actual": None}
 
-    # Compute simple weighted score from weight.yaml
-    score = sum(weights[asset_name.lower()].values())
-    predicted_price = price_actual * (1 + score)
-
+# ------------------------------
+# SIMPLE PREDICTION FUNCTION
+# ------------------------------
+def predict_price(latest_price, asset):
+    if latest_price is None:
+        return None
+    # Sum of weights as simple linear score
+    score = sum(weights[asset.lower()].values())
+    predicted_price = latest_price * (1 + score)
     return round(predicted_price, 2)
 
 # ------------------------------
-# Main
+# SAVE PREDICTIONS
 # ------------------------------
-def main():
-    os.makedirs(DATA_DIR, exist_ok=True)
+def save_predictions():
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    rows = []
 
-    # Ensure prediction CSV exists
-    if not os.path.exists(PREDICTION_FILE):
-        pd.DataFrame(columns=["timestamp", "asset", "predicted_price"]).to_csv(PREDICTION_FILE, index=False)
-
-    # Load actual data
-    try:
-        actual_df = pd.read_csv(ACTUAL_FILE)
-    except Exception as e:
-        print(f"Error reading {ACTUAL_FILE}: {e}")
-        return
-
-    if actual_df.empty:
-        print("Actual data CSV is empty. Cannot predict.")
-        return
-
-    timestamp = pd.Timestamp.now().floor('h')  # hourly rounded timestamp
-
-    results = []
-    for asset in ["Gold", "Bitcoin"]:
-        pred_price = predict_price(actual_df, asset)
-        results.append({
-            "timestamp": timestamp,
+    for asset in ASSETS:
+        latest_price = latest_actual[f"{asset.lower()}_actual"]
+        pred_price = predict_price(latest_price, asset)
+        rows.append({
+            "timestamp": now,
             "asset": asset,
-            "predicted_price": pred_price
+            "predicted_price": pred_price,
+            "volatility": 0.01,  # placeholder, can add real volatility later
+            "risk": "Medium"
         })
 
-    # Append predictions safely
-    df_pred = pd.DataFrame(results)
-    df_pred.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
-    print(f"Predictions appended successfully at {timestamp}.")
+    df_new = pd.DataFrame(rows)
+
+    # Initialize CSV if missing
+    if not os.path.exists(PRED_FILE):
+        df_new.to_csv(PRED_FILE, index=False)
+    else:
+        df_new.to_csv(PRED_FILE, mode="a", index=False, header=False)
+    print(f"Saved predictions at {now}")
 
 # ------------------------------
-# Entry point
+# MAIN
 # ------------------------------
 if __name__ == "__main__":
-    main()
+    save_predictions()
