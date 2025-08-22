@@ -1,20 +1,20 @@
 name: Daily Predictions Update
 
-# Trigger every day at 00:00 UTC
 on:
   schedule:
     - cron: '0 0 * * *'  # daily at midnight UTC
-  workflow_dispatch:      # manual trigger
+  workflow_dispatch:
 
 jobs:
   daily-predictions:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout repository with full history
+    # 1. Checkout repository with proper token
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
 
     # 2. Setup Python 3.10
@@ -41,4 +41,4 @@ jobs:
         git config --local user.name "GitHub Actions"
         git add predictions_log.csv
         git commit -m "Daily predictions update" || echo "No changes to commit"
-        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main
+        git push origin HEAD:main
