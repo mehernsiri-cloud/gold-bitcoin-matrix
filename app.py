@@ -1,65 +1,61 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
-st.set_page_config(page_title="Predictions vs Actuals Dashboard", layout="wide")
-st.title("📊 Predictions vs Actuals Dashboard")
+st.set_page_config(page_title="Gold & Bitcoin Investment Dashboard", layout="wide")
+st.title("💰 Gold & Bitcoin Investment Dashboard")
 
-# --- Paths ---
 DATA_DIR = "data"
 PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
-# --- Load CSVs ---
-def load_csv(file):
-    if os.path.exists(file):
-        return pd.read_csv(file)
-    return pd.DataFrame()
-
-pred_df = load_csv(PRED_FILE)
-actual_df = load_csv(ACTUAL_FILE)
+# --- Load Data ---
+pred_df = pd.read_csv(PRED_FILE) if os.path.exists(PRED_FILE) else pd.DataFrame()
+actual_df = pd.read_csv(ACTUAL_FILE) if os.path.exists(ACTUAL_FILE) else pd.DataFrame()
 
 # --- Latest Actuals ---
 if not actual_df.empty:
     latest_actual = actual_df.iloc[-1]
-    st.subheader("Latest Market Actuals")
-    st.table(latest_actual)
+    st.subheader("📈 Latest Actual Prices")
+    st.write({
+        "Gold": latest_actual["gold_actual"],
+        "Bitcoin": latest_actual["bitcoin_actual"]
+    })
 else:
-    st.warning("No actual data available yet. Run fetch_data.py or wait for workflow.")
+    st.warning("No actual data available yet.")
 
 # --- Latest Predictions vs Actuals ---
 if not pred_df.empty and not actual_df.empty:
     latest_preds = pred_df.sort_values("timestamp").groupby("asset").tail(1)
-
     table_rows = []
-    asset_map = {
-        "Gold": "gold_actual",
-        "Bitcoin": "bitcoin_actual",
-        "Real_Estate_France": "france_2bed_actual",
-        "Real_Estate_Dubai": "dubai_2bed_actual"
-    }
-
     for _, row in latest_preds.iterrows():
         asset_name = row["asset"]
-        actual_val = latest_actual.get(asset_map.get(asset_name, ""), "N/A")
+        actual_price = latest_actual.get(f"{asset_name.lower()}_actual", None)
+        # Investment signal
+        signal = "Hold"
+        if row["predicted_price"] > actual_price * 1.01:
+            signal = "Buy"
+        elif row["predicted_price"] < actual_price * 0.99:
+            signal = "Sell"
         table_rows.append({
             "Asset": asset_name,
             "Predicted Price": row["predicted_price"],
-            "Actual Price": actual_val,
+            "Actual Price": actual_price,
             "Volatility": row["volatility"],
-            "Risk": row["risk"]
+            "Risk": row["risk"],
+            "Signal": signal
         })
-
-    st.subheader("Latest Predictions vs Actuals")
+    st.subheader("📊 Latest Predictions vs Actuals")
     st.dataframe(pd.DataFrame(table_rows))
 
 # --- Historical Charts ---
 if not actual_df.empty:
-    st.subheader("📈 Historical Actual Prices")
-    chart_cols = [col for col in actual_df.columns if col != "date"]
-    st.line_chart(actual_df.set_index("date")[chart_cols])
+    st.subheader("📉 Historical Prices")
+    hist = actual_df[["date", "gold_actual", "bitcoin_actual"]].set_index("date")
+    st.line_chart(hist)
 
 if not pred_df.empty:
-    st.subheader("📉 Historical Predictions")
-    chart_cols = ["predicted_price"]
-    st.line_chart(pred_df.pivot(index="timestamp", columns="asset", values="predicted_price"))
+    st.subheader("📈 Predicted Prices")
+    pred_plot = pred_df.pivot(index="timestamp", columns="asset", values="predicted_price")
+    st.line_chart(pred_plot)

@@ -1,62 +1,85 @@
 import yfinance as yf
+import requests
 import pandas as pd
 from datetime import datetime
 import os
+import yaml
 
-# --- Paths ---
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+WEIGHT_FILE = "weight.yaml"
 
-# --- Functions ---
-def fetch_gold():
+# --- Function to fetch live indicators ---
+def fetch_indicators():
+    # Example: real APIs or placeholder fetching
+    indicators = {}
+
+    # Inflation: Using FRED CSV endpoint (example)
     try:
-        df = yf.Ticker("GC=F").history(period="1d")
-        return round(float(df["Close"].iloc[-1]), 2)
+        inflation = pd.read_csv("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL")['VALUE'].iloc[-1]
+        indicators['inflation'] = float(inflation)
     except:
-        return None
+        indicators['inflation'] = 0.03
 
-def fetch_bitcoin():
+    # Real Rates: Treasury yields - inflation (example placeholder)
     try:
-        df = yf.Ticker("BTC-USD").history(period="1d")
-        return round(float(df["Close"].iloc[-1]), 2)
+        real_rate = 0.01  # Example
+        indicators['real_rates'] = real_rate
     except:
-        return None
+        indicators['real_rates'] = 0.01
 
-def fetch_real_estate():
-    # Placeholder values; replace with real API if available
-    return {
-        "france_studio_actual": 120000,
-        "france_2bed_actual": 220000,
-        "france_3bed_actual": 320000,
-        "dubai_studio_actual": 150000,
-        "dubai_2bed_actual": 300000,
-        "dubai_3bed_actual": 450000
-    }
+    # USD Strength
+    try:
+        usd_index = pd.read_csv("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS")['VALUE'].iloc[-1]
+        indicators['usd_strength'] = float(usd_index)
+    except:
+        indicators['usd_strength'] = 1.0
 
-# --- Main ---
-def main():
-    today = datetime.today().strftime("%Y-%m-%d")
-    gold = fetch_gold()
-    bitcoin = fetch_bitcoin()
-    real_estate = fetch_real_estate()
+    # Liquidity (M2)
+    indicators['liquidity'] = 0.05
 
-    row = {
-        "date": today,
-        "gold_actual": gold,
-        "bitcoin_actual": bitcoin,
-        **real_estate
-    }
+    # Equity flows
+    indicators['equity_flows'] = 0.01
 
-    # Append to CSV
-    if os.path.exists(ACTUAL_FILE):
-        df = pd.read_csv(ACTUAL_FILE)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
+    # Bond yields (10Y)
+    indicators['bond_yields'] = 0.03
 
-    df.to_csv(ACTUAL_FILE, index=False)
-    print("✅ Actual data updated:", row)
+    # Regulation
+    indicators['regulation'] = 0.0
 
-if __name__ == "__main__":
-    main()
+    # Adoption
+    indicators['adoption'] = 0.1
+
+    # Currency instability
+    indicators['currency_instability'] = 0.02
+
+    # Recession probability
+    indicators['recession_probability'] = 0.05
+
+    # Energy prices (WTI Crude)
+    try:
+        energy = yf.Ticker("CL=F").history(period="1d")['Close'].iloc[-1]
+        indicators['energy_prices'] = float(energy)
+    except:
+        indicators['energy_prices'] = 70.0
+
+    # Tail risk event
+    indicators['tail_risk_event'] = 0.1
+
+    return indicators
+
+# --- Function to fetch live prices ---
+def fetch_prices():
+    prices = {}
+    for asset, ticker in {"Gold": "GC=F", "Bitcoin": "BTC-USD"}.items():
+        try:
+            data = yf.Ticker(ticker).history(period="1d")
+            prices[asset] = float(data['Close'].iloc[-1])
+        except:
+            prices[asset] = None
+    return prices
+
+# --- Save actual data ---
+def save_actual_data():
+    today = datetime.today().strftime("%Y-%m

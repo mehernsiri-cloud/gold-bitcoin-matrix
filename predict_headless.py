@@ -1,103 +1,43 @@
-#!/usr/bin/env python3
 import pandas as pd
-import yfinance as yf
-import os
-from datetime import datetime
-import random
 import yaml
+from datetime import datetime
+import os
+from fetch_data import fetch_prices, fetch_indicators, DATA_DIR
 
-# ------------------------------
-# Paths
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "data")
-CSV_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
-WEIGHT_FILE = os.path.join(SCRIPT_DIR, "weight.yaml")
+PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+WEIGHT_FILE = "weight.yaml"
 
-# Assets
-ASSETS = {
-    "Gold": "GC=F",
-    "Bitcoin": "BTC-USD",
-    "Real_Estate_France": "RWR",
-    "Real_Estate_Dubai": "DXRE"
-}
+# --- Load weights ---
+with open(WEIGHT_FILE, "r") as f:
+    weights = yaml.safe_load(f)
 
-VOL_THRESHOLDS = {"Gold":0.005,"Bitcoin":0.02,"Real_Estate_France":0.01,"Real_Estate_Dubai":0.01}
+# --- Prediction Function ---
+def predict(asset, current_price, indicators):
+    total = 0
+    for key, weight in weights[asset.lower()].items():
+        total += weight * indicators.get(key, 0)
+    predicted_price = current_price * (1 + total)
+    return round(predicted_price, 2)
 
-# Load weights
-with open(WEIGHT_FILE,"r") as f:
-    WEIGHTS = yaml.safe_load(f)
-
-# ------------------------------
-# Helper functions
-def fetch_data(symbol):
-    try:
-        df = yf.download(symbol, period="30d", interval="1d", progress=False)
-        if df.empty: raise ValueError(f"No data for {symbol}")
-        return df
-    except:
-        return None
-
-def compute_volatility(df):
-    df['returns'] = df['Adj Close'].pct_change()
-    return df['returns'].std()
-
-def predict_price(df):
-    last_price = df['Adj Close'].iloc[-1]
-    last_return = df['Adj Close'].pct_change().iloc[-1]
-    return last_price*(1+last_return)
-
-def weighted_predict(asset, last_price):
-    asset_lower = asset.lower()
-    if asset_lower in WEIGHTS:
-        factor_weights = WEIGHTS[asset_lower]
-        factor_values = {k: random.uniform(-0.05,0.05) for k in factor_weights.keys()}
-        adjustment = sum(factor_weights[f]*factor_values[f] for f in factor_weights.keys())
-        return last_price*(1+adjustment)
-    return last_price
-
-def compute_risk(vol, threshold):
-    if vol < threshold:
-        return "Low"
-    elif vol < threshold*2:
-        return "Medium"
-    else:
-        return "High"
-
-def ensure_csv_exists(file_path):
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    if not os.path.exists(file_path):
-        df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
-        df.to_csv(file_path,index=False)
-
-def generate_placeholder(asset):
-    return {"timestamp":datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "asset":asset,
-            "predicted_price":round(random.uniform(100,1000),2),
-            "volatility":round(random.uniform(0,0.05),4),
-            "risk":"Placeholder"}
-
-# ------------------------------
-# Main
+# --- Main ---
 def main():
-    ensure_csv_exists(CSV_FILE)
-    results=[]
-    for asset,symbol in ASSETS.items():
-        df = fetch_data(symbol)
-        timestamp=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        if df is not None:
-            try:
-                vol = compute_volatility(df)
-                predicted_price = weighted_predict(asset, predict_price(df))
-                risk = compute_risk(vol, VOL_THRESHOLDS[asset])
-                results.append({"timestamp":timestamp,"asset":asset,
-                                "predicted_price":round(predicted_price,2),
-                                "volatility":round(vol,4),
-                                "risk":risk})
-            except:
-                results.append(generate_placeholder(asset))
-        else:
-            results.append(generate_placeholder(asset))
-    pd.DataFrame(results).to_csv(CSV_FILE, mode='a', index=False, header=False)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    indicators = fetch_indicators()
+    prices = fetch_prices()
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-if __name__=="__main__":
-    main()
+    results = []
+    for asset, current_price in prices.items():
+        if current_price is None:
+            continue
+        predicted_price = predict(asset, current_price, indicators)
+        # Simple volatility calculation placeholder
+        volatility = 0.02
+        # Risk based on volatility
+        risk = "Low" if volatility < 0.03 else "Medium"
+        results.append({
+            "timestamp": timestamp,
+            "asset": asset,
+            "predicted_price": predicted_price,
+            "volatility": volatility,
+            "r
