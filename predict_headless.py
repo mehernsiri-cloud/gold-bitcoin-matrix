@@ -1,43 +1,70 @@
+#!/usr/bin/env python3
 import pandas as pd
+import yfinance as yf
 import os
-import yaml
 from datetime import datetime
-from fetch_data import fetch_prices, fetch_indicators
+import yaml
 
+# ------------------------------
+# Config
+# ------------------------------
 DATA_DIR = "data"
-PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Load indicator weights
-with open("weight.yaml","r") as f:
+CSV_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+WEIGHT_FILE = "weight.yaml"
+
+# ------------------------------
+# Load weights
+# ------------------------------
+with open(WEIGHT_FILE, "r") as f:
     weights = yaml.safe_load(f)
 
-def compute_prediction(latest_price, indicators, weight_dict):
-    factor = sum(indicators.get(k,0)*weight_dict.get(k,0) for k in indicators)
-    return latest_price * (1 + factor)
+# ------------------------------
+# Helper functions
+# ------------------------------
 
-def main():
-    timestamp = pd.Timestamp.now().floor('H')  # hourly timestamp
-    latest_prices = fetch_prices()
-    indicators = fetch_indicators()
+ASSETS = {
+    "Gold": "GC=F",
+    "Bitcoin": "BTC-USD"
+}
 
-    results = []
-    for asset in ["Gold","Bitcoin"]:
-        pred_price = compute_prediction(latest_prices[asset], indicators, weights[asset.lower()])
-        results.append({
-            "timestamp": timestamp,
-            "asset": asset,
-            "predicted_price": round(pred_price,2),
-            "volatility": 0.0,
-            "risk": "Dynamic"
-        })
+def fetch_data(symbol):
+    try:
+        df = yf.download(symbol, period="30d", interval="1h", progress=False)
+        return df
+    except Exception as e:
+        print(f"Error fetching {symbol}: {e}")
+        return None
 
-    df_results = pd.DataFrame(results)
-    if os.path.exists(PREDICTION_FILE):
-        df_results.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
+def predict_price(df, asset):
+    """Predict using weighted indicators"""
+    last_price = df["Adj Close"].iloc[-1]
+    # Use indicators weights as a rough multiplier
+    weight_sum = sum(abs(v) for v in weights.get(asset.lower(), {}).values())
+    adjustment = 0.01 * weight_sum  # simplified adjustment
+    return last_price * (1 + adjustment)
+
+def compute_volatility(df):
+    df["returns"] = df["Adj Close"].pct_change()
+    return df["returns"].std()
+
+def ensure_csv_exists(file_path):
+    if not os.path.exists(file_path):
+        df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
+        df.to_csv(file_path, index=False)
+
+def compute_risk(vol):
+    if vol < 0.02:
+        return "Low"
+    elif vol < 0.05:
+        return "Medium"
     else:
-        df_results.to_csv(PREDICTION_FILE, index=False)
-    print("Predictions saved.")
+        return "High"
 
-if __name__ == "__main__":
-    main()
+# ------------------------------
+# Main
+# ------------------------------
+def main():
+    ensure_csv_exists(CSV_FILE)
+    re
