@@ -1,40 +1,65 @@
-import pandas as pd
 import streamlit as st
-from datetime import datetime
+import pandas as pd
+import os
 
-# Load actuals
-actual_data = pd.read_csv("data/actual_data.csv")
-latest_actual = actual_data.iloc[-1] if not actual_data.empty else None
+st.set_page_config(page_title="Predictions vs Actuals Dashboard", layout="wide")
+st.title("📊 Predictions vs Actuals Dashboard")
 
-# Load predictions
-predictions = pd.read_csv("data/predictions_log.csv")
+# --- Paths ---
+DATA_DIR = "data"
+PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
-# Merge latest actuals with predictions
-if latest_actual is not None:
-    today_actuals = {
-        "Gold": latest_actual["gold_actual"],
-        "Bitcoin": latest_actual["bitcoin_actual"],
-        "France Studio": latest_actual["france_studio_actual"],
-        "France 2-Bed": latest_actual["france_2bed_actual"],
-        "France 3-Bed": latest_actual["france_3bed_actual"],
-        "Dubai Studio": latest_actual["dubai_studio_actual"],
-        "Dubai 2-Bed": latest_actual["dubai_2bed_actual"],
-        "Dubai 3-Bed": latest_actual["dubai_3bed_actual"],
+# --- Load CSVs ---
+def load_csv(file):
+    if os.path.exists(file):
+        return pd.read_csv(file)
+    return pd.DataFrame()
+
+pred_df = load_csv(PRED_FILE)
+actual_df = load_csv(ACTUAL_FILE)
+
+# --- Latest Actuals ---
+if not actual_df.empty:
+    latest_actual = actual_df.iloc[-1]
+    st.subheader("Latest Market Actuals")
+    st.table(latest_actual)
+else:
+    st.warning("No actual data available yet. Run fetch_data.py or wait for workflow.")
+
+# --- Latest Predictions vs Actuals ---
+if not pred_df.empty and not actual_df.empty:
+    latest_preds = pred_df.sort_values("timestamp").groupby("asset").tail(1)
+
+    table_rows = []
+    asset_map = {
+        "Gold": "gold_actual",
+        "Bitcoin": "bitcoin_actual",
+        "Real_Estate_France": "france_2bed_actual",
+        "Real_Estate_Dubai": "dubai_2bed_actual"
     }
 
-    latest_preds = predictions[predictions["timestamp"] == predictions["timestamp"].max()]
-
-    # Build table with actuals included
-    table_data = []
     for _, row in latest_preds.iterrows():
         asset_name = row["asset"]
-        table_data.append({
+        actual_val = latest_actual.get(asset_map.get(asset_name, ""), "N/A")
+        table_rows.append({
             "Asset": asset_name,
             "Predicted Price": row["predicted_price"],
-            "Actual Price": today_actuals.get(asset_name.replace("_", " "), None),
+            "Actual Price": actual_val,
             "Volatility": row["volatility"],
-            "Risk": row["risk"],
+            "Risk": row["risk"]
         })
 
-    st.subheader("📊 Latest Predictions with Actuals")
-    st.dataframe(pd.DataFrame(table_data))
+    st.subheader("Latest Predictions vs Actuals")
+    st.dataframe(pd.DataFrame(table_rows))
+
+# --- Historical Charts ---
+if not actual_df.empty:
+    st.subheader("📈 Historical Actual Prices")
+    chart_cols = [col for col in actual_df.columns if col != "date"]
+    st.line_chart(actual_df.set_index("date")[chart_cols])
+
+if not pred_df.empty:
+    st.subheader("📉 Historical Predictions")
+    chart_cols = ["predicted_price"]
+    st.line_chart(pred_df.pivot(index="timestamp", columns="asset", values="predicted_price"))
