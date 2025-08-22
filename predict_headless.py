@@ -17,7 +17,7 @@ def compute_prediction(latest_price, indicators, weight_dict):
     return latest_price * (1 + factor)
 
 def main():
-    timestamp = datetime.utcnow()
+    timestamp = pd.Timestamp.now().floor('H')  # hourly timestamp
     latest_prices = fetch_prices()
     indicators = fetch_indicators()
 
@@ -28,11 +28,10 @@ def main():
             "timestamp": timestamp,
             "asset": asset,
             "predicted_price": round(pred_price,2),
-            "volatility": 0.0,  # Can implement rolling std later
+            "volatility": 0.0,
             "risk": "Dynamic"
         })
 
-    # Save to CSV
     df_results = pd.DataFrame(results)
     if os.path.exists(PREDICTION_FILE):
         df_results.to_csv(PREDICTION_FILE, mode='a', index=False, header=False)
