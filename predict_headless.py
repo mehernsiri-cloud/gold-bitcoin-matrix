@@ -1,77 +1,95 @@
-# predict_headless.py
+#!/usr/bin/env python3
 import os
 import pandas as pd
 from datetime import datetime
 import yaml
 
-# ------------------------------
-# CONFIG
-# ------------------------------
-DATA_DIR = "data"
-PRED_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+# Paths
+DATA_FOLDER = "data"
+ACTUAL_FILE = os.path.join(DATA_FOLDER, "actual_data.csv")
+PREDICTIONS_FILE = os.path.join(DATA_FOLDER, "predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
-ASSETS = ["Gold", "Bitcoin"]
 
-os.makedirs(DATA_DIR, exist_ok=True)
+def ensure_predictions_file():
+    os.makedirs(DATA_FOLDER, exist_ok=True)
+    if not os.path.exists(PREDICTIONS_FILE):
+        df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
+        df.to_csv(PREDICTIONS_FILE, index=False)
+        print(f"Created {PREDICTIONS_FILE} with headers.")
 
-# ------------------------------
-# LOAD WEIGHTS
-# ------------------------------
-with open(WEIGHT_FILE, "r") as f:
-    weights = yaml.safe_load(f)
+def load_weights():
+    with open(WEIGHT_FILE, "r") as f:
+        weights = yaml.safe_load(f)
+    return weights
 
-# ------------------------------
-# LOAD ACTUAL DATA
-# ------------------------------
-ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
-if os.path.exists(ACTUAL_FILE):
-    actual_df = pd.read_csv(ACTUAL_FILE)
-else:
-    actual_df = pd.DataFrame(columns=["timestamp","gold_actual","bitcoin_actual"])
-
-# Get latest actual prices
-latest_actual = actual_df.iloc[-1] if not actual_df.empty else {"gold_actual": None, "bitcoin_actual": None}
-
-# ------------------------------
-# SIMPLE PREDICTION FUNCTION
-# ------------------------------
-def predict_price(latest_price, asset):
-    if latest_price is None:
-        return None
-    # Sum of weights as simple linear score
-    score = sum(weights[asset.lower()].values())
-    predicted_price = latest_price * (1 + score)
+def compute_prediction(actual_price, asset, weights):
+    """
+    Simple weighted sum prediction based on indicators from weight.yaml
+    For demo, we simulate a score and adjust actual price
+    """
+    indicators = weights.get(asset.lower(), {})
+    score = sum(indicators.values())  # sum of weights as simple score
+    predicted_price = actual_price * (1 + score)
     return round(predicted_price, 2)
 
-# ------------------------------
-# SAVE PREDICTIONS
-# ------------------------------
-def save_predictions():
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    rows = []
+def compute_volatility():
+    # For simplicity, random small volatility; replace with real calculation if needed
+    import random
+    return round(random.uniform(0.01, 0.05), 4)
 
-    for asset in ASSETS:
-        latest_price = latest_actual[f"{asset.lower()}_actual"]
-        pred_price = predict_price(latest_price, asset)
-        rows.append({
-            "timestamp": now,
+def compute_risk(vol):
+    if vol < 0.02:
+        return "Low"
+    elif vol < 0.04:
+        return "Medium"
+    else:
+        return "High"
+
+def generate_predictions():
+    ensure_predictions_file()
+    weights = load_weights()
+
+    if not os.path.exists(ACTUAL_FILE):
+        print(f"{ACTUAL_FILE} not found! Cannot generate predictions.")
+        return
+
+    actual_df = pd.read_csv(ACTUAL_FILE)
+    if actual_df.empty:
+        print("No actual data available.")
+        return
+
+    # Use last row of actual prices
+    last_row = actual_df.iloc[-1]
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    results = []
+    for asset in ["Gold", "Bitcoin"]:
+        actual_price = last_row[f"{asset.lower()}_actual"]
+        if pd.isna(actual_price):
+            print(f"No actual price for {asset}, skipping prediction.")
+            continue
+
+        predicted_price = compute_prediction(actual_price, asset, weights)
+        vol = compute_volatility()
+        risk = compute_risk(vol)
+
+        results.append({
+            "timestamp": timestamp,
             "asset": asset,
-            "predicted_price": pred_price,
-            "volatility": 0.01,  # placeholder, can add real volatility later
-            "risk": "Medium"
+            "predicted_price": predicted_price,
+            "volatility": vol,
+            "risk": risk
         })
 
-    df_new = pd.DataFrame(rows)
-
-    # Initialize CSV if missing
-    if not os.path.exists(PRED_FILE):
-        df_new.to_csv(PRED_FILE, index=False)
+    # Append to predictions CSV safely
+    if os.path.exists(PREDICTIONS_FILE):
+        df = pd.read_csv(PREDICTIONS_FILE)
     else:
-        df_new.to_csv(PRED_FILE, mode="a", index=False, header=False)
-    print(f"Saved predictions at {now}")
+        df = pd.DataFrame(columns=["timestamp","asset","predicted_price","volatility","risk"])
 
-# ------------------------------
-# MAIN
-# ------------------------------
+    df = pd.concat([df, pd.DataFrame(results)], ignore_index=True)
+    df.to_csv(PREDICTIONS_FILE, index=False)
+    print(f"Saved predictions at {timestamp}")
+
 if __name__ == "__main__":
-    save_predictions()
+    generate_predictions()
