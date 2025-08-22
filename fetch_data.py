@@ -3,62 +3,60 @@ import pandas as pd
 from datetime import datetime
 import os
 
-# File path
+# --- Paths ---
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 
-def fetch_yahoo_price(ticker):
+# --- Functions ---
+def fetch_gold():
     try:
-        data = yf.download(ticker, period="1d", interval="1d")
-        return round(data["Close"].iloc[-1], 2)
-    except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
+        df = yf.Ticker("GC=F").history(period="1d")
+        return round(float(df["Close"].iloc[-1]), 2)
+    except:
         return None
 
-def fetch_real_estate_price(region="france", type="studio"):
-    # Placeholder – in real case, pull from API or dataset
-    if region == "france":
-        return {"studio": 120000, "2bed": 220000, "3bed": 320000}[type]
-    elif region == "dubai":
-        return {"studio": 150000, "2bed": 300000, "3bed": 450000}[type]
-    return None
+def fetch_bitcoin():
+    try:
+        df = yf.Ticker("BTC-USD").history(period="1d")
+        return round(float(df["Close"].iloc[-1]), 2)
+    except:
+        return None
 
+def fetch_real_estate():
+    # Placeholder values; replace with real API if available
+    return {
+        "france_studio_actual": 120000,
+        "france_2bed_actual": 220000,
+        "france_3bed_actual": 320000,
+        "dubai_studio_actual": 150000,
+        "dubai_2bed_actual": 300000,
+        "dubai_3bed_actual": 450000
+    }
+
+# --- Main ---
 def main():
     today = datetime.today().strftime("%Y-%m-%d")
+    gold = fetch_gold()
+    bitcoin = fetch_bitcoin()
+    real_estate = fetch_real_estate()
 
-    gold_price = fetch_yahoo_price("GC=F")        # Gold futures
-    btc_price = fetch_yahoo_price("BTC-USD")      # Bitcoin in USD
-
-    france_studio = fetch_real_estate_price("france", "studio")
-    france_2bed = fetch_real_estate_price("france", "2bed")
-    france_3bed = fetch_real_estate_price("france", "3bed")
-
-    dubai_studio = fetch_real_estate_price("dubai", "studio")
-    dubai_2bed = fetch_real_estate_price("dubai", "2bed")
-    dubai_3bed = fetch_real_estate_price("dubai", "3bed")
-
-    new_row = {
+    row = {
         "date": today,
-        "gold_actual": gold_price,
-        "bitcoin_actual": btc_price,
-        "france_studio_actual": france_studio,
-        "france_2bed_actual": france_2bed,
-        "france_3bed_actual": france_3bed,
-        "dubai_studio_actual": dubai_studio,
-        "dubai_2bed_actual": dubai_2bed,
-        "dubai_3bed_actual": dubai_3bed,
+        "gold_actual": gold,
+        "bitcoin_actual": bitcoin,
+        **real_estate
     }
 
     # Append to CSV
     if os.path.exists(ACTUAL_FILE):
         df = pd.read_csv(ACTUAL_FILE)
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     else:
-        df = pd.DataFrame([new_row])
+        df = pd.DataFrame([row])
 
     df.to_csv(ACTUAL_FILE, index=False)
-    print("✅ Actual data updated:", new_row)
+    print("✅ Actual data updated:", row)
 
 if __name__ == "__main__":
     main()
