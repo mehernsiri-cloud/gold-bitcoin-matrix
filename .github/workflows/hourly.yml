@@ -1,55 +1,45 @@
 name: Hourly Predictions Update
 
-# Trigger every hour
 on:
   schedule:
-    - cron: '0 * * * *'   # every hour at minute 0 UTC
-  workflow_dispatch:       # manual trigger allowed
+    - cron: '0 * * * *'  # every hour
+  workflow_dispatch:      # manual trigger
 
 jobs:
   hourly-predictions:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout repository
     - name: Checkout repository
       uses: actions/checkout@v3
-      with:
-        persist-credentials: false  # We will use PAT if pushing later
 
-    # 2. Setup Python
-    - name: Setup Python 3.10
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    # 3. Install dependencies
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install yfinance pyyaml pandas
 
-    # 4. Ensure data directory exists
-    - name: Create data directory
+    - name: Ensure data directory
       run: mkdir -p data
 
-    # 5. Fetch actual data
-    - name: Fetch real-time data
+    - name: Fetch actual data
       run: python fetch_data.py
 
-    # 6. Run headless predictions
-    - name: Run predictions
+    - name: Generate predictions
       run: python predict_headless.py
 
-    # 7. Optional: Commit & push updated CSVs
-    #    Only uncomment if you have a GH_PAT secret configured
-    #- name: Commit & push data
+    # Optional: commit updated CSVs back to repo if you have GH_PAT secret
+    #- name: Commit & push
     #  env:
     #    GH_PAT: ${{ secrets.GH_PAT }}
     #  run: |
     #    git config --local user.email "actions@github.com"
     #    git config --local user.name "GitHub Actions"
-    #    git add data/predictions_log.csv data/actual_data.csv
+    #    git add data/
     #    git commit -m "Hourly update" || echo "No changes to commit"
     #    git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
