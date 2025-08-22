@@ -1,59 +1,63 @@
-# fetch_data.py
+#!/usr/bin/env python3
 import os
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
 
-# ------------------------------
-# CONFIG
-# ------------------------------
-DATA_DIR = "data"
-ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+# Paths
+DATA_FOLDER = "data"
+ACTUAL_FILE = os.path.join(DATA_FOLDER, "actual_data.csv")
+
+# Assets to fetch
 ASSETS = {
-    "gold": "GC=F",
-    "bitcoin": "BTC-USD"
+    "Gold": "GC=F",      # Gold futures
+    "Bitcoin": "BTC-USD" # Bitcoin
 }
 
-# Ensure data folder exists
-os.makedirs(DATA_DIR, exist_ok=True)
+def ensure_data_folder():
+    """Create data folder and CSV with headers if missing"""
+    os.makedirs(DATA_FOLDER, exist_ok=True)
+    if not os.path.exists(ACTUAL_FILE):
+        df = pd.DataFrame(columns=["timestamp", "gold_actual", "bitcoin_actual"])
+        df.to_csv(ACTUAL_FILE, index=False)
+        print(f"Created {ACTUAL_FILE} with headers.")
 
-# ------------------------------
-# FETCH REAL-TIME DATA
-# ------------------------------
-def fetch_price(symbol):
+def fetch_latest_price(symbol):
+    """Fetch latest price from Yahoo Finance"""
     try:
-        df = yf.download(symbol, period="1d", interval="1h", progress=False)
+        df = yf.download(symbol, period="1d", interval="1m", progress=False)
         if df.empty:
+            print(f"No data fetched for {symbol}")
             return None
-        return df['Adj Close'].iloc[-1]
+        latest_price = df['Adj Close'].iloc[-1]
+        return round(float(latest_price), 2)
     except Exception as e:
         print(f"Error fetching {symbol}: {e}")
         return None
 
-# ------------------------------
-# SAVE ACTUAL DATA
-# ------------------------------
 def save_actual_data():
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    gold_price = fetch_price(ASSETS["gold"])
-    btc_price = fetch_price(ASSETS["bitcoin"])
+    ensure_data_folder()
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Initialize CSV if missing
-    if not os.path.exists(ACTUAL_FILE):
-        df_init = pd.DataFrame(columns=["timestamp","gold_actual","bitcoin_actual"])
-        df_init.to_csv(ACTUAL_FILE, index=False)
+    gold_price = fetch_latest_price(ASSETS["Gold"])
+    bitcoin_price = fetch_latest_price(ASSETS["Bitcoin"])
 
-    # Append new row
-    df = pd.DataFrame([{
-        "timestamp": now,
+    # Prepare row
+    row = {
+        "timestamp": timestamp,
         "gold_actual": gold_price,
-        "bitcoin_actual": btc_price
-    }])
-    df.to_csv(ACTUAL_FILE, mode="a", index=False, header=not os.path.exists(ACTUAL_FILE))
-    print(f"Saved actual data at {now}")
+        "bitcoin_actual": bitcoin_price
+    }
 
-# ------------------------------
-# MAIN
-# ------------------------------
+    # Append row to CSV safely
+    if os.path.exists(ACTUAL_FILE):
+        df = pd.read_csv(ACTUAL_FILE)
+    else:
+        df = pd.DataFrame(columns=row.keys())
+
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    df.to_csv(ACTUAL_FILE, index=False)
+    print(f"Saved actual prices at {timestamp}")
+
 if __name__ == "__main__":
     save_actual_data()
