@@ -2,118 +2,62 @@
 import os
 import pandas as pd
 from datetime import datetime
-import yaml
 import random
 
-# Paths
 DATA_FOLDER = "data"
 ACTUAL_FILE = os.path.join(DATA_FOLDER, "actual_data.csv")
-PREDICTIONS_FILE = os.path.join(DATA_FOLDER, "predictions_log.csv")
-WEIGHT_FILE = "weight.yaml"
+PRED_FILE = os.path.join(DATA_FOLDER, "predictions_log.csv")
 
 def ensure_predictions_file():
-    """Ensure predictions file and folder exist"""
-    os.makedirs(DATA_FOLDER, exist_ok=True)
-    if not os.path.exists(PREDICTIONS_FILE):
-        df = pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "volatility", "risk"])
-        df.to_csv(PREDICTIONS_FILE, index=False)
-        print(f"Created {PREDICTIONS_FILE} with headers.")
+    if not os.path.exists(PRED_FILE):
+        pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "volatility", "risk"]).to_csv(PRED_FILE, index=False)
 
-def load_weights():
-    """Load weights safely from YAML"""
-    if not os.path.exists(WEIGHT_FILE):
-        print(f"⚠️ {WEIGHT_FILE} not found! Using default weights.")
-        return {"gold": {}, "bitcoin": {}}
-
-    try:
-        with open(WEIGHT_FILE, "r") as f:
-            weights = yaml.safe_load(f) or {}
-        return weights
-    except Exception as e:
-        print(f"Error loading {WEIGHT_FILE}: {e}")
-        return {"gold": {}, "bitcoin": {}}
-
-def compute_prediction(actual_price, asset, weights):
-    """
-    Simple weighted sum prediction based on indicators from weight.yaml.
-    For demo, sum of weights = score, prediction = actual_price * (1 + score).
-    """
-    indicators = weights.get(asset.lower(), {})
-    if not indicators:
-        score = 0
-    else:
-        score = sum(indicators.values())
-    predicted_price = actual_price * (1 + score)
-    return round(float(predicted_price), 2)
-
-def compute_volatility():
-    """Random volatility between 1% and 5%"""
-    return round(random.uniform(0.01, 0.05), 4)
-
-def compute_risk(vol):
-    """Risk category based on volatility"""
-    if vol < 0.02:
-        return "Low"
-    elif vol < 0.04:
-        return "Medium"
-    else:
-        return "High"
+def mock_predict(price: float):
+    """Simple mock model: add ±2% random fluctuation"""
+    if price is None or price == "":
+        return None, None, None
+    change = random.uniform(-0.02, 0.02)  # +/- 2%
+    prediction = round(price * (1 + change), 2)
+    volatility = round(abs(change), 4)
+    risk = "High" if volatility > 0.015 else "Medium" if volatility > 0.005 else "Low"
+    return prediction, volatility, risk
 
 def generate_predictions():
     ensure_predictions_file()
-    weights = load_weights()
-
     if not os.path.exists(ACTUAL_FILE):
-        print(f"⚠️ {ACTUAL_FILE} not found! Cannot generate predictions.")
+        print("No actual_data.csv found, skipping.")
         return
 
     actual_df = pd.read_csv(ACTUAL_FILE)
     if actual_df.empty:
-        print("⚠️ No actual data available.")
+        print("No actual data available.")
         return
 
-    # Use last row of actual prices
-    last_row = actual_df.iloc[-1]
+    latest = actual_df.iloc[-1]  # last row
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    results = []
+    predictions = []
     for asset in ["Gold", "Bitcoin"]:
-        col_name = f"{asset.lower()}_actual"
-        if col_name not in last_row or pd.isna(last_row[col_name]):
-            print(f"No actual price for {asset}, skipping prediction.")
+        actual_price = latest["gold_actual"] if asset == "Gold" else latest["bitcoin_actual"]
+        if pd.isna(actual_price) or actual_price == "":
             continue
+        pred, vol, risk = mock_predict(float(actual_price))
+        if pred:
+            predictions.append({
+                "timestamp": timestamp,
+                "asset": asset,
+                "predicted_price": pred,
+                "volatility": vol,
+                "risk": risk
+            })
 
-        try:
-            actual_price = float(last_row[col_name])
-        except Exception:
-            print(f"Invalid actual price for {asset}, skipping.")
-            continue
-
-        predicted_price = compute_prediction(actual_price, asset, weights)
-        vol = compute_volatility()
-        risk = compute_risk(vol)
-
-        results.append({
-            "timestamp": timestamp,
-            "asset": asset,
-            "predicted_price": predicted_price,
-            "volatility": vol,
-            "risk": risk
-        })
-
-    if not results:
-        print("⚠️ No predictions generated.")
-        return
-
-    # Append to predictions CSV safely
-    if os.path.exists(PREDICTIONS_FILE):
-        df = pd.read_csv(PREDICTIONS_FILE)
+    if predictions:
+        pred_df = pd.read_csv(PRED_FILE)
+        pred_df = pd.concat([pred_df, pd.DataFrame(predictions)], ignore_index=True)
+        pred_df.to_csv(PRED_FILE, index=False)
+        print(f"[{timestamp}] Predictions saved for {len(predictions)} assets.")
     else:
-        df = pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "volatility", "risk"])
-
-    df = pd.concat([df, pd.DataFrame(results)], ignore_index=True)
-    df.to_csv(PREDICTIONS_FILE, index=False)
-    print(f"✅ Saved predictions at {timestamp}")
+        print(f"[{timestamp}] No predictions generated (missing data).")
 
 if __name__ == "__main__":
     generate_predictions()
