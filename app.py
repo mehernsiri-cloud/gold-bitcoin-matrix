@@ -84,9 +84,9 @@ def merge_actual_pred(asset_name, actual_col):
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
     asset_pred["target_horizon"] = "Days"
 
-    # Target buy/sell price: only for Buy signal, else show predicted price
+    # Target buy/sell price: realistic strategy
     asset_pred["target_price"] = asset_pred.apply(
-        lambda row: round(row["predicted_price"]*0.98,2) if row["signal"]=="Buy" else round(row["predicted_price"],2),
+        lambda row: row["actual"] if row["signal"]=="Buy" else (row["predicted_price"] if row["signal"]=="Sell" else row["actual"]),
         axis=1
     )
 
@@ -107,9 +107,9 @@ col1, col2 = st.columns(2)
 # ------------------------------
 def color_signal(val):
     if val == "Buy":
-        color = "green"
+        color = "#1f77b4"  # blue
     elif val == "Sell":
-        color = "red"
+        color = "#ff7f0e"  # orange
     else:
         color = "gray"
     return f'color: {color}; font-weight:bold; text-align:center'
@@ -139,7 +139,6 @@ def assumptions_card(asset_df, asset_name):
 
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
-    # Colors: blue = positive, orange = negative, gray = neutral
     colors = ["#1f77b4" if v>0 else "#ff7f0e" if v<0 else "gray" for v in values]
 
     fig = go.Figure([go.Bar(
@@ -170,7 +169,7 @@ with col1:
         last_trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Target Price Card (separate and clear)
+        # Target Price Card
         target_price_card(gold_df["target_price"].iloc[-1], "Gold")
 
         # Last 2 rows table
@@ -203,7 +202,7 @@ with col2:
         last_trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Target Price Card (separate and clear)
+        # Target Price Card
         target_price_card(btc_df["target_price"].iloc[-1], "Bitcoin")
 
         # Last 2 rows table
