@@ -27,7 +27,6 @@ def fetch_csv_last_value(url, value_col="VALUE"):
     try:
         df = pd.read_csv(url)
         if value_col not in df.columns:
-            # fallback for non-standard CSVs
             df = df.iloc[:, :2]
             df.columns = ["DATE","VALUE"]
         df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
@@ -55,31 +54,32 @@ def compute_inflation_yoy(cpi_url):
         return None
 
 def normalize(value, ref=100.0):
+    """Basic normalization"""
     try:
         return (value - ref)/abs(ref)
     except Exception:
         return 0.0
+
+def normalize_range(value, min_val=-2, max_val=2, value_min=0, value_max=50):
+    """Scale a raw value to a desired output range"""
+    if value is None:
+        return 0.0
+    value_clamped = max(min(value, value_max), value_min)
+    scaled = (value_clamped - value_min) / (value_max - value_min) * (max_val - min_val) + min_val
+    return round(scaled, 3)
 
 # ---------------------------
 # Proxy calculations for sentiment indicators
 # ---------------------------
 
 def calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change, inflation):
-    """
-    Simple dynamic proxies for non-macro indicators:
-      regulation → proxy by VIX increase
-      adoption → proxy by SP500 positive momentum
-      currency_instability → proxy by USD change volatility
-      recession_probability → proxy by inflation + bond yield trends
-      tail_risk_event → proxy by VIX extreme moves
-      geopolitics → proxy by oil price volatility
-    """
-    regulation = -vix_level/100.0
-    adoption = max(min(sp500_change, 0.1), -0.1)
-    currency_instability = -usd_change
-    recession_probability = min((sp500_change - inflation/100.0)/2.0, 1.0)
-    tail_risk_event = -vix_level/150.0
-    geopolitics = oil_change / 100.0
+    """Dynamic proxies for non-macro indicators"""
+    regulation = normalize_range(vix_level, -2, 2, 10, 40) * -1      # higher VIX → lower liquidity → more regulation risk
+    adoption = max(min(sp500_change, 0.1), -0.1)                     # keep in -0.1 to 0.1
+    currency_instability = -usd_change                                # small range already
+    recession_probability = min(max((sp500_change - inflation/100.0)/2.0, 0.0), 1.0)
+    tail_risk_event = normalize_range(vix_level, -2, 2, 10, 60) * -1
+    geopolitics = normalize_range(oil_change*100, -1, 1, -10, 10)
     return regulation, adoption, currency_instability, recession_probability, tail_risk_event, geopolitics
 
 # ---------------------------
@@ -104,6 +104,9 @@ def build_weights():
     regulation, adoption, currency_instability, recession_probability, tail_risk_event, geopolitics = \
         calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change, inflation)
 
+    # Normalize liquidity to -2..2 range
+    liquidity = normalize_range(vix_level, -2, 2, 10, 40)
+
     weights = {}
     for asset in ["gold","bitcoin"]:
         weights[asset] = {
@@ -112,7 +115,7 @@ def build_weights():
             "bond_yields": normalize(bond_yield, 3),
             "energy_prices": normalize(oil_price, 60),
             "usd_strength": normalize(usd_index, 100),
-            "liquidity": -vix_level,
+            "liquidity": liquidity,
             "equity_flows": sp500_change,
             "regulation": regulation,
             "adoption": adoption,
