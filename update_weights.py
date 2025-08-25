@@ -1,164 +1,163 @@
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from pytrends.request import TrendReq
-import feedparser
-from textblob import TextBlob
-import os
-import json
+import yaml
+from bs4 import BeautifulSoup
 
-OUTPUT_FILE = "weights.json"
+# ---------------------------
+# Helper functions
+# ---------------------------
 
-# --- Helpers ---
-def normalize(series, inverse=False):
-    if len(series) == 0:
-        return 0.0
-    val = series[-1]
-    min_val, max_val = np.nanmin(series), np.nanmax(series)
-    if max_val == min_val:
-        return 0.0
-    score = (val - min_val) / (max_val - min_val) * 2 - 1
-    return -score if inverse else score
-
-def sentiment_from_news(query):
-    url = f"https://news.google.com/rss/search?q={query}"
-    feed = feedparser.parse(url)
-    if not feed.entries:
-        return 0.0
-    scores = []
-    for e in feed.entries[:10]:
-        txt = e.title + " " + e.get("summary", "")
-        scores.append(TextBlob(txt).sentiment.polarity)
-    return float(np.mean(scores))
-
-# --- Indicators ---
-def get_inflation():
-    # OECD CPI data (monthly, percentage change)
-    url = "https://stats.oecd.org/sdmx-json/data/DP_LIVE/.CPI.TOT.AGRWTH.M/OECD?contentType=csv"
+def get_cpi():
+    """Get US Inflation (CPI YoY %) from investing.com API (scraped)."""
+    url = "https://www.investing.com/economic-calendar/consumer-price-index-cpi-733"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
     try:
-        df = pd.read_csv(url)
-        df = df[df["LOCATION"] == "USA"]
-        return normalize(df["Value"].values)
+        val = soup.find("td", {"class": "bold"}).get_text()
+        return float(val.replace("%",""))
     except Exception:
         return 0.0
 
-def get_bond_yields():
-    url = "https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=245.Q.YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y.YLD&trans=csv"
+def get_bond_yield():
+    """Get US 10Y Treasury Yield from MarketWatch."""
+    url = "https://www.marketwatch.com/investing/bond/tmubmusd10y?mod=home-page"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
     try:
-        df = pd.read_csv(url, skiprows=5)
-        vals = df.iloc[:,1].dropna().values
-        return normalize(vals)
+        val = soup.find("bg-quote", {"class": "value"}).get_text()
+        return float(val)
     except Exception:
         return 0.0
 
-def get_real_rates():
-    infl = get_inflation()
-    bonds = get_bond_yields()
-    return bonds - infl
-
-def get_energy_prices():
-    url = "https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls"
-    # fallback to static CSV because EIA Excel is tricky
-    return 0.1
-
-def get_usd_strength():
-    url = "https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=120.EXR.D.USD.EUR.SP00.A&type=csv"
+def get_usd_index():
+    """Get USD Index (DXY) from MarketWatch."""
+    url = "https://www.marketwatch.com/investing/index/dxy"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
     try:
-        df = pd.read_csv(url, skiprows=5)
-        vals = df.iloc[:,1].dropna().values
-        return normalize(vals)
+        val = soup.find("bg-quote", {"class": "value"}).get_text()
+        return float(val)
+    except Exception:
+        return 100.0
+
+def get_oil_price():
+    """Get Brent crude oil price from MarketWatch."""
+    url = "https://www.marketwatch.com/investing/future/brn00"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
+    try:
+        val = soup.find("bg-quote", {"class": "value"}).get_text()
+        return float(val.replace(",", ""))
     except Exception:
         return 0.0
 
-def get_liquidity():
-    url = "https://fred.stlouisfed.org/data/WALCL.txt"
+def get_liquidity_proxy():
+    """Use VIX index as proxy for liquidity/risk sentiment."""
+    url = "https://www.marketwatch.com/investing/index/vix"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
     try:
-        df = pd.read_csv(url, sep="\s+", skiprows=10)
-        vals = df["WALCL"].dropna().values
-        return normalize(vals)
+        val = soup.find("bg-quote", {"class": "value"}).get_text()
+        return -float(val)  # higher VIX = lower liquidity
     except Exception:
         return 0.0
 
-def get_equity_flows():
-    # Proxy = VIX index (volatility)
-    url = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
+def get_equity_flows_proxy():
+    """Use S&P500 daily % change as proxy for equity flows."""
+    url = "https://www.marketwatch.com/investing/index/spx"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
     try:
-        df = pd.read_csv(url)
-        vals = df["CLOSE"].dropna().values
-        return -normalize(vals)  # higher VIX → outflows
+        val = soup.find("span", {"class": "change--percent--q"}).get_text()
+        return float(val.replace("%", "").replace("+", "").strip()) / 100.0
     except Exception:
         return 0.0
 
-def get_regulation():
-    return sentiment_from_news("crypto regulation SEC")
+def get_sentiment_news(keyword="regulation"):
+    """Scrape Google News headlines for simple keyword sentiment scoring."""
+    url = f"https://news.google.com/search?q={keyword}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
+    headlines = [a.get_text() for a in soup.find_all("a", {"class": "DY5T1d"})][:5]
+    score = 0
+    for h in headlines:
+        if any(word in h.lower() for word in ["ban", "crackdown", "restrict", "lawsuit"]):
+            score -= 0.2
+        if any(word in h.lower() for word in ["support", "approve", "adopt", "positive"]):
+            score += 0.2
+    return score
 
-def get_adoption():
-    try:
-        pytrends = TrendReq(hl="en-US", tz=360)
-        pytrends.build_payload(["Bitcoin"], cat=0, timeframe="today 3-m", geo="", gprop="")
-        df = pytrends.interest_over_time()
-        if "Bitcoin" in df:
-            return normalize(df["Bitcoin"].values)
-    except Exception:
-        return 0.0
-    return 0.0
+# ---------------------------
+# Main calculation
+# ---------------------------
 
-def get_currency_instability():
-    try:
-        url = "https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=120.EXR.D.USD.EUR.SP00.A&type=csv"
-        df = pd.read_csv(url, skiprows=5)
-        rates = df.iloc[:,1].dropna().pct_change().dropna()
-        vol = rates.rolling(20).std().values
-        return normalize(vol)
-    except Exception:
-        return 0.0
+def normalize(value, ref=100.0):
+    return (value - ref) / ref
 
-def get_recession_probability():
-    try:
-        # 10y vs 3m yields (ECB data)
-        url10y = "https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=245.Q.YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y.YLD&trans=csv"
-        url3m = "https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=245.Q.YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_3M.YLD&trans=csv"
-        y10 = pd.read_csv(url10y, skiprows=5).iloc[:,1].dropna().values
-        y3 = pd.read_csv(url3m, skiprows=5).iloc[:,1].dropna().values
-        spread = np.array(y10[-len(y3):]) - y3
-        return -normalize(spread)  # inversion => high probability
-    except Exception:
-        return 0.0
+def build_weights():
+    inflation = get_cpi()
+    bond_yield = get_bond_yield()
+    usd_strength = get_usd_index()
+    oil = get_oil_price()
+    liquidity = get_liquidity_proxy()
+    equity_flows = get_equity_flows_proxy()
 
-def get_tail_risk_event():
-    url = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
-    try:
-        df = pd.read_csv(url)
-        vix = df["CLOSE"].dropna().values
-        return normalize(vix)
-    except Exception:
-        return 0.0
+    regulation = get_sentiment_news("crypto regulation")
+    adoption = get_sentiment_news("bitcoin adoption")
+    currency_instability = get_sentiment_news("currency crisis")
+    recession_probability = get_sentiment_news("recession")
+    tail_risk_event = get_sentiment_news("financial crisis")
+    geopolitics = get_sentiment_news("geopolitics")
 
-def get_geopolitics():
-    return sentiment_from_news("war conflict sanctions")
-
-# --- Main ---
-def main():
-    weights = {
-        "inflation": get_inflation(),
-        "real_rates": get_real_rates(),
-        "bond_yields": get_bond_yields(),
-        "energy_prices": get_energy_prices(),
-        "usd_strength": get_usd_strength(),
-        "liquidity": get_liquidity(),
-        "equity_flows": get_equity_flows(),
-        "regulation": get_regulation(),
-        "adoption": get_adoption(),
-        "currency_instability": get_currency_instability(),
-        "recession_probability": get_recession_probability(),
-        "tail_risk_event": get_tail_risk_event(),
-        "geopolitics": get_geopolitics()
+    data = {
+        "gold": {
+            "inflation": normalize(inflation, 3),
+            "real_rates": normalize(bond_yield - inflation, 1),
+            "bond_yields": normalize(bond_yield, 3),
+            "energy_prices": normalize(oil, 60),
+            "usd_strength": normalize(usd_strength, 100),
+            "liquidity": liquidity,
+            "equity_flows": equity_flows,
+            "regulation": regulation,
+            "adoption": adoption,
+            "currency_instability": currency_instability,
+            "recession_probability": recession_probability,
+            "tail_risk_event": tail_risk_event,
+            "geopolitics": geopolitics,
+        },
+        "bitcoin": {
+            "inflation": normalize(inflation, 3),
+            "real_rates": normalize(bond_yield - inflation, 1),
+            "bond_yields": normalize(bond_yield, 3),
+            "energy_prices": normalize(oil, 60),
+            "usd_strength": normalize(usd_strength, 100),
+            "liquidity": liquidity,
+            "equity_flows": equity_flows,
+            "regulation": regulation,
+            "adoption": adoption,
+            "currency_instability": currency_instability,
+            "recession_probability": recession_probability,
+            "tail_risk_event": tail_risk_event,
+            "geopolitics": geopolitics,
+        }
     }
 
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(weights, f, indent=2)
-    print(json.dumps(weights, indent=2))
+    return data
+
+# ---------------------------
+# Save to YAML
+# ---------------------------
 
 if __name__ == "__main__":
-    main()
+    weights = build_weights()
+    with open("weights.yaml", "w") as f:
+        yaml.dump(weights, f)
+    print("✅ weights.yaml updated with live indicators")
