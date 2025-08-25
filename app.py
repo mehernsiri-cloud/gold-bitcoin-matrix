@@ -84,6 +84,12 @@ def merge_actual_pred(asset_name, actual_col):
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
     asset_pred["target_horizon"] = "Days"
 
+    # Target buy/sell price: only for Buy signal, else show predicted price
+    asset_pred["target_price"] = asset_pred.apply(
+        lambda row: round(row["predicted_price"]*0.98,2) if row["signal"]=="Buy" else round(row["predicted_price"],2),
+        axis=1
+    )
+
     return asset_pred
 
 gold_df = merge_actual_pred("Gold", "gold_actual")
@@ -110,9 +116,9 @@ def color_signal(val):
 
 def alert_badge(signal):
     if signal == "Buy":
-        return f'<div style="background-color:green;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
+        return f'<div style="background-color:#1f77b4;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
     elif signal == "Sell":
-        return f'<div style="background-color:red;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
+        return f'<div style="background-color:#ff7f0e;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
     else:
         return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
 
@@ -133,8 +139,7 @@ def assumptions_card(asset_df, asset_name):
 
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
-
-    # New colors: blue for positive, orange for negative, gray for neutral
+    # Colors: blue = positive, orange = negative, gray = neutral
     colors = ["#1f77b4" if v>0 else "#ff7f0e" if v<0 else "gray" for v in values]
 
     fig = go.Figure([go.Bar(
@@ -147,6 +152,13 @@ def assumptions_card(asset_df, asset_name):
     fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})", yaxis_title="Weight / Impact")
     st.plotly_chart(fig, use_container_width=True)
 
+def target_price_card(price, asset_name):
+    st.markdown(f"""
+        <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
+        💰 {asset_name} Target Price: {price}
+        </div>
+        """, unsafe_allow_html=True)
+
 # ------------------------------
 # GOLD SECTION
 # ------------------------------
@@ -158,7 +170,10 @@ with col1:
         last_trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Last 2 rows
+        # Target Price Card (separate and clear)
+        target_price_card(gold_df["target_price"].iloc[-1], "Gold")
+
+        # Last 2 rows table
         display_gold = gold_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
@@ -188,7 +203,10 @@ with col2:
         last_trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Last 2 rows
+        # Target Price Card (separate and clear)
+        target_price_card(btc_df["target_price"].iloc[-1], "Bitcoin")
+
+        # Last 2 rows table
         display_btc = btc_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
