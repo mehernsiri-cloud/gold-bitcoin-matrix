@@ -10,9 +10,9 @@ ACTUAL_FILE = os.path.join(DATA_FOLDER, "actual_data.csv")
 PREDICTIONS_FILE = os.path.join(DATA_FOLDER, "predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
-BASELINE_PRICES = {"gold": 3409.0, "bitcoin": 47000.0}  # realistic anchors
-
-MAX_INDICATOR_IMPACT = 0.05  # each indicator can move price ±5%
+# Baseline realistic prices
+BASELINE_PRICES = {"gold": 3409.0, "bitcoin": 47000.0}
+MAX_INDICATOR_IMPACT = 0.05
 
 def ensure_predictions_file():
     os.makedirs(DATA_FOLDER, exist_ok=True)
@@ -29,6 +29,8 @@ def load_weights():
 def compute_prediction(baseline_price, asset, weights, max_impact=MAX_INDICATOR_IMPACT):
     indicators = weights.get(asset.lower(), {})
     total_adjustment = sum(v * max_impact for v in indicators.values() if isinstance(v, (int,float)))
+    # Clip adjustment to realistic ±15% range
+    total_adjustment = max(min(total_adjustment, 0.15), -0.15)
     predicted_price = baseline_price * (1 + total_adjustment)
     return round(predicted_price, 2)
 
