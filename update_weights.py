@@ -3,16 +3,27 @@ import pandas as pd
 import numpy as np
 import yaml
 import requests
+from io import StringIO
 from datetime import datetime
 
 # ------------------------------
-# UTILS: Fetch latest FRED series value
+# UTILS: Fetch latest FRED series value (robust)
 # ------------------------------
 def fetch_fred_series(series_id):
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
-        df = pd.read_csv(url)
-        df['DATE'] = pd.to_datetime(df['DATE'])
+        r = requests.get(url)
+        r.raise_for_status()
+        csv_data = StringIO(r.text)
+
+        # skip lines until header is found
+        for i, line in enumerate(csv_data):
+            if line.startswith("DATE"):
+                header_line = i
+                break
+        csv_data.seek(0)
+        df = pd.read_csv(csv_data, skiprows=header_line)
+        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
         df = df[df['VALUE'].notna()]
         last_value = df['VALUE'].iloc[-1]
         return float(last_value)
@@ -21,7 +32,7 @@ def fetch_fred_series(series_id):
         return 0.0
 
 # ------------------------------
-# UTILS: Fetch Bitcoin price (CoinGecko)
+# Fetch Bitcoin price (CoinGecko)
 # ------------------------------
 def fetch_btc_price():
     try:
@@ -33,7 +44,7 @@ def fetch_btc_price():
         return 0.0
 
 # ------------------------------
-# UTILS: Fetch EUR/USD FX rate (ECB)
+# Fetch EUR/USD FX rate (ECB)
 # ------------------------------
 def fetch_fx_rate():
     try:
@@ -48,7 +59,7 @@ def fetch_fx_rate():
         return 0.0
 
 # ------------------------------
-# NORMALIZE INDICATORS
+# NORMALIZE
 # ------------------------------
 def normalize(value, min_val, max_val):
     if max_val - min_val == 0:
@@ -56,68 +67,41 @@ def normalize(value, min_val, max_val):
     return max(min((value - min_val) / (max_val - min_val), 1.0), -1.0)
 
 # ------------------------------
-# UPDATE WEIGHTS FUNCTION
+# UPDATE WEIGHTS
 # ------------------------------
 def update_weights():
     weights = {"gold": {}, "bitcoin": {}}
 
-    # ----- Realistic macro indicators -----
-    # Inflation: CPIAUCSL (US CPI)
+    # --- Macro indicators ---
     inflation = fetch_fred_series("CPIAUCSL")
-    weights['gold']['inflation'] = float(normalize(inflation, 0, 500))
-
-    # Real rates: 3-mo Treasury (TB3MS) minus inflation
     short_rate = fetch_fred_series("TB3MS")
-    real_rate = short_rate - inflation
-    weights['gold']['real_rates'] = float(normalize(real_rate, -10, 10))
-
-    # Bond yields: 10-year Treasury GS10
     bond_yields = fetch_fred_series("GS10")
-    weights['gold']['bond_yields'] = float(normalize(bond_yields, 0, 20))
-
-    # Energy prices: PPIACO (Commodities PPI)
     energy_prices = fetch_fred_series("PPIACO")
-    weights['gold']['energy_prices'] = float(normalize(energy_prices, 0, 500))
 
-    # USD strength: based on EUR/USD
+    real_rate = short_rate - inflation
     fx_rate = fetch_fx_rate()
-    weights['gold']['usd_strength'] = float(normalize(1/fx_rate, 0.5, 2.0))  # stronger USD => higher
 
-    # Liquidity & equity_flows & other market indicators (random placeholders)
-    weights['gold']['liquidity'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['equity_flows'] = float(np.random.uniform(-0.2,0.2))
+    # Normalize realistic ranges
+    weights['gold']['inflation'] = float(normalize(inflation, 0, 500))
+    weights['gold']['real_rates'] = float(normalize(real_rate, -10, 10))
+    weights['gold']['bond_yields'] = float(normalize(bond_yields, 0, 20))
+    weights['gold']['energy_prices'] = float(normalize(energy_prices, 0, 500))
+    weights['gold']['usd_strength'] = float(normalize(1/fx_rate, 0.5, 2.0))
 
-    # News/trend-driven indicators (random placeholders)
-    weights['gold']['geopolitics'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['regulation'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['adoption'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['currency_instability'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['recession_probability'] = float(np.random.uniform(-0.2,0.2))
-    weights['gold']['tail_risk_event'] = float(np.random.uniform(-0.2,0.2))
+    # Random placeholders for other indicators
+    for key in ['liquidity','equity_flows','geopolitics','regulation','adoption','currency_instability','recession_probability','tail_risk_event']:
+        weights['gold'][key] = float(np.random.uniform(-0.2,0.2))
+        weights['bitcoin'][key] = float(np.random.uniform(-0.2,0.2))
 
-    # ----- Bitcoin weights -----
-    # BTC-specific macro indicators (some same as gold)
-    weights['bitcoin']['inflation'] = weights['gold']['inflation']
-    weights['bitcoin']['real_rates'] = weights['gold']['real_rates']
-    weights['bitcoin']['bond_yields'] = weights['gold']['bond_yields']
-    weights['bitcoin']['energy_prices'] = weights['gold']['energy_prices']
-    weights['bitcoin']['usd_strength'] = weights['gold']['usd_strength']
-    weights['bitcoin']['liquidity'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['equity_flows'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['geopolitics'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['regulation'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['adoption'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['currency_instability'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['recession_probability'] = float(np.random.uniform(-0.2,0.2))
-    weights['bitcoin']['tail_risk_event'] = float(np.random.uniform(-0.2,0.2))
+    # Copy macro indicators to Bitcoin
+    for key in ['inflation','real_rates','bond_yields','energy_prices','usd_strength']:
+        weights['bitcoin'][key] = weights['gold'][key]
 
-    # ------------------------------
-    # Save to YAML
-    # ------------------------------
+    # Save YAML
     with open("weight.yaml", "w") as f:
         yaml.safe_dump(weights, f, sort_keys=False)
 
-    print("✅ weight.yaml updated successfully with live market indicators.")
+    print("✅ weight.yaml updated successfully.")
 
 # ------------------------------
 # RUN
