@@ -7,7 +7,7 @@ import plotly.express as px
 # ------------------------------
 # PAGE CONFIG
 # ------------------------------
-st.set_page_config(page_title="Gold & Bitcoin Predictions", layout="wide")
+st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
 
 # ------------------------------
 # DATA FILES
@@ -38,7 +38,6 @@ def merge_actual_pred(asset_name, actual_col):
         return asset_pred
 
     if actual_col in df_actual.columns:
-        # Merge by closest previous timestamp
         asset_pred = pd.merge_asof(
             asset_pred.sort_values("timestamp"),
             df_actual.sort_values("timestamp")[["timestamp", actual_col]].rename(columns={actual_col: "actual"}),
@@ -48,9 +47,26 @@ def merge_actual_pred(asset_name, actual_col):
     else:
         asset_pred["actual"] = None
 
-    # Ensure numeric for plotting
+    # Ensure numeric
     asset_pred["predicted_price"] = pd.to_numeric(asset_pred["predicted_price"], errors='coerce')
     asset_pred["actual"] = pd.to_numeric(asset_pred["actual"], errors='coerce')
+
+    # Buy/Sell Signal
+    asset_pred["signal"] = asset_pred.apply(
+        lambda row: "Buy" if row["predicted_price"] > row["actual"] else ("Sell" if row["predicted_price"] < row["actual"] else "Hold"),
+        axis=1
+    )
+
+    # Trend: compare last 3 predicted prices
+    asset_pred["trend"] = ""
+    if len(asset_pred) >= 3:
+        last3 = asset_pred["predicted_price"].tail(3)
+        if last3.is_monotonic_increasing:
+            asset_pred["trend"] = "Bullish 📈"
+        elif last3.is_monotonic_decreasing:
+            asset_pred["trend"] = "Bearish 📉"
+        else:
+            asset_pred["trend"] = "Neutral ⚖️"
 
     return asset_pred
 
@@ -60,15 +76,27 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 # ------------------------------
 # LAYOUT
 # ------------------------------
-st.title("📈 Gold & Bitcoin Predictions Dashboard")
+st.title("📊 Gold & Bitcoin Market Dashboard")
 
 col1, col2 = st.columns(2)
+
+# Function to color Buy/Sell signals
+def color_signal(val):
+    if val == "Buy":
+        color = "green"
+    elif val == "Sell":
+        color = "red"
+    else:
+        color = "gray"
+    return f'color: {color}; font-weight:bold'
 
 # Gold Section
 with col1:
     st.subheader("Gold")
     if not gold_df.empty:
-        st.dataframe(gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk"]])
+        trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
+        st.markdown(f"**Market Trend:** {trend}")
+        st.dataframe(gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].style.applymap(color_signal, subset=["signal"]))
         fig_gold = px.line(
             gold_df,
             x="timestamp",
@@ -76,7 +104,6 @@ with col1:
             labels={"value": "Gold Price", "timestamp": "Timestamp"},
             title="Gold: Actual vs Predicted"
         )
-        fig_gold.update_layout(xaxis=dict(tickangle=-45))
         st.plotly_chart(fig_gold, use_container_width=True)
     else:
         st.info("No Gold data available yet.")
@@ -85,7 +112,9 @@ with col1:
 with col2:
     st.subheader("Bitcoin")
     if not btc_df.empty:
-        st.dataframe(btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk"]])
+        trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
+        st.markdown(f"**Market Trend:** {trend}")
+        st.dataframe(btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].style.applymap(color_signal, subset=["signal"]))
         fig_btc = px.line(
             btc_df,
             x="timestamp",
@@ -93,7 +122,6 @@ with col2:
             labels={"value": "Bitcoin Price", "timestamp": "Timestamp"},
             title="Bitcoin: Actual vs Predicted"
         )
-        fig_btc.update_layout(xaxis=dict(tickangle=-45))
         st.plotly_chart(fig_btc, use_container_width=True)
     else:
         st.info("No Bitcoin data available yet.")
