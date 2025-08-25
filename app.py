@@ -128,37 +128,6 @@ def alert_badge(signal):
     else:
         return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
 
-# ------------------------------
-# WHAT-IF SLIDERS
-# ------------------------------
-st.sidebar.header("🔧 What-If Scenario")
-inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, 2.5, 0.1)
-usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, 0.0, 0.1)
-oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, 0.0, 0.1)
-vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, 20.0, 1.0)
-
-# ------------------------------
-# MARKET SUMMARY
-# ------------------------------
-def generate_summary(asset_df, asset_name):
-    if asset_df.empty:
-        return f"No data for {asset_name}"
-    last_row = asset_df.iloc[-1]
-    summary = f"**{asset_name} Market Summary:** "
-    summary += f"Signal: {last_row['signal']} | Trend: {last_row['trend']} | Target Price: {last_row['target_price']} \n\n"
-    summary += "**Indicator Effects:**\n"
-    try:
-        assumptions = eval(last_row["assumptions"])
-    except:
-        assumptions = {}
-    for k, v in assumptions.items():
-        icon = INDICATOR_ICONS.get(k, "❔")
-        summary += f"{icon} {k}: {v:.2f}\n"
-    return summary
-
-# ------------------------------
-# TARGET PRICE CARD
-# ------------------------------
 def target_price_card(price, asset_name):
     st.markdown(f"""
         <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
@@ -166,9 +135,6 @@ def target_price_card(price, asset_name):
         </div>
         """, unsafe_allow_html=True)
 
-# ------------------------------
-# ASSUMPTIONS CARD
-# ------------------------------
 def assumptions_card(asset_df, asset_name):
     if asset_df.empty:
         st.info(f"No assumptions available for {asset_name}")
@@ -203,12 +169,45 @@ def assumptions_card(asset_df, asset_name):
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
+# WHAT-IF SLIDERS
+# ------------------------------
+st.sidebar.header("🔧 What-If Scenario")
+inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, 2.5, 0.1)
+usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, 0.0, 0.1)
+oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, 0.0, 0.1)
+vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, 20.0, 1.0)
+
+# Apply sliders to predicted prices dynamically
+def apply_what_if(df):
+    if df.empty:
+        return df
+    adj = 1 + inflation_adj*0.01 - usd_adj*0.01 + oil_adj*0.01 - vix_adj*0.005
+    df = df.copy()
+    df["predicted_price"] = df["predicted_price"] * adj
+    df["target_price"] = df["predicted_price"]
+    return df
+
+gold_df_adj = apply_what_if(gold_df)
+btc_df_adj = apply_what_if(btc_df)
+
+# ------------------------------
+# MARKET SUMMARY
+# ------------------------------
+def generate_summary(asset_df, asset_name):
+    if asset_df.empty:
+        return f"No data for {asset_name}"
+    last_row = asset_df.iloc[-1]
+    summary = f"**{asset_name} Market Summary:** "
+    summary += f"Signal: {last_row['signal']} | Trend: {last_row['trend']} | Target Price: {last_row['target_price']}"
+    return summary
+
+# ------------------------------
 # LAYOUT
 # ------------------------------
 st.title("📊 Gold & Bitcoin Market Dashboard")
 col1, col2 = st.columns(2)
 
-for col, df, name in zip([col1, col2], [gold_df, btc_df], ["Gold", "Bitcoin"]):
+for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
     with col:
         st.subheader(name)
         if not df.empty:
@@ -217,14 +216,15 @@ for col, df, name in zip([col1, col2], [gold_df, btc_df], ["Gold", "Bitcoin"]):
             last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
             st.markdown(f"**Market Trend:** {last_trend}")
 
+            # Market Summary right after trend
+            st.markdown(generate_summary(df, name))
+
             target_price_card(df["target_price"].iloc[-1], name)
 
             display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
             st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
 
             assumptions_card(df, name)
-
-            st.markdown(generate_summary(df, name))
 
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
