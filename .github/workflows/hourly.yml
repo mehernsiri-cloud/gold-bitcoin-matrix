@@ -17,7 +17,7 @@ jobs:
         with:
           persist-credentials: false  # Use PAT explicitly for push
 
-      # 2. Setup Python 3.10
+      # 2. Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pandas yfinance requests pyyaml plotly
+          pip install pandas yfinance requests pyyaml plotly textblob
 
       # 4. Ensure data folder exists
       - name: Create data folder if missing
@@ -37,22 +37,26 @@ jobs:
           touch data/actual_data.csv
           touch data/predictions_log.csv
 
-      # 5. Fetch actual data
+      # 5. Update market indicators dynamically
+      - name: Update market indicators
+        run: python update_weights.py
+
+      # 6. Fetch actual data
       - name: Fetch actual data
         run: python fetch_data.py
 
-      # 6. Generate predictions
+      # 7. Generate predictions
       - name: Run headless prediction script
         run: python predict_headless.py
 
-      # 7. Commit & push CSV updates safely
+      # 8. Commit & push CSV updates safely
       - name: Commit & push CSV updates
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add data/predictions_log.csv data/actual_data.csv
+          git add data/predictions_log.csv data/actual_data.csv weight.yaml
           git commit -m "Hourly update" || echo "No changes to commit"
           # Pull remote changes and rebase to avoid push rejection
           git pull --rebase https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD
