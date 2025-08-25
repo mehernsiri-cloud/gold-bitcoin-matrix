@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
+import yaml
 
 # ------------------------------
 # PAGE CONFIG
@@ -15,9 +16,10 @@ st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
 DATA_DIR = "data"
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+WEIGHT_FILE = "weight.yaml"
 
 # ------------------------------
-# LOAD DATA
+# LOAD DATA SAFELY
 # ------------------------------
 def load_csv_safe(path, default_cols):
     if os.path.exists(path):
@@ -28,6 +30,15 @@ def load_csv_safe(path, default_cols):
 
 df_pred = load_csv_safe(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "volatility", "risk"])
 df_actual = load_csv_safe(ACTUAL_FILE, ["timestamp", "gold_actual", "bitcoin_actual"])
+
+# ------------------------------
+# LOAD WEIGHTS / ASSUMPTIONS
+# ------------------------------
+if os.path.exists(WEIGHT_FILE):
+    with open(WEIGHT_FILE, "r") as f:
+        weights = yaml.safe_load(f)
+else:
+    weights = {"gold": {}, "bitcoin": {}}
 
 # ------------------------------
 # MERGE PREDICTIONS WITH ACTUALS
@@ -47,7 +58,7 @@ def merge_actual_pred(asset_name, actual_col):
     else:
         asset_pred["actual"] = None
 
-    # Ensure numeric
+    # Numeric conversion
     asset_pred["predicted_price"] = pd.to_numeric(asset_pred["predicted_price"], errors='coerce')
     asset_pred["actual"] = pd.to_numeric(asset_pred["actual"], errors='coerce')
 
@@ -57,7 +68,7 @@ def merge_actual_pred(asset_name, actual_col):
         axis=1
     )
 
-    # Trend: compare last 3 predicted prices
+    # Trend: last 3 predicted prices
     asset_pred["trend"] = ""
     if len(asset_pred) >= 3:
         last3 = asset_pred["predicted_price"].tail(3)
@@ -67,6 +78,10 @@ def merge_actual_pred(asset_name, actual_col):
             asset_pred["trend"] = "Bearish 📉"
         else:
             asset_pred["trend"] = "Neutral ⚖️"
+
+    # Add assumptions and target horizon
+    asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
+    asset_pred["target_horizon"] = "Days"  # You can modify per your model
 
     return asset_pred
 
@@ -111,8 +126,8 @@ with col1:
         last_trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Show only last 2 rows
-        display_gold = gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
+        # Show last 2 rows
+        display_gold = gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal", "assumptions", "target_horizon"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
         # Chart
@@ -139,8 +154,8 @@ with col2:
         last_trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
         st.markdown(f"**Market Trend:** {last_trend}")
 
-        # Show only last 2 rows
-        display_btc = btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
+        # Show last 2 rows
+        display_btc = btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal", "assumptions", "target_horizon"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
         # Chart
