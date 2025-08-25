@@ -23,20 +23,17 @@ def ensure_data_folder():
         print(f"Created {ACTUAL_FILE} with headers.")
 
 def fetch_latest_price(symbol):
-    """Fetch latest price from Yahoo Finance with fallback intervals"""
-    intervals = [("1d", "1m"), ("5d", "5m"), ("1mo", "1d")]
-    for period, interval in intervals:
-        try:
-            df = yf.download(symbol, period=period, interval=interval, progress=False)
-            if df.empty:
-                continue
-            latest_price = df['Adj Close'].iloc[-1]
-            if pd.notna(latest_price):
-                return round(float(latest_price), 2)
-        except Exception as e:
-            print(f"Error fetching {symbol} ({period}, {interval}): {e}")
-    print(f"Failed to fetch valid price for {symbol}")
-    return None
+    """Fetch latest daily closing price from Yahoo Finance"""
+    try:
+        df = yf.download(symbol, period="5d", interval="1d", progress=False)
+        if df.empty:
+            print(f"No data fetched for {symbol}")
+            return None
+        latest_price = df['Adj Close'].iloc[-1]
+        return round(float(latest_price), 2)
+    except Exception as e:
+        print(f"Error fetching {symbol}: {e}")
+        return None
 
 def save_actual_data():
     ensure_data_folder()
