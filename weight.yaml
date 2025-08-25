@@ -1,9 +1,9 @@
 gold:
-  inflation: -1.0
-  real_rates: -0.5
-  bond_yields: -1.0
-  energy_prices: -1.0
-  usd_strength: 0.202666666666667
+  inflation: 0.02
+  real_rates: 0.024999999999999998
+  bond_yields: 0.045
+  energy_prices: 0.8
+  usd_strength: 0.8614748449345279
   liquidity: 0.1
   equity_flows: -0.05
   regulation: 0.0
@@ -13,11 +13,11 @@ gold:
   tail_risk_event: 0.05
   geopolitics: 0.05
 bitcoin:
-  inflation: -1.0
-  real_rates: -0.5
-  bond_yields: -1.0
-  energy_prices: -1.0
-  usd_strength: 0.202666666666667
+  inflation: 0.02
+  real_rates: 0.024999999999999998
+  bond_yields: 0.045
+  energy_prices: 0.8
+  usd_strength: 0.8614748449345279
   liquidity: 0.1
   equity_flows: -0.05
   regulation: 0.0
