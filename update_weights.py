@@ -4,24 +4,19 @@ import requests
 import yaml
 import numpy as np
 from datetime import datetime
+import xml.etree.ElementTree as ET
 
 WEIGHT_FILE = "weight.yaml"
 
 # ----------------------------
-# FRED fetcher (robust)
+# FRED fetcher (robust, fixed)
 # ----------------------------
 def fetch_fred_series(series_id):
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
-        df_raw = pd.read_csv(url, header=None)
-        # Find header row with 'DATE' and 'VALUE'
-        for i, row in df_raw.iterrows():
-            if 'DATE' in row.values and 'VALUE' in row.values:
-                header_idx = i
-                break
-        else:
-            raise ValueError("No header line found with DATE and VALUE")
-        df = pd.read_csv(url, header=header_idx)
+        df = pd.read_csv(url, header=0)
+        if 'DATE' not in df.columns or 'VALUE' not in df.columns:
+            raise ValueError("Unexpected CSV format, missing DATE or VALUE columns")
         df['VALUE'] = pd.to_numeric(df['VALUE'], errors='coerce')
         df = df[df['VALUE'].notna()]
         last_value = df['VALUE'].iloc[-1]
@@ -51,15 +46,12 @@ def fetch_ecb_usd_index():
         url = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
         r = requests.get(url, timeout=10)
         r.raise_for_status()
-        # Parse USD rate from XML
-        import xml.etree.ElementTree as ET
         root = ET.fromstring(r.content)
         ns = {"gesmes":"http://www.gesmes.org/xml/2002-08-01","ecb":"http://www.ecb.int/vocabulary/2002-08-01/eurofxref"}
         usd_rate = None
         for cube in root.findall(".//ecb:Cube[@currency='USD']", ns):
             usd_rate = float(cube.attrib['rate'])
         if usd_rate:
-            # normalize around 1 (USD strength vs EUR)
             return usd_rate
         return 0.0
     except Exception as e:
@@ -78,20 +70,17 @@ def normalize(value, min_val, max_val):
 # Update weights
 # ----------------------------
 def update_weights():
-    weights = {
-        "gold": {},
-        "bitcoin": {}
-    }
+    weights = {"gold": {}, "bitcoin": {}}
 
     # ----------------------------
-    # Macro indicators
+    # Macro indicators (live)
     # ----------------------------
     inflation = fetch_fred_series("CPIAUCSL")       # US CPI
     real_rate = fetch_fred_series("TB3MS")          # 3-mo T-bill
     bond_yield = fetch_fred_series("GS10")         # 10-yr yield
     energy_price = fetch_fred_series("DCOILBRENTEU") # Brent oil
 
-    # normalize based on reasonable ranges
+    # Normalize values
     weights_macro = {
         "inflation": normalize(inflation, 0, 15),
         "real_rates": normalize(real_rate, -5, 15),
@@ -100,8 +89,7 @@ def update_weights():
     }
 
     # ----------------------------
-    # Other indicators (simplified / placeholder)
-    # You can add dynamic news analysis for geopolitics, adoption, regulation, etc.
+    # Other indicators (simplified)
     # ----------------------------
     usd_strength = fetch_ecb_usd_index()
     weights_other = {
