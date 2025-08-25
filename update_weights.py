@@ -3,24 +3,30 @@ import pandas as pd
 import requests
 import yaml
 import numpy as np
-from datetime import datetime
+import io
 import xml.etree.ElementTree as ET
 
 WEIGHT_FILE = "weight.yaml"
 
 # ----------------------------
-# FRED fetcher (robust, fixed)
+# FRED fetcher (robust)
 # ----------------------------
 def fetch_fred_series(series_id):
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
-        df = pd.read_csv(url, header=0)
-        if 'DATE' not in df.columns or 'VALUE' not in df.columns:
-            raise ValueError("Unexpected CSV format, missing DATE or VALUE columns")
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        lines = r.text.splitlines()
+        # Find header line
+        header_index = next((i for i, line in enumerate(lines) if 'DATE' in line and 'VALUE' in line), None)
+        if header_index is None:
+            raise ValueError("No header line found with DATE and VALUE")
+        df = pd.read_csv(io.StringIO("\n".join(lines[header_index:])))
         df['VALUE'] = pd.to_numeric(df['VALUE'], errors='coerce')
         df = df[df['VALUE'].notna()]
-        last_value = df['VALUE'].iloc[-1]
-        return float(last_value)
+        if df.empty:
+            return 0.0
+        return float(df['VALUE'].iloc[-1])
     except Exception as e:
         print(f"Error fetching FRED series {series_id}: {e}")
         return 0.0
@@ -51,9 +57,7 @@ def fetch_ecb_usd_index():
         usd_rate = None
         for cube in root.findall(".//ecb:Cube[@currency='USD']", ns):
             usd_rate = float(cube.attrib['rate'])
-        if usd_rate:
-            return usd_rate
-        return 0.0
+        return usd_rate or 0.0
     except Exception as e:
         print(f"Error fetching ECB USD rate: {e}")
         return 0.0
@@ -75,10 +79,10 @@ def update_weights():
     # ----------------------------
     # Macro indicators (live)
     # ----------------------------
-    inflation = fetch_fred_series("CPIAUCSL")       # US CPI
-    real_rate = fetch_fred_series("TB3MS")          # 3-mo T-bill
-    bond_yield = fetch_fred_series("GS10")         # 10-yr yield
-    energy_price = fetch_fred_series("DCOILBRENTEU") # Brent oil
+    inflation = fetch_fred_series("CPIAUCSL")          # US CPI
+    real_rate = fetch_fred_series("TB3MS")             # 3-mo T-bill
+    bond_yield = fetch_fred_series("GS10")             # 10-yr yield
+    energy_price = fetch_fred_series("DCOILBRENTEU")   # Brent oil
 
     # Normalize values
     weights_macro = {
