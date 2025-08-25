@@ -23,17 +23,20 @@ def ensure_data_folder():
         print(f"Created {ACTUAL_FILE} with headers.")
 
 def fetch_latest_price(symbol):
-    """Fetch latest price from Yahoo Finance"""
-    try:
-        df = yf.download(symbol, period="1d", interval="1m", progress=False)
-        if df.empty:
-            print(f"No data fetched for {symbol}")
-            return None
-        latest_price = df['Adj Close'].iloc[-1]
-        return round(float(latest_price), 2)
-    except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
-        return None
+    """Fetch latest price from Yahoo Finance with fallback intervals"""
+    intervals = [("1d", "1m"), ("5d", "5m"), ("1mo", "1d")]
+    for period, interval in intervals:
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False)
+            if df.empty:
+                continue
+            latest_price = df['Adj Close'].iloc[-1]
+            if pd.notna(latest_price):
+                return round(float(latest_price), 2)
+        except Exception as e:
+            print(f"Error fetching {symbol} ({period}, {interval}): {e}")
+    print(f"Failed to fetch valid price for {symbol}")
+    return None
 
 def save_actual_data():
     ensure_data_folder()
@@ -42,11 +45,16 @@ def save_actual_data():
     gold_price = fetch_latest_price(ASSETS["Gold"])
     bitcoin_price = fetch_latest_price(ASSETS["Bitcoin"])
 
+    # Skip if both are missing
+    if gold_price is None and bitcoin_price is None:
+        print(f"[{timestamp}] Skipped writing row (no valid prices).")
+        return
+
     # Prepare row
     row = {
         "timestamp": timestamp,
-        "gold_actual": gold_price,
-        "bitcoin_actual": bitcoin_price
+        "gold_actual": gold_price if gold_price is not None else "",
+        "bitcoin_actual": bitcoin_price if bitcoin_price is not None else ""
     }
 
     # Append row to CSV safely
@@ -57,7 +65,7 @@ def save_actual_data():
 
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     df.to_csv(ACTUAL_FILE, index=False)
-    print(f"Saved actual prices at {timestamp}")
+    print(f"[{timestamp}] Saved actual prices: Gold={gold_price}, Bitcoin={bitcoin_price}")
 
 if __name__ == "__main__":
     save_actual_data()
