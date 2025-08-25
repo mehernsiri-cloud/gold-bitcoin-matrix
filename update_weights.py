@@ -27,12 +27,12 @@ def fetch_csv_last_value(url, value_col="VALUE"):
     try:
         df = pd.read_csv(url)
         if value_col not in df.columns:
-            # Fallback for non-standard CSVs
+            # fallback for non-standard CSVs
             df = df.iloc[:, :2]
-            df.columns = ["DATE", "VALUE"]
+            df.columns = ["DATE","VALUE"]
         df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
         df = df.dropna().sort_values("DATE")
-        return float(df.iloc[-1]["VALUE"])
+        return float(df.iloc[-1][value_col])
     except Exception as e:
         logging.warning(f"⚠️ Error fetching CSV {url}: {e}")
         return None
@@ -64,7 +64,7 @@ def normalize(value, ref=100.0):
 # Proxy calculations for sentiment indicators
 # ---------------------------
 
-def calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change):
+def calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change, inflation):
     """
     Simple dynamic proxies for non-macro indicators:
       regulation → proxy by VIX increase
@@ -102,7 +102,7 @@ def build_weights():
     vix_level = vix
 
     regulation, adoption, currency_instability, recession_probability, tail_risk_event, geopolitics = \
-        calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change)
+        calc_sentiment_proxies(sp500_change, vix_level, usd_change, oil_change, inflation)
 
     weights = {}
     for asset in ["gold","bitcoin"]:
