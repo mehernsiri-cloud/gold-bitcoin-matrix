@@ -16,7 +16,7 @@ def fetch_price_safe(ticker, period="1d"):
         if df.empty:
             print(f"⚠️ Warning: no price data for {ticker}")
             return None
-        return df["Close"].iloc[-1]
+        return float(df["Close"].iloc[-1])
     except Exception as e:
         print(f"⚠️ Error fetching {ticker}: {e}")
         return None
@@ -27,10 +27,10 @@ def fetch_news_sentiment_dummy(keyword):
 
 def normalize_value(value, min_val, max_val):
     """Normalize value to [-1, 1] safely"""
-    if value is None:
+    if value is None or not isinstance(value, (int, float, np.number)):
         return 0.0
     norm = (2 * (value - min_val) / (max_val - min_val)) - 1
-    return max(-1.0, min(1.0, norm))
+    return float(max(-1.0, min(1.0, norm)))
 
 def convert_to_python(obj):
     """Recursively convert numpy types to native Python and handle None"""
@@ -38,8 +38,8 @@ def convert_to_python(obj):
         return {k: convert_to_python(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [convert_to_python(v) for v in obj]
-    elif isinstance(obj, np.generic):
-        return obj.item()
+    elif isinstance(obj, (np.floating, np.integer)):
+        return float(obj)
     elif obj is None:
         return 0.0
     else:
@@ -57,7 +57,7 @@ def get_indicator_values():
         indicators[key] = fetch_news_sentiment_dummy(key)
 
     # Inflation: placeholder with safe fallback
-    cpi = fetch_price_safe("^CPI")
+    cpi = fetch_price_safe("^CPI")  # Use correct ticker or API
     indicators["inflation"] = normalize_value(cpi, 200, 350)
 
     # Real rates: 10y yield minus inflation
@@ -97,9 +97,9 @@ def get_indicator_values():
 def update_weights():
     if os.path.exists(WEIGHT_FILE):
         with open(WEIGHT_FILE, "r") as f:
-            weights = yaml.safe_load(f)
+            weights = yaml.safe_load(f) or {}
     else:
-        weights = {"gold": {}, "bitcoin": {}}
+        weights = {}
 
     new_values = get_indicator_values()
 
@@ -107,8 +107,9 @@ def update_weights():
         if asset not in weights:
             weights[asset] = {}
         for k, v in new_values.items():
-            weights[asset][k] = float(v)  # ensure float type
+            weights[asset][k] = float(v)  # ensure native float
 
+    # Final conversion to ensure no np types
     weights_safe = convert_to_python(weights)
 
     with open(WEIGHT_FILE, "w") as f:
