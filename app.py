@@ -160,6 +160,10 @@ with col1:
         display_gold = gold_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
+        # ----------------------
+        # Assumptions card moved here (BEFORE chart)
+        assumptions_card(gold_df, "Gold")
+
         # Chart
         fig_gold = px.line(
             gold_df,
@@ -169,9 +173,6 @@ with col1:
             title="Gold: Actual vs Predicted"
         )
         st.plotly_chart(fig_gold, use_container_width=True)
-
-        # Assumptions card
-        assumptions_card(gold_df, "Gold")
     else:
         st.info("No Gold data available yet.")
 
@@ -190,6 +191,10 @@ with col2:
         display_btc = btc_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
+        # ----------------------
+        # Assumptions card moved here (BEFORE chart)
+        assumptions_card(btc_df, "Bitcoin")
+
         # Chart
         fig_btc = px.line(
             btc_df,
@@ -199,8 +204,5 @@ with col2:
             title="Bitcoin: Actual vs Predicted"
         )
         st.plotly_chart(fig_btc, use_container_width=True)
-
-        # Assumptions card
-        assumptions_card(btc_df, "Bitcoin")
     else:
         st.info("No Bitcoin data available yet.")
