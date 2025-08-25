@@ -3,41 +3,49 @@ import pandas as pd
 import numpy as np
 import yaml
 from bs4 import BeautifulSoup
+from textblob import TextBlob
+
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 # ---------------------------
 # Helper functions
 # ---------------------------
 
-def get_cpi():
-    """Get US Inflation (CPI YoY %) from investing.com API (scraped)."""
-    url = "https://www.investing.com/economic-calendar/consumer-price-index-cpi-733"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+def safe_request(url):
     try:
-        val = soup.find("td", {"class": "bold"}).get_text()
-        return float(val.replace("%",""))
+        r = requests.get(url, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        return r.text
+    except Exception as e:
+        print(f"⚠️ Request failed for {url}: {e}")
+        return ""
+
+def get_cpi():
+    """Get US Inflation YoY from TradingEconomics."""
+    url = "https://tradingeconomics.com/united-states/inflation-cpi"
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
+    try:
+        val = soup.find("td", text="Inflation Rate YoY").find_next("td").get_text()
+        return float(val.replace("%","").strip())
     except Exception:
-        return 0.0
+        return 3.0  # fallback avg
 
 def get_bond_yield():
-    """Get US 10Y Treasury Yield from MarketWatch."""
-    url = "https://www.marketwatch.com/investing/bond/tmubmusd10y?mod=home-page"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    """US 10Y Treasury from MarketWatch (live)."""
+    url = "https://www.marketwatch.com/investing/bond/tmubmusd10y"
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     try:
         val = soup.find("bg-quote", {"class": "value"}).get_text()
         return float(val)
     except Exception:
-        return 0.0
+        return 3.5
 
 def get_usd_index():
-    """Get USD Index (DXY) from MarketWatch."""
     url = "https://www.marketwatch.com/investing/index/dxy"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     try:
         val = soup.find("bg-quote", {"class": "value"}).get_text()
         return float(val)
@@ -45,35 +53,31 @@ def get_usd_index():
         return 100.0
 
 def get_oil_price():
-    """Get Brent crude oil price from MarketWatch."""
     url = "https://www.marketwatch.com/investing/future/brn00"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     try:
         val = soup.find("bg-quote", {"class": "value"}).get_text()
         return float(val.replace(",", ""))
     except Exception:
-        return 0.0
+        return 70.0
 
 def get_liquidity_proxy():
-    """Use VIX index as proxy for liquidity/risk sentiment."""
+    """VIX index as liquidity proxy (inverse)."""
     url = "https://www.marketwatch.com/investing/index/vix"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     try:
         val = soup.find("bg-quote", {"class": "value"}).get_text()
-        return -float(val)  # higher VIX = lower liquidity
+        return -float(val)
     except Exception:
-        return 0.0
+        return -20.0
 
 def get_equity_flows_proxy():
-    """Use S&P500 daily % change as proxy for equity flows."""
+    """S&P500 daily % change as proxy for flows."""
     url = "https://www.marketwatch.com/investing/index/spx"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     try:
         val = soup.find("span", {"class": "change--percent--q"}).get_text()
         return float(val.replace("%", "").replace("+", "").strip()) / 100.0
@@ -81,26 +85,25 @@ def get_equity_flows_proxy():
         return 0.0
 
 def get_sentiment_news(keyword="regulation"):
-    """Scrape Google News headlines for simple keyword sentiment scoring."""
-    url = f"https://news.google.com/search?q={keyword}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    """Google News headlines → sentiment score via TextBlob."""
+    url = f"https://news.google.com/search?q={keyword}&hl=en-US&gl=US&ceid=US:en"
+    html = safe_request(url)
+    soup = BeautifulSoup(html, "html.parser")
     headlines = [a.get_text() for a in soup.find_all("a", {"class": "DY5T1d"})][:5]
-    score = 0
-    for h in headlines:
-        if any(word in h.lower() for word in ["ban", "crackdown", "restrict", "lawsuit"]):
-            score -= 0.2
-        if any(word in h.lower() for word in ["support", "approve", "adopt", "positive"]):
-            score += 0.2
-    return score
+    if not headlines:
+        return 0.0
+    polarity = np.mean([TextBlob(h).sentiment.polarity for h in headlines])
+    return round(polarity, 3)
 
 # ---------------------------
 # Main calculation
 # ---------------------------
 
 def normalize(value, ref=100.0):
-    return (value - ref) / ref
+    try:
+        return (value - ref) / abs(ref)
+    except Exception:
+        return 0.0
 
 def build_weights():
     inflation = get_cpi()
@@ -149,7 +152,6 @@ def build_weights():
             "geopolitics": geopolitics,
         }
     }
-
     return data
 
 # ---------------------------
