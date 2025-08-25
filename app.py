@@ -82,7 +82,7 @@ def merge_actual_pred(asset_name, actual_col):
 
     # Add assumptions and target horizon
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
-    asset_pred["target_horizon"] = "Days"  # You can modify per your model
+    asset_pred["target_horizon"] = "Days"  # Can be modified per model
 
     return asset_pred
 
@@ -133,16 +133,30 @@ def assumptions_card(asset_df, asset_name):
 
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
-    colors = ["green" if v>0 else "red" if v<0 else "yellow" for v in values]
+    colors = ["green" if v>0 else "red" if v<0 else "gray" for v in values]
 
-    fig = go.Figure([go.Bar(
-        x=indicators,
-        y=values,
-        marker_color=colors,
-        text=[f"{v:.2f}" for v in values],
-        textposition='auto'
-    )])
-    fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})", yaxis_title="Weight / Impact")
+    # Horizontal gauge-like bars
+    fig = go.Figure()
+    for i, val in enumerate(values):
+        fig.add_trace(go.Bar(
+            x=[abs(val)],
+            y=[indicators[i]],
+            orientation='h',
+            marker_color=colors[i],
+            text=[f"{val:.2f}"],
+            textposition='inside',
+            insidetextanchor='middle'
+        ))
+
+    fig.update_layout(
+        title=f"{asset_name} Assumptions & Target ({target_horizon})",
+        xaxis_title="Weight / Impact",
+        yaxis_title="Indicator",
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False),
+        height=300,
+        margin=dict(l=20,r=20,t=40,b=20)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
@@ -160,8 +174,7 @@ with col1:
         display_gold = gold_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
-        # ----------------------
-        # Assumptions card moved here (BEFORE chart)
+        # Assumptions card
         assumptions_card(gold_df, "Gold")
 
         # Chart
@@ -191,8 +204,7 @@ with col2:
         display_btc = btc_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
-        # ----------------------
-        # Assumptions card moved here (BEFORE chart)
+        # Assumptions card
         assumptions_card(btc_df, "Bitcoin")
 
         # Chart
