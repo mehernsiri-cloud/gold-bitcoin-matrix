@@ -80,7 +80,7 @@ st.title("📊 Gold & Bitcoin Market Dashboard")
 
 col1, col2 = st.columns(2)
 
-# Function to color Buy/Sell signals
+# Function to color Buy/Sell signals in the table
 def color_signal(val):
     if val == "Buy":
         color = "green"
@@ -88,15 +88,34 @@ def color_signal(val):
         color = "red"
     else:
         color = "gray"
-    return f'color: {color}; font-weight:bold'
+    return f'color: {color}; font-weight:bold; text-align:center'
 
-# Gold Section
+# Function to create a visual alert badge
+def alert_badge(signal):
+    if signal == "Buy":
+        return f'<div style="background-color:green;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
+    elif signal == "Sell":
+        return f'<div style="background-color:red;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
+    else:
+        return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
+
+# ------------------------------
+# GOLD SECTION
+# ------------------------------
 with col1:
     st.subheader("Gold")
     if not gold_df.empty:
-        trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
-        st.markdown(f"**Market Trend:** {trend}")
-        st.dataframe(gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].style.applymap(color_signal, subset=["signal"]))
+        last_signal = gold_df["signal"].iloc[-1]
+        st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+
+        last_trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
+        st.markdown(f"**Market Trend:** {last_trend}")
+
+        # Show only last 2 rows
+        display_gold = gold_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
+        st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
+
+        # Chart
         fig_gold = px.line(
             gold_df,
             x="timestamp",
@@ -108,13 +127,23 @@ with col1:
     else:
         st.info("No Gold data available yet.")
 
-# Bitcoin Section
+# ------------------------------
+# BITCOIN SECTION
+# ------------------------------
 with col2:
     st.subheader("Bitcoin")
     if not btc_df.empty:
-        trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
-        st.markdown(f"**Market Trend:** {trend}")
-        st.dataframe(btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].style.applymap(color_signal, subset=["signal"]))
+        last_signal = btc_df["signal"].iloc[-1]
+        st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+
+        last_trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] != "" else "Neutral ⚖️"
+        st.markdown(f"**Market Trend:** {last_trend}")
+
+        # Show only last 2 rows
+        display_btc = btc_df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
+        st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
+
+        # Chart
         fig_btc = px.line(
             btc_df,
             x="timestamp",
