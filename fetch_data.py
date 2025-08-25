@@ -23,13 +23,13 @@ def ensure_data_folder():
         print(f"Created {ACTUAL_FILE} with headers.")
 
 def fetch_latest_price(symbol):
-    """Fetch latest daily closing price from Yahoo Finance"""
+    """Fetch the latest daily closing price from Yahoo Finance"""
     try:
-        df = yf.download(symbol, period="5d", interval="1d", progress=False)
+        df = yf.download(symbol, period="7d", interval="1d", progress=False)
         if df.empty:
             print(f"No data fetched for {symbol}")
             return None
-        latest_price = df['Adj Close'].iloc[-1]
+        latest_price = df['Adj Close'].dropna().iloc[-1]
         return round(float(latest_price), 2)
     except Exception as e:
         print(f"Error fetching {symbol}: {e}")
@@ -42,9 +42,8 @@ def save_actual_data():
     gold_price = fetch_latest_price(ASSETS["Gold"])
     bitcoin_price = fetch_latest_price(ASSETS["Bitcoin"])
 
-    # Skip if both are missing
     if gold_price is None and bitcoin_price is None:
-        print(f"[{timestamp}] Skipped writing row (no valid prices).")
+        print(f"[{timestamp}] ❌ Skipped writing row (no valid prices).")
         return
 
     # Prepare row
@@ -54,7 +53,7 @@ def save_actual_data():
         "bitcoin_actual": bitcoin_price if bitcoin_price is not None else ""
     }
 
-    # Append row to CSV safely
+    # Append row to CSV
     if os.path.exists(ACTUAL_FILE):
         df = pd.read_csv(ACTUAL_FILE)
     else:
@@ -62,7 +61,7 @@ def save_actual_data():
 
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     df.to_csv(ACTUAL_FILE, index=False)
-    print(f"[{timestamp}] Saved actual prices: Gold={gold_price}, Bitcoin={bitcoin_price}")
+    print(f"[{timestamp}] ✅ Saved prices: Gold={gold_price}, Bitcoin={bitcoin_price}")
 
 if __name__ == "__main__":
     save_actual_data()
