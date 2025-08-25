@@ -1,6 +1,5 @@
 name: Hourly Predictions Update
 
-# Trigger every hour
 on:
   schedule:
     - cron: '0 * * * *'  # every hour at minute 0
@@ -28,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pandas yfinance requests pyyaml plotly textblob
+          pip install pandas yfinance requests pyyaml plotly textblob pytrends
 
       # 4. Ensure data folder exists
       - name: Create data folder if missing
@@ -58,6 +57,10 @@ jobs:
           git config --local user.name "GitHub Actions"
           git add data/predictions_log.csv data/actual_data.csv weight.yaml
           git commit -m "Hourly update" || echo "No changes to commit"
-          # Pull remote changes and rebase to avoid push rejection
-          git pull --rebase https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD
+
+          # Handle conflicts safely
+          git stash --include-untracked || true
+          git pull --rebase https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
+          git stash pop || true
+
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
