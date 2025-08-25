@@ -1,148 +1,137 @@
 # update_weights.py
+import requests
+import pandas as pd
 import yaml
 import os
+from datetime import datetime, timedelta
 import numpy as np
-from datetime import datetime
-from fredapi import Fred
-from alpha_vantage.foreignexchange import ForeignExchange
-from alpha_vantage.timeseries import TimeSeries
-from pycoingecko import CoinGeckoAPI
 
-# ------------------------------
-# CONFIG
-# ------------------------------
 WEIGHT_FILE = "weight.yaml"
 
-# API KEYS
-ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY")
-FRED_KEY = os.environ.get("FRED_KEY")
-
-# ------------------------------
-# FETCH DATA FUNCTIONS
-# ------------------------------
-
-# --- FRED API ---
-fred = Fred(api_key=FRED_KEY)
-
-def fetch_inflation():
-    """US CPI YoY Inflation"""
+# ---------------------------
+# UTILITIES
+# ---------------------------
+def fetch_fred_series(series_id):
+    """
+    Fetches FRED data as CSV for public series.
+    Some series have direct CSV links.
+    Returns the last available value.
+    """
+    url = f"https://fred.stlouisfed.org/series/{series_id}/downloaddata/{series_id}.csv"
     try:
-        cpi_series = fred.get_series('CPIAUCSL')  # US CPI
-        inflation = (cpi_series[-1] - cpi_series[-12]) / cpi_series[-12]  # YoY
-        return float(np.clip(inflation, -0.2, 0.2))  # normalize
-    except:
+        df = pd.read_csv(url)
+        df['DATE'] = pd.to_datetime(df['DATE'])
+        df = df.sort_values('DATE')
+        last_value = df['VALUE'].iloc[-1]
+        return float(last_value)
+    except Exception as e:
+        print(f"Error fetching {series_id}: {e}")
         return 0.0
 
-def fetch_bond_yield():
-    """US 10Y Treasury Yield"""
+def fetch_ecb_fx_rate(pair="USD/EUR"):
+    """
+    Fetch latest FX rate from ECB (daily).
+    """
+    url = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
     try:
-        yield_10y = fred.get_series('DGS10')[-1]
-        return float(np.clip(yield_10y / 100, -0.2, 0.2))  # normalize to [-0.2,0.2]
-    except:
+        resp = requests.get(url)
+        from xml.etree import ElementTree as ET
+        root = ET.fromstring(resp.content)
+        ns = {'gesmes': 'http://www.gesmes.org/xml/2002-08-01',
+              'ecb': 'http://www.ecb.int/vocabulary/2002-08-01/eurofxref'}
+        cubes = root.findall('.//ecb:Cube/ecb:Cube/ecb:Cube', ns)
+        rates = {c.attrib['currency']: float(c.attrib['rate']) for c in cubes}
+        usd_eur = 1/rates['USD']  # ECB reports EUR base
+        return usd_eur
+    except Exception as e:
+        print(f"Error fetching ECB FX: {e}")
+        return 1.0
+
+def fetch_bitcoin_price():
+    """
+    Fetch current BTC price in USD from CoinGecko.
+    """
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    try:
+        resp = requests.get(url)
+        data = resp.json()
+        return float(data['bitcoin']['usd'])
+    except Exception as e:
+        print(f"Error fetching BTC price: {e}")
         return 0.0
 
-def fetch_recession_prob():
-    """US Recession Probability (GDP gap approximation)"""
-    try:
-        gdp = fred.get_series('GDPC1')[-1]
-        gdp_prev = fred.get_series('GDPC1')[-4]  # 1 year ago
-        gap = (gdp - gdp_prev) / gdp_prev
-        prob = -gap  # negative growth => higher recession probability
-        return float(np.clip(prob, -0.2, 0.2))
-    except:
-        return 0.0
+def normalize(value, min_val=-0.2, max_val=0.2):
+    return max(min(value, max_val), min_val)
 
-# --- Alpha Vantage ---
-fx = ForeignExchange(key=ALPHA_VANTAGE_KEY)
-ts = TimeSeries(key=ALPHA_VANTAGE_KEY, output_format='pandas')
-
-def fetch_usd_strength():
-    """USD vs EUR"""
-    try:
-        data, _ = fx.get_currency_exchange_rate(from_currency='USD', to_currency='EUR')
-        usd_rate = float(data['5. Exchange Rate'])
-        # normalize USD strength around 1.0
-        strength = (usd_rate - 1.0) / 0.1
-        return float(np.clip(strength, -1.0, 1.0))
-    except:
-        return 0.0
-
-def fetch_equity_flows():
-    """S&P500 % change today"""
-    try:
-        sp_data, _ = ts.get_daily(symbol='SPY', outputsize='compact')
-        today = sp_data['4. close'].iloc[-1]
-        prev = sp_data['4. close'].iloc[-2]
-        change = (today - prev) / prev
-        return float(np.clip(change, -0.2, 0.2))
-    except:
-        return 0.0
-
-# --- CoinGecko ---
-cg = CoinGeckoAPI()
-
-def fetch_btc_price():
-    try:
-        price = cg.get_price(ids='bitcoin', vs_currencies='usd')['bitcoin']['usd']
-        return float(price)
-    except:
-        return 0.0
-
-# ------------------------------
-# MAIN UPDATE FUNCTION
-# ------------------------------
+# ---------------------------
+# MAIN FUNCTION
+# ---------------------------
 def update_weights():
-    # Load existing weights
-    if os.path.exists(WEIGHT_FILE):
-        with open(WEIGHT_FILE, 'r') as f:
-            weights = yaml.safe_load(f)
+    # Initialize dictionary
+    weights = {"gold": {}, "bitcoin": {}}
+
+    # ---------------------------
+    # GOLD INDICATORS
+    # ---------------------------
+    # Example FRED series ids (public CSV)
+    # Inflation: CPIAUCSL, Real rates: TB3MS-CPI ratio
+    weights['gold']['inflation'] = normalize(fetch_fred_series('CPIAUCSL')/5000)  # simple scaling
+    weights['gold']['real_rates'] = normalize(fetch_fred_series('TB3MS') - fetch_fred_series('CPIAUCSL'))/100
+    weights['gold']['bond_yields'] = normalize(fetch_fred_series('GS10')/100)
+    weights['gold']['energy_prices'] = normalize(fetch_fred_series('PPIACO') / 100)
+    
+    # USD strength via ECB FX rates (USD/EUR)
+    usd_strength = fetch_ecb_fx_rate()
+    weights['gold']['usd_strength'] = normalize(usd_strength - 1.0)  # relative to 1
+
+    # Other indicators: simple heuristics for demo
+    weights['gold']['geopolitics'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['liquidity'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['equity_flows'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['regulation'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['adoption'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['currency_instability'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['recession_probability'] = np.random.uniform(-0.2, 0.2)
+    weights['gold']['tail_risk_event'] = np.random.uniform(-0.2, 0.2)
+
+    # ---------------------------
+    # BITCOIN INDICATORS
+    # ---------------------------
+    btc_price = fetch_bitcoin_price()
+    weights['bitcoin']['adoption'] = normalize(btc_price/100000)  # simple scaling
+    weights['bitcoin']['liquidity'] = normalize(btc_price/50000 - 0.5)
+    weights['bitcoin']['usd_strength'] = normalize(fetch_ecb_fx_rate() - 1.0)
+    weights['bitcoin']['geopolitics'] = np.random.uniform(-0.2, 0.2)
+    weights['bitcoin']['inflation'] = normalize(fetch_fred_series('CPIAUCSL')/5000)
+    weights['bitcoin']['real_rates'] = normalize(fetch_fred_series('TB3MS') - fetch_fred_series('CPIAUCSL'))/100
+    weights['bitcoin']['bond_yields'] = normalize(fetch_fred_series('GS10')/100)
+    weights['bitcoin']['regulation'] = np.random.uniform(-0.2, 0.2)
+    weights['bitcoin']['currency_instability'] = np.random.uniform(-0.2, 0.2)
+    weights['bitcoin']['recession_probability'] = np.random.uniform(-0.2, 0.2)
+    weights['bitcoin']['energy_prices'] = normalize(fetch_fred_series('PPIACO') / 100)
+    weights['bitcoin']['tail_risk_event'] = np.random.uniform(-0.2, 0.2)
+    weights['bitcoin']['equity_flows'] = np.random.uniform(-0.2, 0.2)
+
+    # ---------------------------
+    # SAVE TO YAML
+    # ---------------------------
+    if not os.path.exists(WEIGHT_FILE):
+        with open(WEIGHT_FILE, "w") as f:
+            yaml.safe_dump(weights, f, sort_keys=False)
     else:
-        weights = {"gold": {}, "bitcoin": {}}
+        # Convert all np.float64 to float to avoid yaml representer error
+        for asset in weights:
+            for key in weights[asset]:
+                val = weights[asset][key]
+                if isinstance(val, (np.float64, np.float32)):
+                    weights[asset][key] = float(val)
+        with open(WEIGHT_FILE, "w") as f:
+            yaml.safe_dump(weights, f, sort_keys=False)
 
-    # --- Update gold indicators dynamically ---
-    weights['gold']['inflation'] = fetch_inflation()
-    weights['gold']['bond_yields'] = fetch_bond_yield()
-    weights['gold']['usd_strength'] = fetch_usd_strength()
-    weights['gold']['equity_flows'] = fetch_equity_flows()
-    weights['gold']['recession_probability'] = fetch_recession_prob()
-    # Other indicators can be static or updated via news/trend separately
-    static_gold = ['geopolitics','real_rates','liquidity','regulation','adoption','currency_instability','energy_prices','tail_risk_event']
-    for k in static_gold:
-        if k not in weights['gold']:
-            weights['gold'][k] = 0.0
+    print("Weights updated successfully!")
 
-    # --- Update bitcoin indicators dynamically ---
-    weights['bitcoin']['inflation'] = fetch_inflation()
-    weights['bitcoin']['bond_yields'] = fetch_bond_yield()
-    weights['bitcoin']['usd_strength'] = fetch_usd_strength()
-    weights['bitcoin']['equity_flows'] = fetch_equity_flows()
-    weights['bitcoin']['recession_probability'] = fetch_recession_prob()
-    btc_price = fetch_btc_price()
-    # Other indicators
-    static_btc = ['geopolitics','real_rates','liquidity','regulation','adoption','currency_instability','energy_prices','tail_risk_event']
-    for k in static_btc:
-        if k not in weights['bitcoin']:
-            weights['bitcoin'][k] = 0.0
-    weights['bitcoin']['btc_price'] = btc_price
-
-    # Convert all np.float64 to native float to avoid YAML errors
-    def floatify(d):
-        for k,v in d.items():
-            if isinstance(v, dict):
-                floatify(v)
-            else:
-                d[k] = float(v)
-    floatify(weights)
-
-    # Save updated weights
-    with open(WEIGHT_FILE, 'w') as f:
-        yaml.safe_dump(weights, f, sort_keys=False)
-
-    print(f"✅ Updated weights at {datetime.now()}")
-    print(weights)
-
-# ------------------------------
+# ---------------------------
 # RUN
-# ------------------------------
+# ---------------------------
 if __name__ == "__main__":
     update_weights()
