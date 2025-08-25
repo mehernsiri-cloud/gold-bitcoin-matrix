@@ -3,7 +3,6 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
-import plotly.graph_objects as go
 import yaml
 
 # ------------------------------
@@ -108,13 +107,19 @@ def color_signal(val):
         color = "gray"
     return f'color: {color}; font-weight:bold; text-align:center'
 
-def alert_badge(signal):
-    if signal == "Buy":
-        return f'<div style="background-color:green;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
+def alert_badge(signal, trend):
+    """Dynamic badge based on signal and trend"""
+    if signal == "Buy" and "Bullish" in trend:
+        color, text = "limegreen", "STRONG BUY"
+    elif signal == "Buy":
+        color, text = "green", "BUY"
+    elif signal == "Sell" and "Bearish" in trend:
+        color, text = "darkred", "STRONG SELL"
     elif signal == "Sell":
-        return f'<div style="background-color:red;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
+        color, text = "red", "SELL"
     else:
-        return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
+        color, text = "gray", "HOLD"
+    return f'<div style="background-color:{color};color:white;padding:10px;font-size:22px;text-align:center;border-radius:5px">{text}</div>'
 
 def assumptions_card(asset_df, asset_name):
     if asset_df.empty:
@@ -131,33 +136,18 @@ def assumptions_card(asset_df, asset_name):
         st.info(f"No assumptions available for {asset_name}")
         return
 
-    indicators = list(assumptions.keys())
-    values = [assumptions[k] for k in indicators]
-    colors = ["green" if v>0 else "red" if v<0 else "gray" for v in values]
+    # Color-coded for values
+    rows = []
+    for k,v in assumptions.items():
+        if v>0:
+            color = "#1f77b4"  # Blue
+        elif v<0:
+            color = "#ff7f0e"  # Orange
+        else:
+            color = "gray"
+        rows.append(f'<span style="color:{color};font-weight:bold">{k}: {v}</span>')
 
-    # Horizontal gauge-like bars
-    fig = go.Figure()
-    for i, val in enumerate(values):
-        fig.add_trace(go.Bar(
-            x=[abs(val)],
-            y=[indicators[i]],
-            orientation='h',
-            marker_color=colors[i],
-            text=[f"{val:.2f}"],
-            textposition='inside',
-            insidetextanchor='middle'
-        ))
-
-    fig.update_layout(
-        title=f"{asset_name} Assumptions & Target ({target_horizon})",
-        xaxis_title="Weight / Impact",
-        yaxis_title="Indicator",
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=False),
-        height=300,
-        margin=dict(l=20,r=20,t=40,b=20)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown(f"**{asset_name} Assumptions (Target: {target_horizon})**: {' | '.join(rows)}", unsafe_allow_html=True)
 
 # ------------------------------
 # GOLD SECTION
@@ -166,15 +156,15 @@ with col1:
     st.subheader("Gold")
     if not gold_df.empty:
         last_signal = gold_df["signal"].iloc[-1]
-        st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
         last_trend = gold_df["trend"].iloc[-1] if gold_df["trend"].iloc[-1] else "Neutral ⚖️"
+        st.markdown(alert_badge(last_signal, last_trend), unsafe_allow_html=True)
         st.markdown(f"**Market Trend:** {last_trend}")
 
         # Last 2 rows
         display_gold = gold_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
-        # Assumptions card
+        # Assumptions card before chart
         assumptions_card(gold_df, "Gold")
 
         # Chart
@@ -196,15 +186,15 @@ with col2:
     st.subheader("Bitcoin")
     if not btc_df.empty:
         last_signal = btc_df["signal"].iloc[-1]
-        st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
         last_trend = btc_df["trend"].iloc[-1] if btc_df["trend"].iloc[-1] else "Neutral ⚖️"
+        st.markdown(alert_badge(last_signal, last_trend), unsafe_allow_html=True)
         st.markdown(f"**Market Trend:** {last_trend}")
 
         # Last 2 rows
         display_btc = btc_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
-        # Assumptions card
+        # Assumptions card before chart
         assumptions_card(btc_df, "Bitcoin")
 
         # Chart
