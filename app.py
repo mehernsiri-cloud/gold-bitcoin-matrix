@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import plotly.express as px
 import plotly.graph_objects as go
 import yaml
 
@@ -45,7 +44,7 @@ else:
 # MERGE PREDICTIONS WITH ACTUALS
 # ------------------------------
 def merge_actual_pred(asset_name, actual_col):
-    asset_pred = df_pred[df_pred["asset"].str.lower() == asset_name.lower()].copy()
+    asset_pred = df_pred[df_pred["asset"] == asset_name].copy()
     if asset_pred.empty:
         return asset_pred
 
@@ -84,7 +83,7 @@ def merge_actual_pred(asset_name, actual_col):
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
     asset_pred["target_horizon"] = "Days"
 
-    # Target buy/sell price: realistic strategy
+    # Target buy/sell price
     asset_pred["target_price"] = asset_pred.apply(
         lambda row: row["actual"] if row["signal"]=="Buy" else (row["predicted_price"] if row["signal"]=="Sell" else row["actual"]),
         axis=1
@@ -99,16 +98,17 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 # LAYOUT
 # ------------------------------
 st.title("📊 Gold & Bitcoin Market Dashboard")
+
 col1, col2 = st.columns(2)
 
 # ------------------------------
-# FUNCTIONS
+# UTILS
 # ------------------------------
 def color_signal(val):
     if val == "Buy":
-        color = "#1f77b4"  # blue
+        color = "#1f77b4"
     elif val == "Sell":
-        color = "#ff7f0e"  # orange
+        color = "#ff7f0e"
     else:
         color = "gray"
     return f'color: {color}; font-weight:bold; text-align:center'
@@ -121,18 +121,29 @@ def alert_badge(signal):
     else:
         return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
 
-def target_price_card(price, asset_name):
-    st.markdown(f"""
-        <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
-        💰 {asset_name} Target Price: {price}
-        </div>
-        """, unsafe_allow_html=True)
+# Emoji mapping for indicators
+INDICATOR_ICONS = {
+    "inflation": "💹",
+    "real_rates": "🏦",
+    "bond_yields": "📈",
+    "energy_prices": "🛢️",
+    "usd_strength": "💵",
+    "liquidity": "💧",
+    "equity_flows": "📊",
+    "regulation": "🏛️",
+    "adoption": "🤝",
+    "currency_instability": "⚖️",
+    "recession_probability": "📉",
+    "tail_risk_event": "🚨",
+    "geopolitics": "🌍"
+}
 
-def assumptions_card(asset_df, asset_name, fig=None):
+def assumptions_card(asset_df, asset_name):
     if asset_df.empty:
         st.info(f"No assumptions available for {asset_name}")
         return
     assumptions_str = asset_df["assumptions"].iloc[-1]
+    target_horizon = asset_df["target_horizon"].iloc[-1]
     try:
         assumptions = eval(assumptions_str) if assumptions_str else {}
     except:
@@ -144,32 +155,29 @@ def assumptions_card(asset_df, asset_name, fig=None):
 
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
+    icons = [INDICATOR_ICONS.get(k,"❔") for k in indicators]
     colors = ["#1f77b4" if v>0 else "#ff7f0e" if v<0 else "gray" for v in values]
 
-    # Bar chart for indicator weights
-    fig_bar = go.Figure([go.Bar(
-        x=indicators,
-        y=values,
-        marker_color=colors,
-        text=[f"{v:.2f}" for v in values],
-        textposition='auto'
-    )])
-    fig_bar.update_layout(title=f"{asset_name} Assumptions & Target (Days)", yaxis_title="Weight / Impact")
-    st.plotly_chart(fig_bar, use_container_width=True)
+    fig = go.Figure()
+    for ind, val, icon, color in zip(indicators, values, icons, colors):
+        fig.add_trace(go.Bar(
+            x=[f"{icon} {ind}"],
+            y=[val],
+            marker_color=color,
+            text=[f"{val:.2f}"],
+            textposition='auto'
+        ))
 
-    # Add emojis on the price chart if provided
-    if fig is not None:
-        for i, ind in enumerate(indicators):
-            fig.add_annotation(
-                x=asset_df["timestamp"].iloc[-1],
-                y=asset_df["predicted_price"].iloc[-1],
-                text="📈" if values[i]>0 else "📉" if values[i]<0 else "⚖️",
-                showarrow=True,
-                arrowhead=2,
-                ax=0,
-                ay=-20*(i+1),
-                font=dict(size=16)
-            )
+    fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
+                      yaxis_title="Weight / Impact")
+    st.plotly_chart(fig, use_container_width=True)
+
+def target_price_card(price, asset_name):
+    st.markdown(f"""
+        <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
+        💰 {asset_name} Target Price: {price}
+        </div>
+        """, unsafe_allow_html=True)
 
 # ------------------------------
 # GOLD SECTION
@@ -187,15 +195,11 @@ with col1:
         display_gold = gold_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_gold.style.applymap(color_signal, subset=["signal"]))
 
-        # Gold chart
-        fig_gold = px.line(
-            gold_df,
-            x="timestamp",
-            y=["actual","predicted_price"],
-            labels={"value":"Gold Price","timestamp":"Timestamp"},
-            title="Gold: Actual vs Predicted"
-        )
-        assumptions_card(gold_df, "Gold", fig=fig_gold)
+        assumptions_card(gold_df, "Gold")
+
+        fig_gold = go.Figure()
+        fig_gold.add_trace(go.Scatter(x=gold_df["timestamp"], y=gold_df["actual"], mode="lines+markers", name="Actual"))
+        fig_gold.add_trace(go.Scatter(x=gold_df["timestamp"], y=gold_df["predicted_price"], mode="lines+markers", name="Predicted"))
         st.plotly_chart(fig_gold, use_container_width=True)
     else:
         st.info("No Gold data available yet.")
@@ -216,15 +220,11 @@ with col2:
         display_btc = btc_df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
         st.dataframe(display_btc.style.applymap(color_signal, subset=["signal"]))
 
-        # Bitcoin chart
-        fig_btc = px.line(
-            btc_df,
-            x="timestamp",
-            y=["actual","predicted_price"],
-            labels={"value":"Bitcoin Price","timestamp":"Timestamp"},
-            title="Bitcoin: Actual vs Predicted"
-        )
-        assumptions_card(btc_df, "Bitcoin", fig=fig_btc)
+        assumptions_card(btc_df, "Bitcoin")
+
+        fig_btc = go.Figure()
+        fig_btc.add_trace(go.Scatter(x=btc_df["timestamp"], y=btc_df["actual"], mode="lines+markers", name="Actual"))
+        fig_btc.add_trace(go.Scatter(x=btc_df["timestamp"], y=btc_df["predicted_price"], mode="lines+markers", name="Predicted"))
         st.plotly_chart(fig_btc, use_container_width=True)
     else:
         st.info("No Bitcoin data available yet.")
