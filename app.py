@@ -4,13 +4,11 @@ import pandas as pd
 import os
 import plotly.graph_objects as go
 import yaml
-import numpy as np
-from datetime import datetime, timedelta
 
 # ------------------------------
 # PAGE CONFIG
 # ------------------------------
-st.set_page_config(page_title="Gold, Bitcoin & Dubai Dashboard", layout="wide")
+st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
 
 # ------------------------------
 # DATA FILES
@@ -171,85 +169,87 @@ def assumptions_card(asset_df, asset_name):
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
-# SYNTHETIC DUBAI DATA
+# WHAT-IF SLIDERS WITH REAL VALUES
 # ------------------------------
-def generate_synthetic_dubai_data():
-    areas = ["Dubai Marina", "Downtown Dubai", "Business Bay", "Jumeirah Village Circle", "Deira"]
-    types = ["Studio", "1BR", "2BR", "3BR"]
-    rows = []
-    today = datetime.utcnow().date()
-    for a in areas:
-        for t in types:
-            avg_price = np.round(np.random.uniform(200000, 2000000), 2)
-            tx = int(np.random.uniform(5, 200))
-            rows.append([a, t, avg_price, tx, today])
-    df = pd.DataFrame(rows, columns=["area", "property_type", "avg_price", "transactions", "date"])
+st.sidebar.header("🔧 What-If Scenario")
+
+# Default values based on last predictions
+def get_default_assumption(df, key):
+    if df.empty:
+        return 0.0
+    try:
+        last_assumptions = eval(df["assumptions"].iloc[-1])
+        return last_assumptions.get(key, 0.0)
+    except:
+        return 0.0
+
+inflation_default = get_default_assumption(gold_df, "inflation") or 2.5
+usd_default = get_default_assumption(gold_df, "usd_strength") or 0.0
+oil_default = get_default_assumption(gold_df, "energy_prices") or 0.0
+vix_default = get_default_assumption(gold_df, "tail_risk_event") or 20.0
+
+inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, inflation_default, 0.1)
+usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, usd_default, 0.1)
+oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, oil_default, 0.1)
+vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, vix_default, 1.0)
+
+if st.sidebar.button("Reset to Predicted Values"):
+    inflation_adj = inflation_default
+    usd_adj = usd_default
+    oil_adj = oil_default
+    vix_adj = vix_default
+
+def apply_what_if(df):
+    if df.empty:
+        return df
+    adj = 1 + inflation_adj*0.01 - usd_adj*0.01 + oil_adj*0.01 - vix_adj*0.005
+    df = df.copy()
+    df["predicted_price"] = df["predicted_price"] * adj
+    df["target_price"] = df["predicted_price"]
     return df
 
-def generate_synthetic_population():
-    years = list(range(2010, datetime.utcnow().year + 1))
-    pop = [2000000 + (i - 2010) * 80000 for i in years]
-    return pd.DataFrame({"Year": years, "Population": pop})
+gold_df_adj = apply_what_if(gold_df)
+btc_df_adj = apply_what_if(btc_df)
 
 # ------------------------------
-# DUBAI DASHBOARD
+# MARKET SUMMARY
 # ------------------------------
-def dubai_dashboard():
-    st.title("🏙️ Dubai Real Estate Dashboard")
-    submenu = st.selectbox("Choose Category", ["Market Overview", "Prices", "Sales", "Market Health", "Population"])
-
-    df_market = generate_synthetic_dubai_data()
-    df_pop = generate_synthetic_population()
-
-    if submenu == "Market Overview":
-        st.subheader("📊 Market Overview")
-        avg_price = int(df_market["avg_price"].mean())
-        total_tx = int(df_market["transactions"].sum())
-        areas_covered = df_market["area"].nunique()
-        last_date = df_market["date"].max()
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Avg Price", f"{avg_price:,}")
-        col2.metric("Transactions (sum)", f"{total_tx:,}")
-        col3.metric("Areas Covered", areas_covered)
-        col4.metric("Last Update", str(last_date))
-
-    elif submenu == "Prices":
-        st.subheader("📈 Property Prices")
-        st.dataframe(df_market)
-    elif submenu == "Sales":
-        st.subheader("💰 Sales & Transactions")
-        sales_agg = df_market.groupby("area", as_index=False).transactions.sum().sort_values("transactions", ascending=False)
-        st.dataframe(sales_agg)
-    elif submenu == "Market Health":
-        st.subheader("🩺 Market Health")
-        # Simple synthetic score
-        avg_price = df_market["avg_price"].mean()
-        total_tx = df_market["transactions"].sum()
-        score = max(0, min(100, 50 + (avg_price/2000000)*20 - np.log1p(total_tx)))
-        st.metric("Market Health Score (0 worst → 100 best)", f"{int(score)}")
-    elif submenu == "Population":
-        st.subheader("👥 Population")
-        st.dataframe(df_pop)
+def generate_summary(asset_df, asset_name):
+    if asset_df.empty:
+        return f"No data for {asset_name}"
+    last_row = asset_df.iloc[-1]
+    summary = f"**{asset_name} Market Summary:** "
+    summary += f"Signal: {last_row['signal']} | Trend: {last_row['trend']} | Target Price: {last_row['target_price']}"
+    return summary
 
 # ------------------------------
-# MAIN MENU
+# LAYOUT
 # ------------------------------
-menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Dubai Real Estate"])
+st.title("📊 Gold & Bitcoin Market Dashboard")
+col1, col2 = st.columns(2)
 
-if menu == "Gold & Bitcoin":
-    st.title("📊 Gold & Bitcoin Market Dashboard")
-    col1, col2 = st.columns(2)
-    for col, df, name in zip([col1, col2], [gold_df, btc_df], ["Gold", "Bitcoin"]):
-        with col:
-            st.subheader(name)
-            if not df.empty:
-                last_signal = df["signal"].iloc[-1]
-                st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
-                last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
-                st.markdown(f"**Market Trend:** {last_trend}")
-                target_price_card(df["target_price"].iloc[-1], name)
-                assumptions_card(df, name)
-            else:
-                st.info(f"No {name} data available yet.")
-elif menu == "Dubai Real Estate":
-    dubai_dashboard()
+for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
+    with col:
+        st.subheader(name)
+        if not df.empty:
+            last_signal = df["signal"].iloc[-1]
+            st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+            last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
+            st.markdown(f"**Market Trend:** {last_trend}")
+
+            # Market summary immediately after trend
+            st.markdown(generate_summary(df, name))
+
+            target_price_card(df["target_price"].iloc[-1], name)
+
+            display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
+            st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+
+            assumptions_card(df, name)
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
+            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No {name} data available yet.")
