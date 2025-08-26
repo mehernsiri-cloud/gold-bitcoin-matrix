@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 # ------------------------------
 # PAGE CONFIG
 # ------------------------------
-st.set_page_config(page_title="Gold, Bitcoin & LinkedIn Jobs Dashboard", layout="wide")
+st.set_page_config(page_title="Gold, Bitcoin & Jobs Dashboard", layout="wide")
 
 # ------------------------------
 # DATA FILES
@@ -224,63 +224,70 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# LINKEDIN JOBS MODULE
+# REMOTEOK JOBS MODULE
 # ------------------------------
-def fetch_linkedin_jobs(keywords, max_results=10):
+def fetch_remote_jobs(keywords, max_results=5):
     """
-    Fetch latest jobs from LinkedIn via Google search (site:linkedin.com/jobs).
-    Legal because it uses public Google search pages.
+    Fetch remote jobs from RemoteOK by keyword.
+    Returns a DataFrame with title, company, location, date, link.
     """
-    jobs = []
+    all_jobs = []
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
     for kw in keywords:
-        query = f"site:linkedin.com/jobs {kw}"
-        url = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={max_results}"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        kw_url = kw.strip().lower().replace(" ", "-")
+        url = f"https://remoteok.com/remote-{kw_url}-jobs"
         try:
             r = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(r.text, "html.parser")
-            for g in soup.find_all("div", class_="tF2Cxc")[:max_results]:
-                title_tag = g.find("h3")
-                link_tag = g.find("a")
-                snippet_tag = g.find("div", class_="IsZvec")
-                if title_tag and link_tag:
-                    jobs.append({
+            job_cards = soup.find_all("tr", class_="job")[:max_results]
+            
+            for job in job_cards:
+                title_tag = job.find("h2", {"itemprop": "title"})
+                company_tag = job.find("h3", {"itemprop": "name"})
+                location_tag = job.find("div", class_="location")
+                date_tag = job.find("time")
+                link_tag = job.find("a", class_="preventLink")
+                
+                if title_tag and company_tag and link_tag:
+                    all_jobs.append({
                         "keyword": kw,
                         "title": title_tag.text.strip(),
-                        "company": snippet_tag.text.strip().split("-")[0] if snippet_tag else "",
-                        "location": snippet_tag.text.strip().split("-")[-1] if snippet_tag else "",
-                        "link": link_tag["href"]
+                        "company": company_tag.text.strip(),
+                        "location": location_tag.text.strip() if location_tag else "Remote",
+                        "date": date_tag["datetime"] if date_tag else "",
+                        "link": "https://remoteok.com" + link_tag["href"]
                     })
         except:
             continue
-    return pd.DataFrame(jobs)
 
-def linkedin_dashboard():
-    st.title("💼 LinkedIn Jobs Dashboard")
+    if not all_jobs:
+        # fallback synthetic data
+        all_jobs = [
+            {"keyword":"Data Scientist","title":"Senior Data Scientist","company":"TechCorp","location":"Remote","date":"","link":"https://remoteok.com/remote-jobs/1"},
+            {"keyword":"Product Manager","title":"Product Manager - AI","company":"InnoLabs","location":"Remote","date":"","link":"https://remoteok.com/remote-jobs/2"}
+        ]
+    return pd.DataFrame(all_jobs)
+
+def jobs_dashboard():
+    st.title("💼 Remote Jobs Dashboard (Powered by RemoteOK)")
     keywords = st.text_area("Enter job keywords (comma-separated)", "Data Scientist, Product Manager").split(",")
     keywords = [k.strip() for k in keywords if k.strip()]
-    
+
     if st.button("Fetch Latest Jobs"):
         with st.spinner("Fetching jobs..."):
-            df_jobs = fetch_linkedin_jobs(keywords)
+            df_jobs = fetch_remote_jobs(keywords, max_results=5)
             if not df_jobs.empty:
-                st.dataframe(df_jobs[["keyword","title","company","location","link"]])
+                # Make titles clickable
+                df_jobs["title"] = df_jobs.apply(lambda row: f"[{row['title']}]({row['link']})", axis=1)
+                st.dataframe(df_jobs[["keyword","title","company","location","date"]])
             else:
-                # Fallback synthetic data
-                df_jobs = pd.DataFrame({
-                    "keyword": ["Data Scientist", "Product Manager"],
-                    "title": ["Senior Data Scientist", "Product Manager - AI"],
-                    "company": ["TechCorp", "InnoLabs"],
-                    "location": ["Dubai, UAE", "Dubai, UAE"],
-                    "link": ["https://linkedin.com/jobs/view/123","https://linkedin.com/jobs/view/456"]
-                })
                 st.info("No live jobs found. Showing synthetic example.")
-                st.dataframe(df_jobs)
 
 # ------------------------------
 # MAIN MENU
 # ------------------------------
-menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "LinkedIn Jobs"])
+menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Jobs"])
 
 if menu == "Gold & Bitcoin":
     st.title("📊 Gold & Bitcoin Market Dashboard")
@@ -305,5 +312,5 @@ if menu == "Gold & Bitcoin":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
-elif menu == "LinkedIn Jobs":
-    linkedin_dashboard()
+elif menu == "Jobs":
+    jobs_dashboard()
