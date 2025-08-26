@@ -52,17 +52,16 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=50, remote_on
             job_location = clean_text(job.get("location", {}).get("display_name", ""))
             company = clean_text(job.get("company", {}).get("display_name", ""))
             created = job.get("created", "")
-            if created:
-                job_date = datetime.strptime(created.split("T")[0], "%Y-%m-%d")
-            else:
-                job_date = None
-            # filter by remote, company, and last_n_days
+            job_date = datetime.strptime(created.split("T")[0], "%Y-%m-%d") if created else None
+
+            # Apply filters
             if remote_only and "remote" not in job_location.lower():
                 continue
             if company_filter and company_filter.lower() not in company.lower():
                 continue
             if job_date and job_date < cutoff_date:
                 continue
+
             jobs.append({
                 "title": clean_text(job.get("title")),
                 "company": company,
@@ -70,7 +69,6 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=50, remote_on
                 "date": job_date,
                 "link": job.get("redirect_url")
             })
-        # sort by date descending
         df_jobs = pd.DataFrame(jobs)
         if not df_jobs.empty:
             df_jobs = df_jobs.sort_values("date", ascending=False)
@@ -79,11 +77,12 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=50, remote_on
         return pd.DataFrame([])
 
 # ------------------------------
-# JOB DASHBOARD FUNCTION
+# TRELLLO-STYLE JOB DASHBOARD
 # ------------------------------
 def jobs_dashboard():
-    st.title("💼 Jobs Dashboard (Recent & Open)")
+    st.title("💼 Jobs Dashboard (Trello Style)")
 
+    # Sidebar filters
     st.sidebar.header("Job Filters")
     location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
     remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
@@ -93,27 +92,34 @@ def jobs_dashboard():
     selected_category = st.sidebar.selectbox("📌 Select Job Category", list(CATEGORIES.keys()))
     st.markdown(f"### 🌍 Showing jobs in **{location_choice}** for category **{selected_category}**")
 
-    kws = CATEGORIES[selected_category]
-    found_any = False
-    for kw in kws:
-        df_jobs = fetch_jobs_adzuna(
-            kw,
-            LOCATIONS[location_choice],
-            location_choice,
-            max_results=50,
-            remote_only=remote_only,
-            company_filter=company_filter if company_filter else None,
-            last_n_days=last_n_days
-        )
-        if not df_jobs.empty:
-            found_any = True
-            for _, job in df_jobs.iterrows():
-                st.markdown(f"""
-                    <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
-                        <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
-                        <span style='color:gray'>{job['company']} | {job['location']}</span><br>
-                        <span style='color:#888'>📅 {job['date'].strftime("%Y-%m-%d")}</span>
-                    </div>
-                """, unsafe_allow_html=True)
-    if not found_any:
-        st.info(f"No recent jobs found for {selected_category} in {location_choice}.")
+    keywords = CATEGORIES[selected_category]
+
+    # Create columns for Trello style
+    cols = st.columns(len(keywords))
+    for col, kw in zip(cols, keywords):
+        with col:
+            st.markdown(f"<div style='background-color:#004080;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold'>📌 {kw}</div>", unsafe_allow_html=True)
+            
+            df_jobs = fetch_jobs_adzuna(
+                kw,
+                LOCATIONS[location_choice],
+                location_choice,
+                max_results=50,
+                remote_only=remote_only,
+                company_filter=company_filter if company_filter else None,
+                last_n_days=last_n_days
+            )
+            
+            if not df_jobs.empty:
+                for _, job in df_jobs.iterrows():
+                    job_date_str = job['date'].strftime("%Y-%m-%d") if job['date'] else "N/A"
+                    st.markdown(f"""
+                        <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
+                            <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
+                            <span style='color:gray'>{job['company']} | {job['location']}</span><br>
+                            <span style='color:#888'>📅 {job_date_str}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No recent jobs found.")
+
