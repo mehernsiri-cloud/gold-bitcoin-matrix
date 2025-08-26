@@ -199,21 +199,25 @@ CATEGORIES = {
     "Supply": ["WMS", "Manhattan Associate", "Supply chain project manager"]
 }
 
-LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Worldwide"]
+LOCATIONS = {
+    "France": "fr",
+    "Dubai": "ae",
+    "Luxembourg": "lu",
+    "Switzerland": "ch",
+    "Worldwide": "gb"  # fallback to UK for international jobs
+}
 
-ADZUNA_APP_ID = "YOUR_ADZUNA_APP_ID"
-ADZUNA_APP_KEY = "YOUR_ADZUNA_APP_KEY"
-ADZUNA_COUNTRY = "fr"  # default, can adapt per location
+ADZUNA_APP_ID = "2c269bb8"
+ADZUNA_APP_KEY = "39be78e26991e138d40ce4313620aebb"
 
-def fetch_jobs_adzuna(keyword, location, max_results=5):
-    url = f"https://api.adzuna.com/v1/api/jobs/{ADZUNA_COUNTRY}/search/1"
+def fetch_jobs_adzuna(keyword, country_code, location, max_results=5):
+    url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
     params = {
         "app_id": ADZUNA_APP_ID,
         "app_key": ADZUNA_APP_KEY,
         "results_per_page": max_results,
         "what": keyword,
         "where": location if location != "Worldwide" else "",
-        "full_time": "1",
         "content-type": "application/json"
     }
     try:
@@ -240,8 +244,9 @@ def jobs_dashboard():
             for cat, kws in CATEGORIES.items():
                 st.subheader(f"📌 {cat} Jobs")
                 for kw in kws:
-                    for loc in LOCATIONS:
-                        df_jobs = fetch_jobs_adzuna(kw, loc, max_results=5)
+                    st.markdown(f"### 🔑 {kw}")
+                    for loc_name, country_code in LOCATIONS.items():
+                        df_jobs = fetch_jobs_adzuna(kw, country_code, loc_name, max_results=5)
                         if not df_jobs.empty:
                             for _, job in df_jobs.iterrows():
                                 st.markdown(f"""
@@ -251,7 +256,7 @@ def jobs_dashboard():
                                     </div>
                                 """, unsafe_allow_html=True)
                         else:
-                            st.info(f"No {kw} jobs found in {loc}.")
+                            st.info(f"No {kw} jobs found in {loc_name}.")
 
 # ------------------------------
 # MAIN MENU
