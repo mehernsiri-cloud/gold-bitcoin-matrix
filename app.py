@@ -223,7 +223,7 @@ CATEGORIES = {
     "Supply": ["WMS", "Manhattan Associate", "Supply chain project manager"]
 }
 
-LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Remote"]
+LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Worldwide"]
 
 # ------------------------------
 # FETCH JOBS (LinkedIn via Google search)
@@ -261,7 +261,7 @@ def fetch_jobs_google(keywords, locations, max_results=5):
 # ------------------------------
 def jobs_dashboard():
     st.title("💼 Jobs Dashboard")
-    st.info("Fetching last 5 jobs per category and location (France, Dubai, Luxembourg, Switzerland, Remote)")
+    st.info("Fetching last 5 jobs per category and location (France, Dubai, Luxembourg, Switzerland, Worldwide)")
 
     if st.button("Fetch Latest Jobs"):
         with st.spinner("Fetching jobs..."):
