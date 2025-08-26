@@ -4,11 +4,13 @@ import pandas as pd
 import os
 import plotly.graph_objects as go
 import yaml
+import requests
+from bs4 import BeautifulSoup
 
 # ------------------------------
 # PAGE CONFIG
 # ------------------------------
-st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
+st.set_page_config(page_title="Gold, Bitcoin & LinkedIn Jobs Dashboard", layout="wide")
 
 # ------------------------------
 # DATA FILES
@@ -173,7 +175,6 @@ def assumptions_card(asset_df, asset_name):
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
-# Default values based on last predictions
 def get_default_assumption(df, key):
     if df.empty:
         return 0.0
@@ -223,33 +224,86 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# LAYOUT
+# LINKEDIN JOBS MODULE
 # ------------------------------
-st.title("📊 Gold & Bitcoin Market Dashboard")
-col1, col2 = st.columns(2)
+def fetch_linkedin_jobs(keywords, max_results=10):
+    """
+    Fetch latest jobs from LinkedIn via Google search (site:linkedin.com/jobs).
+    Legal because it uses public Google search pages.
+    """
+    jobs = []
+    for kw in keywords:
+        query = f"site:linkedin.com/jobs {kw}"
+        url = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={max_results}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, "html.parser")
+            for g in soup.find_all("div", class_="tF2Cxc")[:max_results]:
+                title_tag = g.find("h3")
+                link_tag = g.find("a")
+                snippet_tag = g.find("div", class_="IsZvec")
+                if title_tag and link_tag:
+                    jobs.append({
+                        "keyword": kw,
+                        "title": title_tag.text.strip(),
+                        "company": snippet_tag.text.strip().split("-")[0] if snippet_tag else "",
+                        "location": snippet_tag.text.strip().split("-")[-1] if snippet_tag else "",
+                        "link": link_tag["href"]
+                    })
+        except:
+            continue
+    return pd.DataFrame(jobs)
 
-for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
-    with col:
-        st.subheader(name)
-        if not df.empty:
-            last_signal = df["signal"].iloc[-1]
-            st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
-            last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
-            st.markdown(f"**Market Trend:** {last_trend}")
+def linkedin_dashboard():
+    st.title("💼 LinkedIn Jobs Dashboard")
+    keywords = st.text_area("Enter job keywords (comma-separated)", "Data Scientist, Product Manager").split(",")
+    keywords = [k.strip() for k in keywords if k.strip()]
+    
+    if st.button("Fetch Latest Jobs"):
+        with st.spinner("Fetching jobs..."):
+            df_jobs = fetch_linkedin_jobs(keywords)
+            if not df_jobs.empty:
+                st.dataframe(df_jobs[["keyword","title","company","location","link"]])
+            else:
+                # Fallback synthetic data
+                df_jobs = pd.DataFrame({
+                    "keyword": ["Data Scientist", "Product Manager"],
+                    "title": ["Senior Data Scientist", "Product Manager - AI"],
+                    "company": ["TechCorp", "InnoLabs"],
+                    "location": ["Dubai, UAE", "Dubai, UAE"],
+                    "link": ["https://linkedin.com/jobs/view/123","https://linkedin.com/jobs/view/456"]
+                })
+                st.info("No live jobs found. Showing synthetic example.")
+                st.dataframe(df_jobs)
 
-            # Market summary immediately after trend
-            st.markdown(generate_summary(df, name))
+# ------------------------------
+# MAIN MENU
+# ------------------------------
+menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "LinkedIn Jobs"])
 
-            target_price_card(df["target_price"].iloc[-1], name)
+if menu == "Gold & Bitcoin":
+    st.title("📊 Gold & Bitcoin Market Dashboard")
+    col1, col2 = st.columns(2)
 
-            display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
-            st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
-
-            assumptions_card(df, name)
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
-            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info(f"No {name} data available yet.")
+    for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
+        with col:
+            st.subheader(name)
+            if not df.empty:
+                last_signal = df["signal"].iloc[-1]
+                st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+                last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
+                st.markdown(f"**Market Trend:** {last_trend}")
+                st.markdown(generate_summary(df, name))
+                target_price_card(df["target_price"].iloc[-1], name)
+                display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
+                st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+                assumptions_card(df, name)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"No {name} data available yet.")
+elif menu == "LinkedIn Jobs":
+    linkedin_dashboard()
