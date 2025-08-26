@@ -5,7 +5,6 @@ import os
 import plotly.graph_objects as go
 import yaml
 import requests
-from bs4 import BeautifulSoup
 
 # ------------------------------
 # PAGE CONFIG
@@ -166,30 +165,10 @@ def assumptions_card(asset_df, asset_name):
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
-def get_default_assumption(df, key):
-    if df.empty:
-        return 0.0
-    try:
-        last_assumptions = eval(df["assumptions"].iloc[-1])
-        return last_assumptions.get(key, 0.0)
-    except:
-        return 0.0
-
-inflation_default = get_default_assumption(gold_df, "inflation") or 2.5
-usd_default = get_default_assumption(gold_df, "usd_strength") or 0.0
-oil_default = get_default_assumption(gold_df, "energy_prices") or 0.0
-vix_default = get_default_assumption(gold_df, "tail_risk_event") or 20.0
-
-inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, inflation_default, 0.1)
-usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, usd_default, 0.1)
-oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, oil_default, 0.1)
-vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, vix_default, 1.0)
-
-if st.sidebar.button("Reset to Predicted Values"):
-    inflation_adj = inflation_default
-    usd_adj = usd_default
-    oil_adj = oil_default
-    vix_adj = vix_default
+inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, 2.5, 0.1)
+usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, 0.0, 0.1)
+oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, 0.0, 0.1)
+vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, 20.0, 1.0)
 
 def apply_what_if(df):
     if df.empty:
@@ -203,9 +182,6 @@ def apply_what_if(df):
 gold_df_adj = apply_what_if(gold_df)
 btc_df_adj = apply_what_if(btc_df)
 
-# ------------------------------
-# MARKET SUMMARY
-# ------------------------------
 def generate_summary(asset_df, asset_name):
     if asset_df.empty:
         return f"No data for {asset_name}"
@@ -215,7 +191,7 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# JOB DASHBOARD CONFIG
+# JOB DASHBOARD CONFIG (Adzuna)
 # ------------------------------
 CATEGORIES = {
     "HR": ["HCM", "HR", "Workday", "SAP SuccessFactors", "HRIS", "RH", "SIRH"],
@@ -225,40 +201,36 @@ CATEGORIES = {
 
 LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Worldwide"]
 
-# ------------------------------
-# FETCH JOBS (LinkedIn via Google search)
-# ------------------------------
-def fetch_jobs_google(keywords, locations, max_results=5):
-    all_jobs = []
-    headers = {"User-Agent": "Mozilla/5.0"}
+ADZUNA_APP_ID = "YOUR_ADZUNA_APP_ID"
+ADZUNA_APP_KEY = "YOUR_ADZUNA_APP_KEY"
+ADZUNA_COUNTRY = "fr"  # default, can adapt per location
 
-    for kw in keywords:
-        for loc in locations:
-            query = f"site:linkedin.com/jobs {kw} {loc}"
-            url = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={max_results}"
-            try:
-                r = requests.get(url, headers=headers, timeout=10)
-                soup = BeautifulSoup(r.text, "html.parser")
-                for g in soup.find_all("div", class_="tF2Cxc")[:max_results]:
-                    title_tag = g.find("h3")
-                    link_tag = g.find("a")
-                    snippet_tag = g.find("div", class_="IsZvec")
-                    if title_tag and link_tag:
-                        all_jobs.append({
-                            "keyword": kw,
-                            "title": title_tag.text.strip(),
-                            "company": snippet_tag.text.strip().split("-")[0] if snippet_tag else "",
-                            "location": snippet_tag.text.strip().split("-")[-1] if snippet_tag else loc,
-                            "link": link_tag["href"]
-                        })
-            except:
-                continue
+def fetch_jobs_adzuna(keyword, location, max_results=5):
+    url = f"https://api.adzuna.com/v1/api/jobs/{ADZUNA_COUNTRY}/search/1"
+    params = {
+        "app_id": ADZUNA_APP_ID,
+        "app_key": ADZUNA_APP_KEY,
+        "results_per_page": max_results,
+        "what": keyword,
+        "where": location if location != "Worldwide" else "",
+        "full_time": "1",
+        "content-type": "application/json"
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        data = resp.json()
+        jobs = []
+        for job in data.get("results", []):
+            jobs.append({
+                "title": job.get("title"),
+                "company": job.get("company", {}).get("display_name", ""),
+                "location": job.get("location", {}).get("display_name", ""),
+                "link": job.get("redirect_url")
+            })
+        return pd.DataFrame(jobs)
+    except:
+        return pd.DataFrame([])
 
-    return pd.DataFrame(all_jobs)
-
-# ------------------------------
-# JOBS DASHBOARD
-# ------------------------------
 def jobs_dashboard():
     st.title("💼 Jobs Dashboard")
     st.info("Fetching last 5 jobs per category and location (France, Dubai, Luxembourg, Switzerland, Worldwide)")
@@ -267,23 +239,19 @@ def jobs_dashboard():
         with st.spinner("Fetching jobs..."):
             for cat, kws in CATEGORIES.items():
                 st.subheader(f"📌 {cat} Jobs")
-                df_jobs = fetch_jobs_google(kws, LOCATIONS, max_results=5)
-                if not df_jobs.empty:
-                    for kw in kws:
-                        kw_jobs = df_jobs[df_jobs["keyword"].str.lower()==kw.lower()].head(5)
-                        if not kw_jobs.empty:
-                            cols = st.columns(len(kw_jobs))
-                            for col, (_, job) in zip(cols, kw_jobs.iterrows()):
-                                col.markdown(f"""
+                for kw in kws:
+                    for loc in LOCATIONS:
+                        df_jobs = fetch_jobs_adzuna(kw, loc, max_results=5)
+                        if not df_jobs.empty:
+                            for _, job in df_jobs.iterrows():
+                                st.markdown(f"""
                                     <div style='background-color:#f0f2f6;padding:10px;border-radius:8px;margin-bottom:8px'>
                                     <b><a href="{job['link']}" target="_blank">{job['title']}</a></b><br>
                                     <span style='color:gray'>{job['company']} | {job['location']}</span>
                                     </div>
                                 """, unsafe_allow_html=True)
                         else:
-                            st.info(f"No {kw} jobs found.")
-                else:
-                    st.info(f"No jobs found for category {cat}.")
+                            st.info(f"No {kw} jobs found in {loc}.")
 
 # ------------------------------
 # MAIN MENU
