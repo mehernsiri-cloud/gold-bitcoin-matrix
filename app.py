@@ -165,10 +165,30 @@ def assumptions_card(asset_df, asset_name):
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
-inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, 2.5, 0.1)
-usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, 0.0, 0.1)
-oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, 0.0, 0.1)
-vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, 20.0, 1.0)
+# Default values based on last predictions
+def get_default_assumption(df, key):
+    if df.empty:
+        return 0.0
+    try:
+        last_assumptions = eval(df["assumptions"].iloc[-1])
+        return last_assumptions.get(key, 0.0)
+    except:
+        return 0.0
+inflation_default = get_default_assumption(gold_df, "inflation") or 2.5
+usd_default = get_default_assumption(gold_df, "usd_strength") or 0.0
+oil_default = get_default_assumption(gold_df, "energy_prices") or 0.0
+vix_default = get_default_assumption(gold_df, "tail_risk_event") or 20.0
+
+inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, inflation_default, 0.1)
+usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, usd_default, 0.1)
+oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, oil_default, 0.1)
+vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, vix_default, 1.0)
+
+if st.sidebar.button("Reset to Predicted Values"):
+    inflation_adj = inflation_default
+    usd_adj = usd_default
+    oil_adj = oil_default
+    vix_adj = vix_default
 
 def apply_what_if(df):
     if df.empty:
