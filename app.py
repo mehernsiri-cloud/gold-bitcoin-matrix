@@ -46,19 +46,10 @@ else:
 # EMOJI MAPPING
 # ------------------------------
 INDICATOR_ICONS = {
-    "inflation": "💹",
-    "real_rates": "🏦",
-    "bond_yields": "📈",
-    "energy_prices": "🛢️",
-    "usd_strength": "💵",
-    "liquidity": "💧",
-    "equity_flows": "📊",
-    "regulation": "🏛️",
-    "adoption": "🤝",
-    "currency_instability": "⚖️",
-    "recession_probability": "📉",
-    "tail_risk_event": "🚨",
-    "geopolitics": "🌍"
+    "inflation": "💹", "real_rates": "🏦", "bond_yields": "📈", "energy_prices": "🛢️",
+    "usd_strength": "💵", "liquidity": "💧", "equity_flows": "📊", "regulation": "🏛️",
+    "adoption": "🤝", "currency_instability": "⚖️", "recession_probability": "📉",
+    "tail_risk_event": "🚨", "geopolitics": "🌍"
 }
 
 # ------------------------------
@@ -171,7 +162,7 @@ def assumptions_card(asset_df, asset_name):
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
-# WHAT-IF SLIDERS WITH REAL VALUES
+# WHAT-IF SLIDERS
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
@@ -224,65 +215,75 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# REMOTEOK JOBS MODULE
+# JOB DASHBOARD CONFIG
 # ------------------------------
-def fetch_remote_jobs(keywords, max_results=5):
-    """
-    Fetch remote jobs from RemoteOK by keyword.
-    Returns a DataFrame with title, company, location, date, link.
-    """
+CATEGORIES = {
+    "HR": ["HCM", "HR", "Workday", "SAP SuccessFactors", "HRIS", "RH", "SIRH"],
+    "Project Management": ["Project manager", "Chef de projet", "Program Manager"],
+    "Supply": ["WMS", "Manhattan Associate", "Supply chain project manager"]
+}
+
+LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Remote"]
+
+# ------------------------------
+# FETCH JOBS (LinkedIn via Google search)
+# ------------------------------
+def fetch_jobs_google(keywords, locations, max_results=5):
     all_jobs = []
     headers = {"User-Agent": "Mozilla/5.0"}
-    
-    for kw in keywords:
-        kw_url = kw.strip().lower().replace(" ", "-")
-        url = f"https://remoteok.com/remote-{kw_url}-jobs"
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
-            job_cards = soup.find_all("tr", class_="job")[:max_results]
-            
-            for job in job_cards:
-                title_tag = job.find("h2", {"itemprop": "title"})
-                company_tag = job.find("h3", {"itemprop": "name"})
-                location_tag = job.find("div", class_="location")
-                date_tag = job.find("time")
-                link_tag = job.find("a", class_="preventLink")
-                
-                if title_tag and company_tag and link_tag:
-                    all_jobs.append({
-                        "keyword": kw,
-                        "title": title_tag.text.strip(),
-                        "company": company_tag.text.strip(),
-                        "location": location_tag.text.strip() if location_tag else "Remote",
-                        "date": date_tag["datetime"] if date_tag else "",
-                        "link": "https://remoteok.com" + link_tag["href"]
-                    })
-        except:
-            continue
 
-    if not all_jobs:
-        # fallback synthetic data
-        all_jobs = [
-            {"keyword":"Data Scientist","title":"Senior Data Scientist","company":"TechCorp","location":"Remote","date":"","link":"https://remoteok.com/remote-jobs/1"},
-            {"keyword":"Product Manager","title":"Product Manager - AI","company":"InnoLabs","location":"Remote","date":"","link":"https://remoteok.com/remote-jobs/2"}
-        ]
+    for kw in keywords:
+        for loc in locations:
+            query = f"site:linkedin.com/jobs {kw} {loc}"
+            url = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={max_results}"
+            try:
+                r = requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(r.text, "html.parser")
+                for g in soup.find_all("div", class_="tF2Cxc")[:max_results]:
+                    title_tag = g.find("h3")
+                    link_tag = g.find("a")
+                    snippet_tag = g.find("div", class_="IsZvec")
+                    if title_tag and link_tag:
+                        all_jobs.append({
+                            "keyword": kw,
+                            "title": title_tag.text.strip(),
+                            "company": snippet_tag.text.strip().split("-")[0] if snippet_tag else "",
+                            "location": snippet_tag.text.strip().split("-")[-1] if snippet_tag else loc,
+                            "link": link_tag["href"]
+                        })
+            except:
+                continue
+
     return pd.DataFrame(all_jobs)
 
+# ------------------------------
+# JOBS DASHBOARD
+# ------------------------------
 def jobs_dashboard():
-    st.title("💼 Remote Jobs Dashboard (Powered by RemoteOK)")
-    keywords = st.text_area("Enter job keywords (comma-separated)", "Data Scientist, Product Manager").split(",")
-    keywords = [k.strip() for k in keywords if k.strip()]
+    st.title("💼 Jobs Dashboard")
+    st.info("Fetching last 5 jobs per category and location (France, Dubai, Luxembourg, Switzerland, Remote)")
 
     if st.button("Fetch Latest Jobs"):
         with st.spinner("Fetching jobs..."):
-            df_jobs = fetch_remote_jobs(keywords, max_results=5)
-            if not df_jobs.empty:
-                # Make titles clickable
-                df_jobs["title"] = df_jobs.apply(lambda row: f"[{row['title']}]({row['link']})", axis=1)
-                st.dataframe(df_jobs[["keyword","title","company","location","date"]])
-            else:
-                st.info("No live jobs found. Showing synthetic example.")
+            for cat, kws in CATEGORIES.items():
+                st.subheader(f"📌 {cat} Jobs")
+                df_jobs = fetch_jobs_google(kws, LOCATIONS, max_results=5)
+                if not df_jobs.empty:
+                    for kw in kws:
+                        kw_jobs = df_jobs[df_jobs["keyword"].str.lower()==kw.lower()].head(5)
+                        if not kw_jobs.empty:
+                            cols = st.columns(len(kw_jobs))
+                            for col, (_, job) in zip(cols, kw_jobs.iterrows()):
+                                col.markdown(f"""
+                                    <div style='background-color:#f0f2f6;padding:10px;border-radius:8px;margin-bottom:8px'>
+                                    <b><a href="{job['link']}" target="_blank">{job['title']}</a></b><br>
+                                    <span style='color:gray'>{job['company']} | {job['location']}</span>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.info(f"No {kw} jobs found.")
+                else:
+                    st.info(f"No jobs found for category {cat}.")
 
 # ------------------------------
 # MAIN MENU
@@ -292,7 +293,6 @@ menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Jobs"])
 if menu == "Gold & Bitcoin":
     st.title("📊 Gold & Bitcoin Market Dashboard")
     col1, col2 = st.columns(2)
-
     for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
         with col:
             st.subheader(name)
