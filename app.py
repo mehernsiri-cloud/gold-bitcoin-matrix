@@ -165,7 +165,6 @@ def assumptions_card(asset_df, asset_name):
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
-# Default values based on last predictions
 def get_default_assumption(df, key):
     if df.empty:
         return 0.0
@@ -247,6 +246,7 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
         for job in data.get("results", []):
             job_location = job.get("location", {}).get("display_name", "")
             company = job.get("company", {}).get("display_name", "")
+            created = job.get("created", "")  # publication date
             if remote_only and "remote" not in job_location.lower():
                 continue
             if company_filter and company_filter.lower() not in company.lower():
@@ -255,6 +255,7 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
                 "title": job.get("title"),
                 "company": company,
                 "location": job_location,
+                "date": created.split("T")[0] if created else "",
                 "link": job.get("redirect_url")
             })
         return pd.DataFrame(jobs)
@@ -264,7 +265,6 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
 def jobs_dashboard():
     st.title("💼 Jobs Dashboard (Trello Style)")
 
-    # Sidebar filters
     st.sidebar.header("Job Filters")
     location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
     remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
@@ -272,7 +272,6 @@ def jobs_dashboard():
 
     st.markdown(f"### 🌍 Showing jobs in **{location_choice}**")
 
-    # Trello-style columns for categories
     cols = st.columns(len(CATEGORIES))
     for col, (cat, kws) in zip(cols, CATEGORIES.items()):
         with col:
@@ -295,13 +294,14 @@ def jobs_dashboard():
                     for _, job in df_jobs.iterrows():
                         st.markdown(f"""
                             <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
+
                                 <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
-                                <span style='color:gray'>{job['company']} | {job['location']}</span>
+                                <span style='color:gray'>{job['company']} | {job['location']}</span><br>
+                                <span style='color:#888'>📅 {job['date']}</span>
                             </div>
                         """, unsafe_allow_html=True)
             if not found_any:
                 st.info(f"No jobs found for {cat} in {location_choice}.")
-
 
 # ------------------------------
 # MAIN MENU
