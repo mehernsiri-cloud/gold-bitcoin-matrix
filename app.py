@@ -5,6 +5,7 @@ import os
 import plotly.graph_objects as go
 import yaml
 import requests
+from bs4 import BeautifulSoup
 
 # ------------------------------
 # PAGE CONFIG
@@ -229,6 +230,14 @@ LOCATIONS = {
 ADZUNA_APP_ID = "2c269bb8"
 ADZUNA_APP_KEY = "39be78e26991e138d40ce4313620aebb"
 
+# ------------------------------
+# CLEAN HTML UTILS
+# ------------------------------
+def clean_text(text):
+    if not text:
+        return ""
+    return BeautifulSoup(text, "html.parser").get_text()
+
 def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_only=False, company_filter=None):
     url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
     params = {
@@ -244,15 +253,15 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
         data = resp.json()
         jobs = []
         for job in data.get("results", []):
-            job_location = job.get("location", {}).get("display_name", "")
-            company = job.get("company", {}).get("display_name", "")
+            job_location = clean_text(job.get("location", {}).get("display_name", ""))
+            company = clean_text(job.get("company", {}).get("display_name", ""))
             created = job.get("created", "")  # publication date
             if remote_only and "remote" not in job_location.lower():
                 continue
             if company_filter and company_filter.lower() not in company.lower():
                 continue
             jobs.append({
-                "title": job.get("title"),
+                "title": clean_text(job.get("title")),
                 "company": company,
                 "location": job_location,
                 "date": created.split("T")[0] if created else "",
@@ -294,7 +303,6 @@ def jobs_dashboard():
                     for _, job in df_jobs.iterrows():
                         st.markdown(f"""
                             <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
-
                                 <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
                                 <span style='color:gray'>{job['company']} | {job['location']}</span><br>
                                 <span style='color:#888'>📅 {job['date']}</span>
