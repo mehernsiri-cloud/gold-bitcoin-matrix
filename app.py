@@ -4,11 +4,13 @@ import pandas as pd
 import os
 import plotly.graph_objects as go
 import yaml
+import requests
+from bs4 import BeautifulSoup
 
 # ------------------------------
 # PAGE CONFIG
 # ------------------------------
-st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
+st.set_page_config(page_title="Gold, Bitcoin & Dubai Dashboard", layout="wide")
 
 # ------------------------------
 # DATA FILES
@@ -173,7 +175,6 @@ def assumptions_card(asset_df, asset_name):
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 
-# Default values based on last predictions
 def get_default_assumption(df, key):
     if df.empty:
         return 0.0
@@ -223,33 +224,80 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# LAYOUT
+# DUBAI REAL ESTATE MODULE
 # ------------------------------
-st.title("📊 Gold & Bitcoin Market Dashboard")
-col1, col2 = st.columns(2)
+def fetch_dubai_data():
+    url = "https://dxbinteract.com/"
+    try:
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+        # Example scraping (real site may differ, adjust selectors)
+        cards = soup.find_all("div", class_="card")
+        data = {}
+        for c in cards:
+            title = c.find("h4")
+            value = c.find("h3")
+            if title and value:
+                data[title.text.strip()] = value.text.strip()
+        return data
+    except:
+        return {}
 
-for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
-    with col:
-        st.subheader(name)
-        if not df.empty:
-            last_signal = df["signal"].iloc[-1]
-            st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
-            last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
-            st.markdown(f"**Market Trend:** {last_trend}")
+def dubai_dashboard():
+    st.title("🏙️ Dubai Real Estate Dashboard")
+    submenu = st.selectbox("Choose Category", ["Prices", "Sales", "Market Health", "Population"])
 
-            # Market summary immediately after trend
-            st.markdown(generate_summary(df, name))
+    data = fetch_dubai_data()
+    if not data:
+        st.warning("⚠️ Unable to fetch data automatically at this time.")
+        return
 
-            target_price_card(df["target_price"].iloc[-1], name)
+    if submenu == "Prices":
+        st.subheader("📈 Property Prices")
+        st.write({k: v for k,v in data.items() if "Price" in k})
+    elif submenu == "Sales":
+        st.subheader("💰 Sales & Transactions")
+        st.write({k: v for k,v in data.items() if "Sale" in k or "Transaction" in k})
+    elif submenu == "Market Health":
+        st.subheader("🩺 Market Health Indicators")
+        st.write({k: v for k,v in data.items() if "Index" in k or "Health" in k})
+    elif submenu == "Population":
+        st.subheader("👥 Dubai Population & Demographics")
+        st.write({k: v for k,v in data.items() if "Population" in k})
 
-            display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
-            st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+# ------------------------------
+# MAIN MENU
+# ------------------------------
+menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Dubai Real Estate"])
 
-            assumptions_card(df, name)
+if menu == "Gold & Bitcoin":
+    st.title("📊 Gold & Bitcoin Market Dashboard")
+    col1, col2 = st.columns(2)
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
-            fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info(f"No {name} data available yet.")
+    for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
+        with col:
+            st.subheader(name)
+            if not df.empty:
+                last_signal = df["signal"].iloc[-1]
+                st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+                last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
+                st.markdown(f"**Market Trend:** {last_trend}")
+
+                # Market summary immediately after trend
+                st.markdown(generate_summary(df, name))
+
+                target_price_card(df["target_price"].iloc[-1], name)
+
+                display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
+                st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+
+                assumptions_card(df, name)
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"No {name} data available yet.")
+elif menu == "Dubai Real Estate":
+    dubai_dashboard()
