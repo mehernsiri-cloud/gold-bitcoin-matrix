@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
 # ------------------------------
 # JOB DASHBOARD CONFIG
@@ -32,7 +33,7 @@ def clean_text(text):
         return ""
     return BeautifulSoup(text, "html.parser").get_text()
 
-def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_only=False, company_filter=None):
+def fetch_jobs_adzuna(keyword, country_code, location, max_results=50, remote_only=False, company_filter=None, last_n_days=60):
     url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
     params = {
         "app_id": ADZUNA_APP_ID,
@@ -46,22 +47,34 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
         resp = requests.get(url, params=params, timeout=10)
         data = resp.json()
         jobs = []
+        cutoff_date = datetime.today() - timedelta(days=last_n_days)
         for job in data.get("results", []):
             job_location = clean_text(job.get("location", {}).get("display_name", ""))
             company = clean_text(job.get("company", {}).get("display_name", ""))
             created = job.get("created", "")
+            if created:
+                job_date = datetime.strptime(created.split("T")[0], "%Y-%m-%d")
+            else:
+                job_date = None
+            # filter by remote, company, and last_n_days
             if remote_only and "remote" not in job_location.lower():
                 continue
             if company_filter and company_filter.lower() not in company.lower():
+                continue
+            if job_date and job_date < cutoff_date:
                 continue
             jobs.append({
                 "title": clean_text(job.get("title")),
                 "company": company,
                 "location": job_location,
-                "date": created.split("T")[0] if created else "",
+                "date": job_date,
                 "link": job.get("redirect_url")
             })
-        return pd.DataFrame(jobs)
+        # sort by date descending
+        df_jobs = pd.DataFrame(jobs)
+        if not df_jobs.empty:
+            df_jobs = df_jobs.sort_values("date", ascending=False)
+        return df_jobs
     except:
         return pd.DataFrame([])
 
@@ -69,41 +82,38 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
 # JOB DASHBOARD FUNCTION
 # ------------------------------
 def jobs_dashboard():
-    st.title("💼 Jobs Dashboard (Trello Style)")
+    st.title("💼 Jobs Dashboard (Recent & Open)")
 
     st.sidebar.header("Job Filters")
     location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
     remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
     company_filter = st.sidebar.text_input("🏢 Filter by company (optional)", "")
+    last_n_days = st.sidebar.slider("📅 Show jobs opened in last (days)", 30, 90, 60, 10)
 
-    st.markdown(f"### 🌍 Showing jobs in **{location_choice}**")
+    selected_category = st.sidebar.selectbox("📌 Select Job Category", list(CATEGORIES.keys()))
+    st.markdown(f"### 🌍 Showing jobs in **{location_choice}** for category **{selected_category}**")
 
-    cols = st.columns(len(CATEGORIES))
-    for col, (cat, kws) in zip(cols, CATEGORIES.items()):
-        with col:
-            st.markdown(
-                f"<div style='background-color:#004080;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold'>📌 {cat}</div>",
-                unsafe_allow_html=True
-            )
-            found_any = False
-            for kw in kws:
-                df_jobs = fetch_jobs_adzuna(
-                    kw,
-                    LOCATIONS[location_choice],
-                    location_choice,
-                    max_results=5,
-                    remote_only=remote_only,
-                    company_filter=company_filter if company_filter else None
-                )
-                if not df_jobs.empty:
-                    found_any = True
-                    for _, job in df_jobs.iterrows():
-                        st.markdown(f"""
-                            <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
-                                <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
-                                <span style='color:gray'>{job['company']} | {job['location']}</span><br>
-                                <span style='color:#888'>📅 {job['date']}</span>
-                            </div>
-                        """, unsafe_allow_html=True)
-            if not found_any:
-                st.info(f"No jobs found for {cat} in {location_choice}.")
+    kws = CATEGORIES[selected_category]
+    found_any = False
+    for kw in kws:
+        df_jobs = fetch_jobs_adzuna(
+            kw,
+            LOCATIONS[location_choice],
+            location_choice,
+            max_results=50,
+            remote_only=remote_only,
+            company_filter=company_filter if company_filter else None,
+            last_n_days=last_n_days
+        )
+        if not df_jobs.empty:
+            found_any = True
+            for _, job in df_jobs.iterrows():
+                st.markdown(f"""
+                    <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
+                        <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
+                        <span style='color:gray'>{job['company']} | {job['location']}</span><br>
+                        <span style='color:#888'>📅 {job['date'].strftime("%Y-%m-%d")}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+    if not found_any:
+        st.info(f"No recent jobs found for {selected_category} in {location_choice}.")
