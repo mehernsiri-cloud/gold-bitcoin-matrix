@@ -191,7 +191,7 @@ def generate_summary(asset_df, asset_name):
     return summary
 
 # ------------------------------
-# JOB DASHBOARD CONFIG (Adzuna)
+# JOB DASHBOARD CONFIG
 # ------------------------------
 CATEGORIES = {
     "HR": ["HCM", "HR", "Workday", "SAP SuccessFactors", "HRIS", "RH", "SIRH"],
@@ -199,25 +199,19 @@ CATEGORIES = {
     "Supply": ["WMS", "Manhattan Associate", "Supply chain project manager"]
 }
 
-LOCATIONS = {
-    "France": "fr",
-    "Dubai": "ae",
-    "Luxembourg": "lu",
-    "Switzerland": "ch",
-    "Worldwide": "gb"  # fallback
-}
+LOCATIONS = ["France", "Dubai", "Luxembourg", "Switzerland", "Worldwide"]
 
+# Adzuna credentials (France only)
 ADZUNA_APP_ID = "2c269bb8"
 ADZUNA_APP_KEY = "39be78e26991e138d40ce4313620aebb"
 
-def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_only=False, company_filter=None):
-    url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
+def fetch_jobs_adzuna(keyword, max_results=5):
+    url = f"https://api.adzuna.com/v1/api/jobs/fr/search/1"
     params = {
         "app_id": ADZUNA_APP_ID,
         "app_key": ADZUNA_APP_KEY,
         "results_per_page": max_results,
         "what": keyword,
-        "where": location if location != "Worldwide" else "",
         "content-type": "application/json"
     }
     try:
@@ -225,51 +219,49 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_onl
         data = resp.json()
         jobs = []
         for job in data.get("results", []):
-            job_location = job.get("location", {}).get("display_name", "")
-            company = job.get("company", {}).get("display_name", "")
-            if remote_only and "remote" not in job_location.lower():
-                continue
-            if company_filter and company_filter.lower() not in company.lower():
-                continue
             jobs.append({
                 "title": job.get("title"),
-                "company": company,
-                "location": job_location,
+                "company": job.get("company", {}).get("display_name", ""),
+                "location": job.get("location", {}).get("display_name", ""),
                 "link": job.get("redirect_url")
             })
         return pd.DataFrame(jobs)
     except:
         return pd.DataFrame([])
 
+def fetch_jobs_remoteok(keyword, max_results=5):
+    try:
+        resp = requests.get("https://remoteok.com/api", headers={"User-Agent":"Mozilla/5.0"}, timeout=10)
+        data = resp.json()[1:]  # skip metadata
+        jobs = []
+        for job in data:
+            if keyword.lower() in job.get("position","").lower() or keyword.lower() in job.get("tags",""):
+                jobs.append({
+                    "title": job.get("position"),
+                    "company": job.get("company"),
+                    "location": job.get("location","Remote"),
+                    "link": job.get("url")
+                })
+        return pd.DataFrame(jobs[:max_results])
+    except:
+        return pd.DataFrame([])
+
 def jobs_dashboard():
-    st.title("💼 Jobs Dashboard (Trello Style)")
+    st.title("💼 Jobs Dashboard")
 
-    # Sidebar filters
-    st.sidebar.header("Job Filters")
-    location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
-    remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
-    company_filter = st.sidebar.text_input("🏢 Filter by company (optional)", "")
+    # Menu per location
+    location_choice = st.selectbox("🌍 Select Location", LOCATIONS)
 
-    st.markdown(f"### 🌍 Showing jobs in **{location_choice}**")
-
-    # Trello-style columns for categories
-    cols = st.columns(len(CATEGORIES))
-    for col, (cat, kws) in zip(cols, CATEGORIES.items()):
-        with col:
-            st.markdown(
-                f"<div style='background-color:#004080;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold'>📌 {cat}</div>",
-                unsafe_allow_html=True
-            )
+    # Submenus per category
+    for cat, kws in CATEGORIES.items():
+        with st.expander(f"📌 {cat} Jobs in {location_choice}", expanded=False):
             found_any = False
             for kw in kws:
-                df_jobs = fetch_jobs_adzuna(
-                    kw,
-                    LOCATIONS[location_choice],
-                    location_choice,
-                    max_results=5,
-                    remote_only=remote_only,
-                    company_filter=company_filter if company_filter else None
-                )
+                if location_choice == "France":
+                    df_jobs = fetch_jobs_adzuna(kw, max_results=5)
+                else:
+                    df_jobs = fetch_jobs_remoteok(kw, max_results=5)
+
                 if not df_jobs.empty:
                     found_any = True
                     for _, job in df_jobs.iterrows():
@@ -280,8 +272,7 @@ def jobs_dashboard():
                             </div>
                         """, unsafe_allow_html=True)
             if not found_any:
-                st.info(f"No jobs found for {cat} in {location_choice}.")
-
+                st.info(f"No {cat} jobs found in {location_choice}.")
 
 # ------------------------------
 # MAIN MENU
