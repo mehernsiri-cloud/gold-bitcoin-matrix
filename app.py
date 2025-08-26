@@ -204,13 +204,13 @@ LOCATIONS = {
     "Dubai": "ae",
     "Luxembourg": "lu",
     "Switzerland": "ch",
-    "Worldwide": "gb"  # fallback to UK for international jobs
+    "Worldwide": "gb"  # fallback
 }
 
 ADZUNA_APP_ID = "2c269bb8"
 ADZUNA_APP_KEY = "39be78e26991e138d40ce4313620aebb"
 
-def fetch_jobs_adzuna(keyword, country_code, location, max_results=5):
+def fetch_jobs_adzuna(keyword, country_code, location, max_results=5, remote_only=False, company_filter=None):
     url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
     params = {
         "app_id": ADZUNA_APP_ID,
@@ -225,10 +225,16 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5):
         data = resp.json()
         jobs = []
         for job in data.get("results", []):
+            job_location = job.get("location", {}).get("display_name", "")
+            company = job.get("company", {}).get("display_name", "")
+            if remote_only and "remote" not in job_location.lower():
+                continue
+            if company_filter and company_filter.lower() not in company.lower():
+                continue
             jobs.append({
                 "title": job.get("title"),
-                "company": job.get("company", {}).get("display_name", ""),
-                "location": job.get("location", {}).get("display_name", ""),
+                "company": company,
+                "location": job_location,
                 "link": job.get("redirect_url")
             })
         return pd.DataFrame(jobs)
@@ -237,26 +243,35 @@ def fetch_jobs_adzuna(keyword, country_code, location, max_results=5):
 
 def jobs_dashboard():
     st.title("💼 Jobs Dashboard")
-    st.info("Fetching last 5 jobs per category and location (France, Dubai, Luxembourg, Switzerland, Worldwide)")
 
-    if st.button("Fetch Latest Jobs"):
-        with st.spinner("Fetching jobs..."):
-            for cat, kws in CATEGORIES.items():
-                st.subheader(f"📌 {cat} Jobs")
-                for kw in kws:
-                    st.markdown(f"### 🔑 {kw}")
-                    for loc_name, country_code in LOCATIONS.items():
-                        df_jobs = fetch_jobs_adzuna(kw, country_code, loc_name, max_results=5)
-                        if not df_jobs.empty:
-                            for _, job in df_jobs.iterrows():
-                                st.markdown(f"""
-                                    <div style='background-color:#f0f2f6;padding:10px;border-radius:8px;margin-bottom:8px'>
-                                    <b><a href="{job['link']}" target="_blank">{job['title']}</a></b><br>
-                                    <span style='color:gray'>{job['company']} | {job['location']}</span>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.info(f"No {kw} jobs found in {loc_name}.")
+    # Sidebar filters
+    st.sidebar.header("Job Filters")
+    location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
+    remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
+    company_filter = st.sidebar.text_input("🏢 Filter by company (optional)", "")
+
+    for cat, kws in CATEGORIES.items():
+        with st.expander(f"📌 {cat} Jobs in {location_choice}"):
+            for kw in kws:
+                st.markdown(f"### 🔑 {kw}")
+                df_jobs = fetch_jobs_adzuna(
+                    kw,
+                    LOCATIONS[location_choice],
+                    location_choice,
+                    max_results=5,
+                    remote_only=remote_only,
+                    company_filter=company_filter if company_filter else None
+                )
+                if not df_jobs.empty:
+                    for _, job in df_jobs.iterrows():
+                        st.markdown(f"""
+                            <div style='background-color:#f0f2f6;padding:10px;border-radius:8px;margin-bottom:8px'>
+                            <b><a href="{job['link']}" target="_blank">{job['title']}</a></b><br>
+                            <span style='color:gray'>{job['company']} | {job['location']}</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info(f"No {kw} jobs found in {location_choice}.")
 
 # ------------------------------
 # MAIN MENU
