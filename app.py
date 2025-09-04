@@ -53,20 +53,20 @@ INDICATOR_ICONS = {
 }
 
 # ------------------------------
-# THEME PER ASSET
+# PASTEL THEME PER ASSET
 # ------------------------------
 ASSET_THEMES = {
     "Gold": {
-        "buy": "#FFD700", "sell": "#B8860B", "hold": "#808080",
-        "target_bg": "#FFF8DC", "target_text": "black",
-        "assumption_pos": "#FFD700", "assumption_neg": "#B8860B",
-        "chart_actual": "gold", "chart_pred": "orange"
+        "buy": "#FFF9C4", "sell": "#FFE0B2", "hold": "#E0E0E0",
+        "target_bg": "#FFFDE7", "target_text": "black",
+        "assumption_pos": "#FFD54F", "assumption_neg": "#FFAB91",
+        "chart_actual": "#FBC02D", "chart_pred": "#FFCC80"
     },
     "Bitcoin": {
-        "buy": "#1E90FF", "sell": "#FF4500", "hold": "#6c757d",
-        "target_bg": "#1E90FF", "target_text": "white",
-        "assumption_pos": "#1E90FF", "assumption_neg": "#FF4500",
-        "chart_actual": "blue", "chart_pred": "green"
+        "buy": "#BBDEFB", "sell": "#FFCDD2", "hold": "#CFD8DC",
+        "target_bg": "#E3F2FD", "target_text": "black",
+        "assumption_pos": "#64B5F6", "assumption_neg": "#EF9A9A",
+        "chart_actual": "#42A5F5", "chart_pred": "#81D4FA"
     }
 }
 
@@ -106,10 +106,8 @@ def merge_actual_pred(asset_name, actual_col):
         else:
             asset_pred["trend"] = "Neutral ⚖️"
 
-    # store assumptions
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
 
-    # set target horizon dynamically
     horizon = "Days"
     if "volatility" in asset_pred.columns and not asset_pred["volatility"].isna().all():
         avg_vol = asset_pred["volatility"].mean()
@@ -121,7 +119,6 @@ def merge_actual_pred(asset_name, actual_col):
             horizon = "Days"
     asset_pred["target_horizon"] = horizon
 
-    # target price
     asset_pred["target_price"] = asset_pred.apply(
         lambda row: row["actual"] if row["signal"] == "Buy" else (row["predicted_price"] if row["signal"] == "Sell" else row["actual"]),
         axis=1
@@ -137,22 +134,15 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 # ------------------------------
 def alert_badge(signal, asset_name):
     theme = ASSET_THEMES[asset_name]
-    if signal == "Buy":
-        color = theme["buy"]
-        text = "BUY"
-    elif signal == "Sell":
-        color = theme["sell"]
-        text = "SELL"
-    else:
-        color = theme["hold"]
-        text = "HOLD"
-    return f'<div style="background-color:{color};color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">{text}</div>'
+    color = theme["buy"] if signal == "Buy" else theme["sell"] if signal == "Sell" else theme["hold"]
+    text = signal.upper()
+    return f'<div style="background-color:{color};color:black;padding:8px;font-size:20px;text-align:center;border-radius:8px">{text}</div>'
 
 def target_price_card(price, asset_name, horizon):
     theme = ASSET_THEMES[asset_name]
     st.markdown(f"""
         <div style='background-color:{theme["target_bg"]};color:{theme["target_text"]};
-        padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
+        padding:12px;font-size:22px;text-align:center;border-radius:12px;margin-bottom:10px'>
         💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
         </div>
         """, unsafe_allow_html=True)
@@ -171,7 +161,7 @@ def explanation_card(asset_df, asset_name):
     indicator, impact = strongest
     direction = "upward 📈" if impact > 0 else "downward 📉"
     st.markdown(f"""
-    <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-bottom:10px'>
+    <div style='background-color:#FAFAFA;padding:12px;border-radius:10px;margin-bottom:10px'>
     🔍 **Forecast for {asset_name}:**  
     The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
     </div>
@@ -203,11 +193,13 @@ def assumptions_card(asset_df, asset_name):
             marker_color=color, text=[f"{val:.2f}"], textposition='auto'
         ))
     fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
-                      yaxis_title="Weight / Impact")
+                      yaxis_title="Weight / Impact",
+                      plot_bgcolor="#FAFAFA",
+                      paper_bgcolor="#FAFAFA")
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
-# WHAT-IF SLIDERS
+# WHAT-IF SLIDERS (logic unchanged, only pastel colors applied in charts/cards)
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 def get_default_assumption(df, key):
@@ -256,7 +248,7 @@ def generate_summary(asset_df, asset_name):
 menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Jobs"])
 
 if menu == "Gold & Bitcoin":
-    st.title("📊 Gold & Bitcoin Market Dashboard")
+    st.title("🌸 Gold & Bitcoin Market Dashboard (Pastel Theme)")
     col1, col2 = st.columns(2)
 
     for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
@@ -276,13 +268,13 @@ if menu == "Gold & Bitcoin":
 
                 assumptions_card(df, name)
 
-                # Chart with asset-specific colors
                 theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
                                          name="Actual", line=dict(color=theme["chart_actual"], width=2)))
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
                                          name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
+                fig.update_layout(plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
