@@ -231,13 +231,10 @@ vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, st.session_stat
 
 st.sidebar.button("Reset to Predicted Values", on_click=reset_sliders)
 
-# ------------------------------
-# APPLY WHAT-IF ADJUSTMENTS
-# ------------------------------
 def apply_what_if(df):
     if df.empty:
         return df
-    adj = 1 + inflation_adj * 0.01 - usd_adj * 0.01 + oil_adj * 0.01 - vix_adj * 0.005
+    adj = 1 + st.session_state.inflation_adj * 0.01 - st.session_state.usd_adj * 0.01 + st.session_state.oil_adj * 0.01 - st.session_state.vix_adj * 0.005
     df = df.copy()
     df["predicted_price"] = df["predicted_price"] * adj
     df["target_price"] = df["predicted_price"]
@@ -246,9 +243,6 @@ def apply_what_if(df):
 gold_df_adj = apply_what_if(gold_df)
 btc_df_adj = apply_what_if(btc_df)
 
-# ------------------------------
-# SUMMARY FUNCTION
-# ------------------------------
 def generate_summary(asset_df, asset_name):
     if asset_df.empty:
         return f"No data for {asset_name}"
@@ -276,3 +270,52 @@ if menu == "Gold & Bitcoin":
                 target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
                 explanation_card(df, name)
                 assumptions_card(df, name)
+
+                # Prepare AI forecast
+                n_steps = 7
+                df_ai = predict_next_n(df_actual, df_pred, name, n_steps)
+
+                # Plot combined chart: actual, model predicted, AI forecast
+                theme = ASSET_THEMES[name]
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
+                                         name="Actual", line=dict(color=theme["chart_actual"], width=2)))
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
+                                         name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
+                if not df_ai.empty:
+                    fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"], mode="lines+markers",
+                                             name="AI Forecast", line=dict(color=theme["chart_ai"], dash="dot")))
+                fig.update_layout(title=f"{name} Prices: Actual + Predicted + AI Forecast",
+                                  xaxis_title="Date", yaxis_title="Price",
+                                  plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"No {name} data available yet.")
+
+elif menu == "AI Forecast":
+    st.title("🤖 AI Forecast Dashboard")
+    st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
+    n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
+
+    for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
+        st.subheader(asset)
+        df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
+        if not df_ai.empty:
+            # Combine historical actuals with AI forecast for plotting
+            df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
+                                     mode="lines+markers", name="Actual",
+                                     line=dict(color="#42A5F5", width=2)))
+            fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"],
+                                     mode="lines+markers", name="AI Predicted",
+                                     line=dict(color="#FF6F61", dash="dash")))
+            fig.update_layout(title=f"{asset} AI Forecast vs Actual",
+                              xaxis_title="Date", yaxis_title="Price",
+                              plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No AI prediction available for {asset}.")
+
+elif menu == "Jobs":
+    jobs_dashboard()
