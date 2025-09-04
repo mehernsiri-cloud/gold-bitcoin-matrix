@@ -5,6 +5,7 @@ import os
 import plotly.graph_objects as go
 import yaml
 from jobs_app import jobs_dashboard  # import Jobs dashboard
+from datetime import timedelta
 
 # ------------------------------
 # PAGE CONFIG
@@ -87,9 +88,22 @@ def merge_actual_pred(asset_name, actual_col):
         else:
             asset_pred["trend"] = "Neutral ⚖️"
 
+    # store assumptions
     asset_pred["assumptions"] = str(weights.get(asset_name.lower(), {}))
-    asset_pred["target_horizon"] = "Days"
 
+    # set target horizon dynamically
+    horizon = "Days"
+    if "volatility" in asset_pred.columns and not asset_pred["volatility"].isna().all():
+        avg_vol = asset_pred["volatility"].mean()
+        if avg_vol < 0.02:
+            horizon = "Years"
+        elif avg_vol < 0.05:
+            horizon = "Months"
+        else:
+            horizon = "Days"
+    asset_pred["target_horizon"] = horizon
+
+    # target price
     asset_pred["target_price"] = asset_pred.apply(
         lambda row: row["actual"] if row["signal"]=="Buy" else (row["predicted_price"] if row["signal"]=="Sell" else row["actual"]),
         axis=1
@@ -120,12 +134,37 @@ def alert_badge(signal):
     else:
         return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
 
-def target_price_card(price, asset_name):
+def target_price_card(price, asset_name, horizon):
     st.markdown(f"""
         <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
-        💰 {asset_name} Target Price: {price}
+        💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
         </div>
         """, unsafe_allow_html=True)
+
+def explanation_card(asset_df, asset_name):
+    """Generate explanation of the prediction based on strongest indicator(s)."""
+    if asset_df.empty:
+        return
+    assumptions_str = asset_df["assumptions"].iloc[-1]
+    try:
+        assumptions = eval(assumptions_str) if assumptions_str else {}
+    except:
+        assumptions = {}
+    if not assumptions:
+        return
+
+    # strongest positive/negative impact
+    strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
+    indicator, impact = strongest
+    direction = "upward 📈" if impact > 0 else "downward 📉"
+
+    st.markdown(f"""
+    <div style='background-color:#f0f0f0;padding:10px;border-radius:8px;margin-bottom:10px'>
+    🔍 **Why this prediction for {asset_name}?** <br>
+    The forecast is mainly influenced by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**  
+    which currently pushes the market {direction}.
+    </div>
+    """, unsafe_allow_html=True)
 
 def assumptions_card(asset_df, asset_name):
     if asset_df.empty:
@@ -227,7 +266,8 @@ if menu == "Gold & Bitcoin":
                 last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
                 st.markdown(f"**Market Trend:** {last_trend}")
                 st.markdown(generate_summary(df, name))
-                target_price_card(df["target_price"].iloc[-1], name)
+                target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
+                explanation_card(df, name)
                 display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
                 st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
                 assumptions_card(df, name)
