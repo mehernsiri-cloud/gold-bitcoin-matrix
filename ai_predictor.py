@@ -32,39 +32,54 @@ def load_data(asset_name, actual_col):
     df_asset["predicted_price"] = pd.to_numeric(df_asset["predicted_price"], errors="coerce")
     df_asset["actual"] = pd.to_numeric(df_asset["actual"], errors="coerce")
     df_asset.dropna(subset=["predicted_price", "actual"], inplace=True)
+    df_asset = df_asset.reset_index(drop=True)
     return df_asset
 
 
-def prepare_data(df, target_col="actual"):
-    """Prepare data for ML model"""
-    df = df.sort_values("timestamp")
-    df["timestamp_ordinal"] = df["timestamp"].apply(lambda x: x.toordinal())
-    X = df[["timestamp_ordinal", "predicted_price"]].values
-    y = df[target_col].values
-    return X, y
+def create_rolling_features(df, window=3):
+    """Create rolling window features for time series prediction"""
+    X, y = [], []
+    prices = df["actual"].values
+    preds = df["predicted_price"].values
+    n = len(df)
+
+    for i in range(window, n):
+        # Features: previous 'window' actuals + previous 'window' predicted prices
+        feat = np.concatenate([prices[i - window:i], preds[i - window:i]])
+        X.append(feat)
+        y.append(prices[i])
+    return np.array(X), np.array(y)
 
 
-def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7):
-    """Predict next n_steps based on historical actual + predicted prices using Random Forest"""
+def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
+    """Predict next n_steps using Random Forest with rolling window"""
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
-    if df.empty or len(df) < 5:
+    if df.empty or len(df) < window + 1:
         return pd.DataFrame(columns=["timestamp", "predicted_price"])
 
-    X, y = prepare_data(df, target_col="actual")
+    # Prepare rolling window features
+    X_train, y_train = create_rolling_features(df, window=window)
 
-    # Random Forest Regressor
+    # Train Random Forest
     model = RandomForestRegressor(n_estimators=200, random_state=42)
-    model.fit(X, y)
+    model.fit(X_train, y_train)
 
-    last_date = df["timestamp"].max()
-    last_pred_price = df["predicted_price"].iloc[-1]
-    future_dates = [last_date + timedelta(days=i) for i in range(1, n_steps + 1)]
-    X_future = np.array([[d.toordinal(), last_pred_price] for d in future_dates])
+    # Iterative multi-step prediction
+    last_actuals = df["actual"].values[-window:].tolist()
+    last_preds = df["predicted_price"].values[-window:].tolist()
+    future_dates = [df["timestamp"].max() + timedelta(days=i) for i in range(1, n_steps + 1)]
+    predictions = []
 
-    y_pred = model.predict(X_future)
+    for _ in range(n_steps):
+        features = np.array(last_actuals + last_preds).reshape(1, -1)
+        next_pred = model.predict(features)[0]
+        predictions.append(next_pred)
+        # update rolling window
+        last_actuals = last_actuals[1:] + [next_pred]  # use predicted as next actual
+        last_preds = last_preds[1:] + [next_pred]
 
     df_future = pd.DataFrame({
         "timestamp": future_dates,
-        "predicted_price": y_pred
+        "predicted_price": predictions
     })
     return df_future
