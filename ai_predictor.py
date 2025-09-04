@@ -89,17 +89,19 @@ def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
     future_dates = [df["timestamp"].max() + timedelta(days=i) for i in range(1, n_steps + 1)]
     predictions = []
 
-    for _ in range(n_steps):
-        macro_feat = np.array(last_macro).flatten()
-        features = np.array(last_actuals + last_preds + macro_feat).reshape(1, -1)
-        next_pred = model.predict(features)[0]
-        predictions.append(next_pred)
+for _ in range(n_steps):
+    # flatten macro features
+    macro_feat = np.array(last_macro).flatten()  # <--- flatten correctly
+    features = np.array(last_actuals + last_preds + macro_feat.tolist()).reshape(1, -1)
+    next_pred = model.predict(features)[0]
+    predictions.append(next_pred)
 
-        # update rolling windows
-        last_actuals = last_actuals[1:] + [next_pred]
-        last_preds = last_preds[1:] + [next_pred]
-        # keep macro indicators constant for now
-        last_macro = last_macro[1:] + [last_macro[-1]]
+    # update rolling windows
+    last_actuals = last_actuals[1:] + [next_pred]
+    last_preds = last_preds[1:] + [next_pred]
+    # keep macro indicators constant for now
+    last_macro = last_macro[1:] + [last_macro[-1]]
+
 
     df_future = pd.DataFrame({
         "timestamp": future_dates,
