@@ -289,7 +289,7 @@ elif menu == "AI Forecast":
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
     
-    render_ai_forecast(df_actual, df_pred, n_steps=n_steps)
+    #render_ai_forecast(df_actual, df_pred, n_steps=n_steps)
     
     for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
