@@ -281,16 +281,24 @@ elif menu == "AI Forecast":
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
     
-    for asset, col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
+    for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
         df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
         if not df_ai.empty:
             st.dataframe(df_ai)
+
+            # Plot with historical actuals + AI predictions
+            df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
             fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
+                                     mode="lines+markers", name="Actual",
+                                     line=dict(color="#42A5F5", width=2)))
             fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"],
                                      mode="lines+markers", name="AI Predicted",
                                      line=dict(color="#FF6F61", dash="dash")))
-            fig.update_layout(plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+            fig.update_layout(title=f"{asset} AI Forecast vs Actual",
+                              xaxis_title="Date", yaxis_title="Price",
+                              plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info(f"No AI prediction available for {asset}.")
