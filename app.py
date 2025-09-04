@@ -58,13 +58,13 @@ ASSET_THEMES = {
         "buy": "#FFF9C4", "sell": "#FFE0B2", "hold": "#E0E0E0",
         "target_bg": "#FFFDE7", "target_text": "black",
         "assumption_pos": "#FFD54F", "assumption_neg": "#FFAB91",
-        "chart_actual": "#FBC02D", "chart_pred": "#FFCC80"
+        "chart_actual": "#FBC02D", "chart_pred": "#FFCC80", "chart_ai": "#FF6F61"
     },
     "Bitcoin": {
         "buy": "#BBDEFB", "sell": "#FFCDD2", "hold": "#CFD8DC",
         "target_bg": "#E3F2FD", "target_text": "black",
         "assumption_pos": "#64B5F6", "assumption_neg": "#EF9A9A",
-        "chart_actual": "#42A5F5", "chart_pred": "#81D4FA"
+        "chart_actual": "#42A5F5", "chart_pred": "#81D4FA", "chart_ai": "#FF6F61"
     }
 }
 
@@ -248,10 +248,11 @@ if menu == "Gold & Bitcoin":
     st.title("🌸 Gold & Bitcoin Market Dashboard (Pastel Theme)")
     col1, col2 = st.columns(2)
 
-    for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
+    for col, df, name, actual_col in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"], ["gold_actual", "bitcoin_actual"]):
         with col:
             st.subheader(name)
             if not df.empty:
+                # Signal & trend
                 last_signal = df["signal"].iloc[-1]
                 st.markdown(alert_badge(last_signal, name), unsafe_allow_html=True)
                 last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
@@ -259,19 +260,25 @@ if menu == "Gold & Bitcoin":
                 st.markdown(generate_summary(df, name))
                 target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
                 explanation_card(df, name)
-
-                display_df = df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
-                st.dataframe(display_df)
-
                 assumptions_card(df, name)
 
+                # Prepare AI forecast
+                n_steps = 7
+                df_ai = predict_next_n(df_actual, df_pred, name, n_steps)
+
+                # Plot combined chart: actual, model predicted, AI forecast
                 theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
                                          name="Actual", line=dict(color=theme["chart_actual"], width=2)))
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
                                          name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
-                fig.update_layout(plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+                if not df_ai.empty:
+                    fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"], mode="lines+markers",
+                                             name="AI Forecast", line=dict(color=theme["chart_ai"], dash="dot")))
+                fig.update_layout(title=f"{name} Prices: Actual + Predicted + AI Forecast",
+                                  xaxis_title="Date", yaxis_title="Price",
+                                  plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
@@ -280,7 +287,7 @@ elif menu == "AI Forecast":
     st.title("🤖 AI Forecast Dashboard")
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
-    
+
     for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
         df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
