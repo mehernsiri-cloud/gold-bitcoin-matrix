@@ -142,7 +142,7 @@ def target_price_card(price, asset_name, horizon):
         """, unsafe_allow_html=True)
 
 def explanation_card(asset_df, asset_name):
-    """Generate explanation of the prediction based on strongest indicator(s)."""
+    """Generate natural language explanation."""
     if asset_df.empty:
         return
     assumptions_str = asset_df["assumptions"].iloc[-1]
@@ -153,16 +153,14 @@ def explanation_card(asset_df, asset_name):
     if not assumptions:
         return
 
-    # strongest positive/negative impact
     strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
     indicator, impact = strongest
     direction = "upward 📈" if impact > 0 else "downward 📉"
 
     st.markdown(f"""
     <div style='background-color:#f0f0f0;padding:10px;border-radius:8px;margin-bottom:10px'>
-    🔍 **Why this prediction for {asset_name}?** <br>
-    The forecast is mainly influenced by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**  
-    which currently pushes the market {direction}.
+    🔍 **Forecast for {asset_name}:**  
+    The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
     </div>
     """, unsafe_allow_html=True)
 
@@ -257,7 +255,13 @@ menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Jobs"])
 if menu == "Gold & Bitcoin":
     st.title("📊 Gold & Bitcoin Market Dashboard")
     col1, col2 = st.columns(2)
-    for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
+
+    for col, df, name, colors in zip(
+        [col1, col2],
+        [gold_df_adj, btc_df_adj],
+        ["Gold", "Bitcoin"],
+        [{"actual": "gold", "pred": "orange"}, {"actual": "blue", "pred": "green"}]
+    ):
         with col:
             st.subheader(name)
             if not df.empty:
@@ -268,12 +272,18 @@ if menu == "Gold & Bitcoin":
                 st.markdown(generate_summary(df, name))
                 target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
                 explanation_card(df, name)
+
                 display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
                 st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+
                 assumptions_card(df, name)
+
+                # Different colors per asset
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual"))
-                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted"))
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
+                                         name="Actual", line=dict(color=colors["actual"], width=2)))
+                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
+                                         name="Predicted", line=dict(color=colors["pred"], dash="dash")))
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
