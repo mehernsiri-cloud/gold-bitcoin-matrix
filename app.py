@@ -4,9 +4,9 @@ import pandas as pd
 import os
 import plotly.graph_objects as go
 import yaml
-from jobs_app import jobs_dashboard  # import Jobs dashboard
 from datetime import timedelta
-from ai_predictor import predict_next_n  # AI forecast module
+from jobs_app import jobs_dashboard
+from ai_predictor import predict_next_n
 
 # ------------------------------
 # PAGE CONFIG
@@ -22,7 +22,7 @@ ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 WEIGHT_FILE = "weight.yaml"
 
 # ------------------------------
-# LOAD DATA SAFELY
+# LOAD DATA
 # ------------------------------
 def load_csv_safe(path, default_cols):
     if os.path.exists(path):
@@ -34,9 +34,6 @@ def load_csv_safe(path, default_cols):
 df_pred = load_csv_safe(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "volatility", "risk"])
 df_actual = load_csv_safe(ACTUAL_FILE, ["timestamp", "gold_actual", "bitcoin_actual"])
 
-# ------------------------------
-# LOAD WEIGHTS / ASSUMPTIONS
-# ------------------------------
 if os.path.exists(WEIGHT_FILE):
     with open(WEIGHT_FILE, "r") as f:
         weights = yaml.safe_load(f)
@@ -44,7 +41,7 @@ else:
     weights = {"gold": {}, "bitcoin": {}}
 
 # ------------------------------
-# EMOJI MAPPING
+# EMOJI ICONS
 # ------------------------------
 INDICATOR_ICONS = {
     "inflation": "💹", "real_rates": "🏦", "bond_yields": "📈", "energy_prices": "🛢️",
@@ -54,7 +51,7 @@ INDICATOR_ICONS = {
 }
 
 # ------------------------------
-# PASTEL THEME PER ASSET
+# THEMES
 # ------------------------------
 ASSET_THEMES = {
     "Gold": {
@@ -89,8 +86,8 @@ def merge_actual_pred(asset_name, actual_col):
     else:
         asset_pred["actual"] = None
 
-    asset_pred["predicted_price"] = pd.to_numeric(asset_pred["predicted_price"], errors='coerce')
-    asset_pred["actual"] = pd.to_numeric(asset_pred["actual"], errors='coerce')
+    asset_pred["predicted_price"] = pd.to_numeric(asset_pred["predicted_price"], errors="coerce")
+    asset_pred["actual"] = pd.to_numeric(asset_pred["actual"], errors="coerce")
 
     asset_pred["signal"] = asset_pred.apply(
         lambda row: "Buy" if row["predicted_price"] > row["actual"] else ("Sell" if row["predicted_price"] < row["actual"] else "Hold"),
@@ -131,7 +128,7 @@ gold_df = merge_actual_pred("Gold", "gold_actual")
 btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 
 # ------------------------------
-# UTILS WITH THEMES
+# UTILS
 # ------------------------------
 def alert_badge(signal, asset_name):
     theme = ASSET_THEMES[asset_name]
@@ -282,11 +279,11 @@ if menu == "Gold & Bitcoin":
 elif menu == "AI Forecast":
     st.title("🤖 AI Forecast Dashboard")
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
-    gold_ai = predict_next_n(df_actual, df_pred, "Gold", n_steps=7)
-    btc_ai = predict_next_n(df_actual, df_pred, "Bitcoin", n_steps=7)
-
-    for df_ai, name in zip([gold_ai, btc_ai], ["Gold", "Bitcoin"]):
-        st.subheader(name)
+    n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
+    
+    for asset, col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
+        st.subheader(asset)
+        df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
         if not df_ai.empty:
             st.dataframe(df_ai)
             fig = go.Figure()
@@ -296,7 +293,7 @@ elif menu == "AI Forecast":
             fig.update_layout(plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info(f"No AI prediction available for {name}.")
+            st.info(f"No AI prediction available for {asset}.")
 
 elif menu == "Jobs":
     jobs_dashboard()
