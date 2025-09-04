@@ -311,4 +311,9 @@ elif menu == "AI Forecast":
             st.info(f"No AI prediction available for {asset}.")
 
 elif menu == "Jobs":
+    st.markdown("---")  # separator line
+st.subheader("🔮 AI Forecast")
+
+# Plug-and-play rendering
+render_ai_forecast(df_actual, df_pred, n_steps=7)
     jobs_dashboard()
