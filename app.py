@@ -105,7 +105,7 @@ def merge_actual_pred(asset_name, actual_col):
 
     # target price
     asset_pred["target_price"] = asset_pred.apply(
-        lambda row: row["actual"] if row["signal"]=="Buy" else (row["predicted_price"] if row["signal"]=="Sell" else row["actual"]),
+        lambda row: row["actual"] if row["signal"] == "Buy" else (row["predicted_price"] if row["signal"] == "Sell" else row["actual"]),
         axis=1
     )
 
@@ -119,24 +119,24 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 # ------------------------------
 def color_signal(val):
     if val == "Buy":
-        color = "#1f77b4"
+        color = "#28a745"   # Green
     elif val == "Sell":
-        color = "#ff7f0e"
+        color = "#dc3545"   # Red
     else:
-        color = "gray"
+        color = "#6c757d"   # Gray
     return f'color: {color}; font-weight:bold; text-align:center'
 
 def alert_badge(signal):
     if signal == "Buy":
-        return f'<div style="background-color:#1f77b4;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
+        return f'<div style="background-color:#28a745;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
     elif signal == "Sell":
-        return f'<div style="background-color:#ff7f0e;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
+        return f'<div style="background-color:#dc3545;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
     else:
-        return f'<div style="background-color:gray;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
+        return f'<div style="background-color:#6c757d;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
 
 def target_price_card(price, asset_name, horizon):
     st.markdown(f"""
-        <div style='background-color:#ffd700;color:black;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
+        <div style='background-color:#17a2b8;color:white;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
         💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
         </div>
         """, unsafe_allow_html=True)
@@ -158,7 +158,7 @@ def explanation_card(asset_df, asset_name):
     direction = "upward 📈" if impact > 0 else "downward 📉"
 
     st.markdown(f"""
-    <div style='background-color:#f0f0f0;padding:10px;border-radius:8px;margin-bottom:10px'>
+    <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-bottom:10px'>
     🔍 **Forecast for {asset_name}:**  
     The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
     </div>
@@ -181,8 +181,8 @@ def assumptions_card(asset_df, asset_name):
 
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
-    icons = [INDICATOR_ICONS.get(k,"❔") for k in indicators]
-    colors = ["#1f77b4" if v>0 else "#ff7f0e" if v<0 else "gray" for v in values]
+    icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
+    colors = ["#28a745" if v > 0 else "#dc3545" if v < 0 else "#6c757d" for v in values]
 
     fig = go.Figure()
     for ind, val, icon, color in zip(indicators, values, icons, colors):
@@ -230,7 +230,7 @@ if st.sidebar.button("Reset to Predicted Values"):
 def apply_what_if(df):
     if df.empty:
         return df
-    adj = 1 + inflation_adj*0.01 - usd_adj*0.01 + oil_adj*0.01 - vix_adj*0.005
+    adj = 1 + inflation_adj * 0.01 - usd_adj * 0.01 + oil_adj * 0.01 - vix_adj * 0.005
     df = df.copy()
     df["predicted_price"] = df["predicted_price"] * adj
     df["target_price"] = df["predicted_price"]
@@ -273,7 +273,7 @@ if menu == "Gold & Bitcoin":
                 target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
                 explanation_card(df, name)
 
-                display_df = df[["timestamp","actual","predicted_price","volatility","risk","signal"]].tail(2)
+                display_df = df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
                 st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
 
                 assumptions_card(df, name)
