@@ -53,6 +53,24 @@ INDICATOR_ICONS = {
 }
 
 # ------------------------------
+# THEME PER ASSET
+# ------------------------------
+ASSET_THEMES = {
+    "Gold": {
+        "buy": "#FFD700", "sell": "#B8860B", "hold": "#808080",
+        "target_bg": "#FFF8DC", "target_text": "black",
+        "assumption_pos": "#FFD700", "assumption_neg": "#B8860B",
+        "chart_actual": "gold", "chart_pred": "orange"
+    },
+    "Bitcoin": {
+        "buy": "#1E90FF", "sell": "#FF4500", "hold": "#6c757d",
+        "target_bg": "#1E90FF", "target_text": "white",
+        "assumption_pos": "#1E90FF", "assumption_neg": "#FF4500",
+        "chart_actual": "blue", "chart_pred": "green"
+    }
+}
+
+# ------------------------------
 # MERGE PREDICTIONS WITH ACTUALS
 # ------------------------------
 def merge_actual_pred(asset_name, actual_col):
@@ -115,34 +133,31 @@ gold_df = merge_actual_pred("Gold", "gold_actual")
 btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 
 # ------------------------------
-# UTILS
+# UTILS WITH THEMES
 # ------------------------------
-def color_signal(val):
-    if val == "Buy":
-        color = "#28a745"   # Green
-    elif val == "Sell":
-        color = "#dc3545"   # Red
-    else:
-        color = "#6c757d"   # Gray
-    return f'color: {color}; font-weight:bold; text-align:center'
-
-def alert_badge(signal):
+def alert_badge(signal, asset_name):
+    theme = ASSET_THEMES[asset_name]
     if signal == "Buy":
-        return f'<div style="background-color:#28a745;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">BUY</div>'
+        color = theme["buy"]
+        text = "BUY"
     elif signal == "Sell":
-        return f'<div style="background-color:#dc3545;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">SELL</div>'
+        color = theme["sell"]
+        text = "SELL"
     else:
-        return f'<div style="background-color:#6c757d;color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">HOLD</div>'
+        color = theme["hold"]
+        text = "HOLD"
+    return f'<div style="background-color:{color};color:white;padding:8px;font-size:20px;text-align:center;border-radius:5px">{text}</div>'
 
 def target_price_card(price, asset_name, horizon):
+    theme = ASSET_THEMES[asset_name]
     st.markdown(f"""
-        <div style='background-color:#17a2b8;color:white;padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
+        <div style='background-color:{theme["target_bg"]};color:{theme["target_text"]};
+        padding:12px;font-size:22px;text-align:center;border-radius:8px;margin-bottom:10px'>
         💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
         </div>
         """, unsafe_allow_html=True)
 
 def explanation_card(asset_df, asset_name):
-    """Generate natural language explanation."""
     if asset_df.empty:
         return
     assumptions_str = asset_df["assumptions"].iloc[-1]
@@ -152,11 +167,9 @@ def explanation_card(asset_df, asset_name):
         assumptions = {}
     if not assumptions:
         return
-
     strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
     indicator, impact = strongest
     direction = "upward 📈" if impact > 0 else "downward 📉"
-
     st.markdown(f"""
     <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-bottom:10px'>
     🔍 **Forecast for {asset_name}:**  
@@ -165,6 +178,7 @@ def explanation_card(asset_df, asset_name):
     """, unsafe_allow_html=True)
 
 def assumptions_card(asset_df, asset_name):
+    theme = ASSET_THEMES[asset_name]
     if asset_df.empty:
         st.info(f"No assumptions available for {asset_name}")
         return
@@ -174,24 +188,19 @@ def assumptions_card(asset_df, asset_name):
         assumptions = eval(assumptions_str) if assumptions_str else {}
     except:
         assumptions = {}
-
     if not assumptions:
         st.info(f"No assumptions available for {asset_name}")
         return
-
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
     icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
-    colors = ["#28a745" if v > 0 else "#dc3545" if v < 0 else "#6c757d" for v in values]
+    colors = [theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"] for v in values]
 
     fig = go.Figure()
     for ind, val, icon, color in zip(indicators, values, icons, colors):
         fig.add_trace(go.Bar(
-            x=[f"{icon} {ind}"],
-            y=[val],
-            marker_color=color,
-            text=[f"{val:.2f}"],
-            textposition='auto'
+            x=[f"{icon} {ind}"], y=[val],
+            marker_color=color, text=[f"{val:.2f}"], textposition='auto'
         ))
     fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
                       yaxis_title="Weight / Impact")
@@ -201,7 +210,6 @@ def assumptions_card(asset_df, asset_name):
 # WHAT-IF SLIDERS
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
-
 def get_default_assumption(df, key):
     if df.empty:
         return 0.0
@@ -222,10 +230,7 @@ oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, oil_default, 0
 vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, vix_default, 1.0)
 
 if st.sidebar.button("Reset to Predicted Values"):
-    inflation_adj = inflation_default
-    usd_adj = usd_default
-    oil_adj = oil_default
-    vix_adj = vix_default
+    inflation_adj, usd_adj, oil_adj, vix_adj = inflation_default, usd_default, oil_default, vix_default
 
 def apply_what_if(df):
     if df.empty:
@@ -243,9 +248,7 @@ def generate_summary(asset_df, asset_name):
     if asset_df.empty:
         return f"No data for {asset_name}"
     last_row = asset_df.iloc[-1]
-    summary = f"**{asset_name} Market Summary:** "
-    summary += f"Signal: {last_row['signal']} | Trend: {last_row['trend']} | Target Price: {last_row['target_price']}"
-    return summary
+    return f"**{asset_name} Market Summary:** Signal: {last_row['signal']} | Trend: {last_row['trend']} | Target Price: {last_row['target_price']}"
 
 # ------------------------------
 # MAIN MENU
@@ -256,17 +259,12 @@ if menu == "Gold & Bitcoin":
     st.title("📊 Gold & Bitcoin Market Dashboard")
     col1, col2 = st.columns(2)
 
-    for col, df, name, colors in zip(
-        [col1, col2],
-        [gold_df_adj, btc_df_adj],
-        ["Gold", "Bitcoin"],
-        [{"actual": "gold", "pred": "orange"}, {"actual": "blue", "pred": "green"}]
-    ):
+    for col, df, name in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"]):
         with col:
             st.subheader(name)
             if not df.empty:
                 last_signal = df["signal"].iloc[-1]
-                st.markdown(alert_badge(last_signal), unsafe_allow_html=True)
+                st.markdown(alert_badge(last_signal, name), unsafe_allow_html=True)
                 last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
                 st.markdown(f"**Market Trend:** {last_trend}")
                 st.markdown(generate_summary(df, name))
@@ -274,16 +272,17 @@ if menu == "Gold & Bitcoin":
                 explanation_card(df, name)
 
                 display_df = df[["timestamp", "actual", "predicted_price", "volatility", "risk", "signal"]].tail(2)
-                st.dataframe(display_df.style.applymap(color_signal, subset=["signal"]))
+                st.dataframe(display_df)
 
                 assumptions_card(df, name)
 
-                # Different colors per asset
+                # Chart with asset-specific colors
+                theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
-                                         name="Actual", line=dict(color=colors["actual"], width=2)))
+                                         name="Actual", line=dict(color=theme["chart_actual"], width=2)))
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
-                                         name="Predicted", line=dict(color=colors["pred"], dash="dash")))
+                                         name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
