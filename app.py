@@ -7,7 +7,6 @@ import yaml
 from datetime import timedelta
 from jobs_app import jobs_dashboard
 from ai_predictor import predict_next_n
-from ai_forecast_view import render_ai_forecast
 
 # ------------------------------
 # PAGE CONFIG
@@ -68,6 +67,74 @@ ASSET_THEMES = {
         "chart_actual": "#42A5F5", "chart_pred": "#81D4FA", "chart_ai": "#FF6F61"
     }
 }
+
+# ------------------------------
+# HELPER FUNCTIONS
+# ------------------------------
+def alert_badge(signal, asset_name):
+    theme = ASSET_THEMES[asset_name]
+    color = theme["buy"] if signal == "Buy" else theme["sell"] if signal == "Sell" else theme["hold"]
+    return f'<div style="background-color:{color};color:black;padding:8px;font-size:20px;text-align:center;border-radius:8px">{signal.upper()}</div>'
+
+def target_price_card(price, asset_name, horizon):
+    theme = ASSET_THEMES[asset_name]
+    st.markdown(f"""
+        <div style='background-color:{theme["target_bg"]};color:{theme["target_text"]};
+        padding:12px;font-size:22px;text-align:center;border-radius:12px;margin-bottom:10px'>
+        💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
+        </div>
+        """, unsafe_allow_html=True)
+
+def explanation_card(asset_df, asset_name):
+    if asset_df.empty:
+        return
+    assumptions_str = asset_df["assumptions"].iloc[-1]
+    try:
+        assumptions = eval(assumptions_str) if assumptions_str else {}
+    except:
+        assumptions = {}
+    if not assumptions:
+        return
+    strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
+    indicator, impact = strongest
+    direction = "upward 📈" if impact > 0 else "downward 📉"
+    st.markdown(f"""
+    <div style='background-color:#FAFAFA;padding:12px;border-radius:10px;margin-bottom:10px'>
+    🔍 **Forecast for {asset_name}:**  
+    The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
+    </div>
+    """, unsafe_allow_html=True)
+
+def assumptions_card(asset_df, asset_name):
+    theme = ASSET_THEMES[asset_name]
+    if asset_df.empty:
+        st.info(f"No assumptions available for {asset_name}")
+        return
+    assumptions_str = asset_df["assumptions"].iloc[-1]
+    target_horizon = asset_df["target_horizon"].iloc[-1]
+    try:
+        assumptions = eval(assumptions_str) if assumptions_str else {}
+    except:
+        assumptions = {}
+    if not assumptions:
+        st.info(f"No assumptions available for {asset_name}")
+        return
+    indicators = list(assumptions.keys())
+    values = [assumptions[k] for k in indicators]
+    icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
+    colors = [theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"] for v in values]
+
+    fig = go.Figure()
+    for ind, val, icon, color in zip(indicators, values, icons, colors):
+        fig.add_trace(go.Bar(
+            x=[f"{icon} {ind}"], y=[val],
+            marker_color=color, text=[f"{val:.2f}"], textposition='auto'
+        ))
+    fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
+                      yaxis_title="Weight / Impact",
+                      plot_bgcolor="#FAFAFA",
+                      paper_bgcolor="#FAFAFA")
+    st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
 # MERGE PREDICTIONS WITH ACTUALS
@@ -142,7 +209,6 @@ def get_default_assumption(df, key, fallback):
     except:
         return fallback
 
-# Initialize session state for sliders
 if "inflation_adj" not in st.session_state:
     st.session_state.inflation_adj = get_default_assumption(gold_df, "inflation", 2.5)
 if "usd_adj" not in st.session_state:
@@ -210,50 +276,3 @@ if menu == "Gold & Bitcoin":
                 target_price_card(df["target_price"].iloc[-1], name, df["target_horizon"].iloc[-1])
                 explanation_card(df, name)
                 assumptions_card(df, name)
-
-                n_steps = 7
-                df_ai = predict_next_n(df_actual, df_pred, name, n_steps)
-
-                theme = ASSET_THEMES[name]
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
-                                         name="Actual", line=dict(color=theme["chart_actual"], width=2)))
-                fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers",
-                                         name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
-                if not df_ai.empty:
-                    fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"], mode="lines+markers",
-                                             name="AI Forecast", line=dict(color=theme["chart_ai"], dash="dot")))
-                fig.update_layout(title=f"{name} Prices: Actual + Predicted + AI Forecast",
-                                  xaxis_title="Date", yaxis_title="Price",
-                                  plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info(f"No {name} data available yet.")
-
-elif menu == "AI Forecast":
-    st.title("🤖 AI Forecast Dashboard")
-    st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
-    n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
-    
-    for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
-        st.subheader(asset)
-        df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
-        if not df_ai.empty:
-            st.dataframe(df_ai)
-            df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
-                                     mode="lines+markers", name="Actual",
-                                     line=dict(color="#42A5F5", width=2)))
-            fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"],
-                                     mode="lines+markers", name="AI Predicted",
-                                     line=dict(color="#FF6F61", dash="dash")))
-            fig.update_layout(title=f"{asset} AI Forecast vs Actual",
-                              xaxis_title="Date", yaxis_title="Price",
-                              plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info(f"No AI prediction available for {asset}.")
-
-elif menu == "Jobs":
-    jobs_dashboard()
