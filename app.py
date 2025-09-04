@@ -129,99 +129,45 @@ gold_df = merge_actual_pred("Gold", "gold_actual")
 btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 
 # ------------------------------
-# UTILS
-# ------------------------------
-def alert_badge(signal, asset_name):
-    theme = ASSET_THEMES[asset_name]
-    color = theme["buy"] if signal == "Buy" else theme["sell"] if signal == "Sell" else theme["hold"]
-    return f'<div style="background-color:{color};color:black;padding:8px;font-size:20px;text-align:center;border-radius:8px">{signal.upper()}</div>'
-
-def target_price_card(price, asset_name, horizon):
-    theme = ASSET_THEMES[asset_name]
-    st.markdown(f"""
-        <div style='background-color:{theme["target_bg"]};color:{theme["target_text"]};
-        padding:12px;font-size:22px;text-align:center;border-radius:12px;margin-bottom:10px'>
-        💰 {asset_name} Target Price: {price} <br>⏳ Horizon: {horizon}
-        </div>
-        """, unsafe_allow_html=True)
-
-def explanation_card(asset_df, asset_name):
-    if asset_df.empty:
-        return
-    assumptions_str = asset_df["assumptions"].iloc[-1]
-    try:
-        assumptions = eval(assumptions_str) if assumptions_str else {}
-    except:
-        assumptions = {}
-    if not assumptions:
-        return
-    strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
-    indicator, impact = strongest
-    direction = "upward 📈" if impact > 0 else "downward 📉"
-    st.markdown(f"""
-    <div style='background-color:#FAFAFA;padding:12px;border-radius:10px;margin-bottom:10px'>
-    🔍 **Forecast for {asset_name}:**  
-    The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
-    </div>
-    """, unsafe_allow_html=True)
-
-def assumptions_card(asset_df, asset_name):
-    theme = ASSET_THEMES[asset_name]
-    if asset_df.empty:
-        st.info(f"No assumptions available for {asset_name}")
-        return
-    assumptions_str = asset_df["assumptions"].iloc[-1]
-    target_horizon = asset_df["target_horizon"].iloc[-1]
-    try:
-        assumptions = eval(assumptions_str) if assumptions_str else {}
-    except:
-        assumptions = {}
-    if not assumptions:
-        st.info(f"No assumptions available for {asset_name}")
-        return
-    indicators = list(assumptions.keys())
-    values = [assumptions[k] for k in indicators]
-    icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
-    colors = [theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"] for v in values]
-
-    fig = go.Figure()
-    for ind, val, icon, color in zip(indicators, values, icons, colors):
-        fig.add_trace(go.Bar(
-            x=[f"{icon} {ind}"], y=[val],
-            marker_color=color, text=[f"{val:.2f}"], textposition='auto'
-        ))
-    fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
-                      yaxis_title="Weight / Impact",
-                      plot_bgcolor="#FAFAFA",
-                      paper_bgcolor="#FAFAFA")
-    st.plotly_chart(fig, use_container_width=True)
-
-# ------------------------------
-# WHAT-IF SLIDERS
+# WHAT-IF SLIDERS WITH SESSION STATE
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
-def get_default_assumption(df, key):
+
+def get_default_assumption(df, key, fallback):
     if df.empty:
-        return 0.0
+        return fallback
     try:
         last_assumptions = eval(df["assumptions"].iloc[-1])
-        return last_assumptions.get(key, 0.0)
+        return last_assumptions.get(key, fallback)
     except:
-        return 0.0
+        return fallback
 
-inflation_default = get_default_assumption(gold_df, "inflation") or 2.5
-usd_default = get_default_assumption(gold_df, "usd_strength") or 0.0
-oil_default = get_default_assumption(gold_df, "energy_prices") or 0.0
-vix_default = get_default_assumption(gold_df, "tail_risk_event") or 20.0
+# Initialize session state for sliders
+if "inflation_adj" not in st.session_state:
+    st.session_state.inflation_adj = get_default_assumption(gold_df, "inflation", 2.5)
+if "usd_adj" not in st.session_state:
+    st.session_state.usd_adj = get_default_assumption(gold_df, "usd_strength", 0.0)
+if "oil_adj" not in st.session_state:
+    st.session_state.oil_adj = get_default_assumption(gold_df, "energy_prices", 0.0)
+if "vix_adj" not in st.session_state:
+    st.session_state.vix_adj = get_default_assumption(gold_df, "tail_risk_event", 20.0)
 
-inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, inflation_default, 0.1)
-usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, usd_default, 0.1)
-oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, oil_default, 0.1)
-vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, vix_default, 1.0)
+def reset_sliders():
+    st.session_state.inflation_adj = get_default_assumption(gold_df, "inflation", 2.5)
+    st.session_state.usd_adj = get_default_assumption(gold_df, "usd_strength", 0.0)
+    st.session_state.oil_adj = get_default_assumption(gold_df, "energy_prices", 0.0)
+    st.session_state.vix_adj = get_default_assumption(gold_df, "tail_risk_event", 20.0)
 
-if st.sidebar.button("Reset to Predicted Values"):
-    inflation_adj, usd_adj, oil_adj, vix_adj = inflation_default, usd_default, oil_default, vix_default
+inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, st.session_state.inflation_adj, 0.1, key="inflation_adj")
+usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, st.session_state.usd_adj, 0.1, key="usd_adj")
+oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, st.session_state.oil_adj, 0.1, key="oil_adj")
+vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, st.session_state.vix_adj, 1.0, key="vix_adj")
 
+st.sidebar.button("Reset to Predicted Values", on_click=reset_sliders)
+
+# ------------------------------
+# APPLY WHAT-IF ADJUSTMENTS
+# ------------------------------
 def apply_what_if(df):
     if df.empty:
         return df
@@ -234,6 +180,9 @@ def apply_what_if(df):
 gold_df_adj = apply_what_if(gold_df)
 btc_df_adj = apply_what_if(btc_df)
 
+# ------------------------------
+# SUMMARY FUNCTION
+# ------------------------------
 def generate_summary(asset_df, asset_name):
     if asset_df.empty:
         return f"No data for {asset_name}"
@@ -253,7 +202,6 @@ if menu == "Gold & Bitcoin":
         with col:
             st.subheader(name)
             if not df.empty:
-                # Signal & trend
                 last_signal = df["signal"].iloc[-1]
                 st.markdown(alert_badge(last_signal, name), unsafe_allow_html=True)
                 last_trend = df["trend"].iloc[-1] if df["trend"].iloc[-1] else "Neutral ⚖️"
@@ -263,11 +211,9 @@ if menu == "Gold & Bitcoin":
                 explanation_card(df, name)
                 assumptions_card(df, name)
 
-                # Prepare AI forecast
                 n_steps = 7
                 df_ai = predict_next_n(df_actual, df_pred, name, n_steps)
 
-                # Plot combined chart: actual, model predicted, AI forecast
                 theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
@@ -289,15 +235,11 @@ elif menu == "AI Forecast":
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
     
-    #render_ai_forecast(df_actual, df_pred, n_steps=n_steps)
-    
     for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
         df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
         if not df_ai.empty:
             st.dataframe(df_ai)
-
-            # Plot with historical actuals + AI predictions
             df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
@@ -314,5 +256,4 @@ elif menu == "AI Forecast":
             st.info(f"No AI prediction available for {asset}.")
 
 elif menu == "Jobs":
-
     jobs_dashboard()
