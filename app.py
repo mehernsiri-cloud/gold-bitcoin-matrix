@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import yaml
 from jobs_app import jobs_dashboard  # import Jobs dashboard
 from datetime import timedelta
+from ai_predictor import predict_next_n  # AI forecast module
 
 # ------------------------------
 # PAGE CONFIG
@@ -135,8 +136,7 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 def alert_badge(signal, asset_name):
     theme = ASSET_THEMES[asset_name]
     color = theme["buy"] if signal == "Buy" else theme["sell"] if signal == "Sell" else theme["hold"]
-    text = signal.upper()
-    return f'<div style="background-color:{color};color:black;padding:8px;font-size:20px;text-align:center;border-radius:8px">{text}</div>'
+    return f'<div style="background-color:{color};color:black;padding:8px;font-size:20px;text-align:center;border-radius:8px">{signal.upper()}</div>'
 
 def target_price_card(price, asset_name, horizon):
     theme = ASSET_THEMES[asset_name]
@@ -199,7 +199,7 @@ def assumptions_card(asset_df, asset_name):
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------
-# WHAT-IF SLIDERS (logic unchanged, only pastel colors applied in charts/cards)
+# WHAT-IF SLIDERS
 # ------------------------------
 st.sidebar.header("🔧 What-If Scenario")
 def get_default_assumption(df, key):
@@ -245,7 +245,7 @@ def generate_summary(asset_df, asset_name):
 # ------------------------------
 # MAIN MENU
 # ------------------------------
-menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "Jobs"])
+menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "AI Forecast", "Jobs"])
 
 if menu == "Gold & Bitcoin":
     st.title("🌸 Gold & Bitcoin Market Dashboard (Pastel Theme)")
@@ -278,5 +278,25 @@ if menu == "Gold & Bitcoin":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info(f"No {name} data available yet.")
+
+elif menu == "AI Forecast":
+    st.title("🤖 AI Forecast Dashboard")
+    st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
+    gold_ai = predict_next_n(df_actual, df_pred, "Gold", n_steps=7)
+    btc_ai = predict_next_n(df_actual, df_pred, "Bitcoin", n_steps=7)
+
+    for df_ai, name in zip([gold_ai, btc_ai], ["Gold", "Bitcoin"]):
+        st.subheader(name)
+        if not df_ai.empty:
+            st.dataframe(df_ai)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"],
+                                     mode="lines+markers", name="AI Predicted",
+                                     line=dict(color="#FF6F61", dash="dash")))
+            fig.update_layout(plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No AI prediction available for {name}.")
+
 elif menu == "Jobs":
     jobs_dashboard()
