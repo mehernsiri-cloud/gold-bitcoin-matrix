@@ -7,6 +7,7 @@ import yaml
 from datetime import timedelta
 from jobs_app import jobs_dashboard
 from ai_predictor import predict_next_n
+from ai_forecast_view import render_ai_forecast
 
 # ------------------------------
 # PAGE CONFIG
