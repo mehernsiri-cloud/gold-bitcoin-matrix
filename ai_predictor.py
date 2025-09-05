@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from xgboost import XGBRegressor
+import streamlit as st
 
 # ------------------------------
 # Paths / constants
@@ -60,10 +61,10 @@ def load_macro_indicators(asset_name: str) -> dict:
         return {}
 
 # ------------------------------
-# Get historical actual prices
+# Get historical daily prices
 # ------------------------------
 def load_historical_prices(asset_name: str) -> pd.Series:
-    """Load historical prices for a given asset"""
+    """Load daily average historical prices for a given asset"""
     if not os.path.exists(ACTUAL_DATA_FILE):
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
     
@@ -72,49 +73,51 @@ def load_historical_prices(asset_name: str) -> pd.Series:
     col = col_map.get(asset_name.lower())
     if col is None or col not in df.columns:
         raise ValueError(f"Column for {asset_name} not found in actual_data.csv")
-
-    df = df.sort_values("timestamp")
-    return df[col].astype(float).reset_index(drop=True)
+    
+    # Convert to daily average
+    df_daily = df.groupby(df["timestamp"].dt.date)[col].mean().reset_index()
+    df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
+    return df_daily[col].astype(float).reset_index(drop=True)
 
 # ------------------------------
-# Forecast next n-steps
+# Forecast next n-steps with caching
 # ------------------------------
+@st.cache_data(show_spinner=False)
 def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
     """
-    Train on historical actual_data.csv and macro indicators to forecast next n_steps prices.
+    Train on historical daily averages + macro indicators to forecast next n_steps prices.
     Uses XGBoost Regressor with lag features + macro indicators.
     """
     # 1. Load history
-    prices = load_historical_prices(asset_name)
-    prices = prices.dropna().reset_index(drop=True)
-
+    prices = load_historical_prices(asset_name).dropna().reset_index(drop=True)
+    
     # 2. Load latest macro indicators
     macro = load_macro_indicators(asset_name)
     macro_features = [macro.get(k, 0.0) for k in macro.keys()]
-
+    
     # 3. Build dataset with lag features + macro indicators
     X, y = [], []
     for i in range(lags, len(prices)):
-        lag_window = prices[i-lags:i].values.tolist()
+        lag_window = prices[i-lags:i].tolist()
         if np.any(pd.isna(lag_window)) or pd.isna(prices[i]):
             continue
         X.append(lag_window + macro_features)
         y.append(prices[i])
     X, y = np.array(X), np.array(y)
-
+    
+    # 4. Handle insufficient data
     if len(X) == 0:
-        # fallback if not enough data
         last_price = prices.iloc[-1] if len(prices) > 0 else (2000.0 if asset_name.lower() == "gold" else 30000.0)
         future_dates = pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps)
         df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": [last_price]*n_steps})
         _append_ai_log(df_out, asset_name)
         return df_out
-
-    # 4. Train model
-    model = XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=4, random_state=42)
+    
+    # 5. Train XGBoost model
+    model = XGBRegressor(n_estimators=200, max_depth=4, learning_rate=0.05, random_state=42, n_jobs=-1)
     model.fit(X, y)
-
-    # 5. Recursive prediction
+    
+    # 6. Recursive prediction
     history = prices[-lags:].tolist()
     preds = []
     for _ in range(n_steps):
@@ -123,16 +126,13 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
         next_pred = model.predict([input_features])[0]
         preds.append(next_pred)
         history.append(next_pred)
-
+    
+    # 7. Output dataframe
     future_dates = pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps)
-    df_out = pd.DataFrame({
-        "timestamp": future_dates,
-        "predicted_price": np.round(preds, 2)
-    })
-
-    # 6. Save to log
+    df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": np.round(preds, 2)})
+    
+    # 8. Save to log
     _append_ai_log(df_out, asset_name)
-
     return df_out
 
 # ------------------------------
