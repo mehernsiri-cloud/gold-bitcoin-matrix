@@ -91,14 +91,26 @@ def explanation_card(asset_df, asset_name):
     if "assumptions" in asset_df.columns and not asset_df.empty:
         try:
             assumptions_str = asset_df["assumptions"].iloc[-1]
+            assumptions = eval(assumptions_str) if isinstance(assumptions_str, str) else {}
         except Exception:
-            assumptions_str = "{}"
+            assumptions = {}
     else:
-        assumptions_str = "{}"
+        assumptions = {}
+
+    if assumptions:
+        # Find the most impactful indicator (largest absolute value)
+        main_indicator = max(assumptions.items(), key=lambda x: abs(x[1]))
+        indicator, value = main_indicator
+        direction = "rising 📈" if value > 0 else "falling 📉" if value < 0 else "stable ⚖️"
+
+        explanation_text = f"The latest forecast for **{asset_name}** was mainly driven by **{indicator.replace('_',' ').title()}**, which is {direction} ({value:.2f})."
+    else:
+        explanation_text = f"No clear driver identified for {asset_name}."
 
     st.markdown(f"""
-        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
-            <b>Latest Assumptions:</b> {assumptions_str}
+        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; 
+        box-shadow:0px 1px 3px rgba(0,0,0,0.1); font-size:16px; line-height:1.6;">
+            {explanation_text}
         </div>
     """, unsafe_allow_html=True)
 
