@@ -51,8 +51,7 @@ jobs:
 
       # 8. Generate AI predictions and backtest (ensures ai_predictions_log.csv is filled)
       - name: Generate AI predictions & backtest
-        run: |
-          python -c "from ai_predictor import predict_next_n, backtest_ai; predict_next_n(None, None, 'Gold'); predict_next_n(None, None, 'Bitcoin'); backtest_ai('Gold'); backtest_ai('Bitcoin')"
+        run: python run_ai_predictions.py
 
       # 9. Commit & push CSV updates safely
       - name: Commit & push CSV updates
@@ -69,3 +68,4 @@ jobs:
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+
