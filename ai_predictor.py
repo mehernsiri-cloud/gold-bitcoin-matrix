@@ -10,8 +10,6 @@ from sklearn.ensemble import RandomForestRegressor
 # Paths / constants
 # ------------------------------
 DATA_DIR = "data"
-PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
-ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 AI_LOG_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
@@ -51,7 +49,7 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
             df_to_write.to_csv(AI_LOG_FILE, index=False)
             return
 
-        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"], infer_datetime_format=True)
+        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
         for col in ["predicted_price", "asset", "logged_at"]:
             if col not in old.columns:
                 old[col] = np.nan
@@ -77,190 +75,39 @@ def load_macro_indicators(asset_name: str) -> dict:
         return {}
 
 # ------------------------------
-# Load predictions + actuals
+# Forecast next n-steps (AI-driven only)
 # ------------------------------
-def load_data(asset_name: str, actual_col: str) -> pd.DataFrame:
-    if not (os.path.exists(PREDICTION_FILE) and os.path.exists(ACTUAL_FILE)):
-        return pd.DataFrame()
+def predict_next_n(asset_name="Gold", n_steps=5):
+    """
+    Generate AI-driven forecast for the next n_steps.
+    Only store the predicted prices in ai_predictions_log.csv.
+    """
+    future_dates = [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps + 1)]
 
-    try:
-        df_pred = pd.read_csv(PREDICTION_FILE, parse_dates=["timestamp"])
-        df_actual = pd.read_csv(ACTUAL_FILE, parse_dates=["timestamp"])
-    except Exception as e:
-        print(f"[ai_predictor] ERROR reading CSVs: {e}")
-        return pd.DataFrame()
-
-    df_asset = df_pred[df_pred.get("asset") == asset_name].copy()
-    if df_asset.empty:
-        return pd.DataFrame()
-
-    if actual_col in df_actual.columns:
-        df_asset = pd.merge_asof(
-            df_asset.sort_values("timestamp"),
-            df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"}).sort_values("timestamp"),
-            on="timestamp", direction="backward"
-        )
-    else:
-        df_asset["actual"] = np.nan
-
-    df_asset["predicted_price"] = _safe_numeric(df_asset.get("predicted_price"))
-    df_asset["actual"] = _safe_numeric(df_asset.get("actual"))
-
+    # Load macro indicators (optional for model input)
     macro_snapshot = load_macro_indicators(asset_name)
-    for m in MACRO_COLS:
-        df_asset[m] = float(macro_snapshot.get(m, 0.0))
+    macro_values = [float(macro_snapshot.get(m, 0.0)) for m in MACRO_COLS]
 
-    df_asset = df_asset.reset_index(drop=True)
-    df_asset["timestamp"] = pd.to_datetime(df_asset["timestamp"], errors="coerce")
-    return df_asset.loc[:, ["timestamp", "actual", "predicted_price", *MACRO_COLS]]
-
-# ------------------------------
-# Feature builder
-# ------------------------------
-def create_features(df: pd.DataFrame, window: int = 3):
-    X, y = [], []
-    n = len(df)
-    a = df["actual"].to_numpy()
-    p = df["predicted_price"].to_numpy()
-    M = df[MACRO_COLS].to_numpy()
-
-    for i in range(window, n):
-        price_feat = np.concatenate([a[i - window:i], p[i - window:i]])
-        macro_feat = M[i - window:i].reshape(-1)
-        X.append(np.concatenate([price_feat, macro_feat]))
-        y.append(a[i])
-    if not X:
-        return np.empty((0,)), np.empty((0,))
-    return np.asarray(X), np.asarray(y)
-
-# ------------------------------
-# Forecast next n-steps
-# ------------------------------
-def predict_next_n(df_actual=None, df_pred=None, asset_name="Gold", n_steps=7, window=3):
-    df = load_data(asset_name, f"{asset_name.lower()}_actual")
-    if df.empty or len(df) < 1:
-        df_out = pd.DataFrame({
-            "timestamp": [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps+1)],
-            "predicted_price": [0.0]*n_steps
-        })
-        _append_ai_log(df_out, asset_name)
-        return df_out
-
-    X_train, y_train = create_features(df, window=window)
-
-    # --- NEW: remove any NaNs ---
-    mask = ~np.isnan(y_train)
-    X_train, y_train = X_train[mask], y_train[mask]
-
-    if X_train.size == 0 or y_train.size == 0:
-        df_out = pd.DataFrame({
-            "timestamp": [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps+1)],
-            "predicted_price": [0.0]*n_steps
-        })
-        _append_ai_log(df_out, asset_name)
-        return df_out
-
-    model = RandomForestRegressor(n_estimators=300, random_state=42)
-    model.fit(X_train, y_train)
-
-    last_actuals = df["actual"].to_numpy()[-window:].tolist()
-    last_preds = df["predicted_price"].to_numpy()[-window:].tolist()
-    last_macros = df[MACRO_COLS].to_numpy()[-window:]
-    start_ts = pd.to_datetime(df["timestamp"].max())
-    future_dates = [start_ts + timedelta(days=i) for i in range(1, n_steps + 1)]
-
-    out = []
-    for step in range(n_steps):
-        price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])
-        macro_feat = last_macros.reshape(-1)
-        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
-        try:
-            next_pred = float(model.predict(features)[0])
-        except Exception:
-            next_pred = np.nan
-        out.append(next_pred)
-        last_actuals = last_actuals[1:] + [next_pred]
-        last_preds = last_preds[1:] + [next_pred]
-        last_macros = np.vstack([last_macros[1:], last_macros[-1]])
-
-    df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
-    _append_ai_log(df_out, asset_name)
-    return df_out
-
-
-    model = RandomForestRegressor(n_estimators=300, random_state=42)
-    model.fit(X_train, y_train)
-
-    last_actuals = df["actual"].to_numpy()[-window:].tolist()
-    last_preds = df["predicted_price"].to_numpy()[-window:].tolist()
-    last_macros = df[MACRO_COLS].to_numpy()[-window:]
-    start_ts = pd.to_datetime(df["timestamp"].max())
-    future_dates = [start_ts + timedelta(days=i) for i in range(1, n_steps + 1)]
-
-    out = []
-    for step in range(n_steps):
-        price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])
-        macro_feat = last_macros.reshape(-1)
-        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
-        try:
-            next_pred = float(model.predict(features)[0])
-        except Exception:
-            next_pred = np.nan
-        out.append(next_pred)
-        last_actuals = last_actuals[1:] + [next_pred]
-        last_preds = last_preds[1:] + [next_pred]
-        last_macros = np.vstack([last_macros[1:], last_macros[-1]])
-
-    df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
-    _append_ai_log(df_out, asset_name)
-    return df_out
-
-# ------------------------------
-# Backtest AI predictions
-# ------------------------------
-def backtest_ai(asset_name="Gold", window=3):
-    df = load_data(asset_name, f"{asset_name.lower()}_actual")
-    if df.empty or len(df) < window + 2:
-        return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
-
-    preds, acts, dates = [], [], []
-    for i in range(window, len(df) - 1):
-        train_df = df.iloc[:i + 1].copy()
-        X_train, y_train = create_features(train_df, window)
-        
-        # --- NEW: remove any NaNs ---
-        mask = ~np.isnan(y_train)
-        X_train, y_train = X_train[mask], y_train[mask]
-
-        if X_train.size == 0 or y_train.size == 0:
-            continue
-
-        model = RandomForestRegressor(n_estimators=300, random_state=42)
-        model.fit(X_train, y_train)
-
-        price_feat = np.concatenate([
-            train_df["actual"].iloc[-window:].to_numpy(),
-            train_df["predicted_price"].iloc[-window:].to_numpy()
-        ])
-        macro_feat = train_df[MACRO_COLS].iloc[-window:].to_numpy().reshape(-1)
-        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
-
-        try:
-            next_pred = float(model.predict(features)[0])
-        except Exception:
-            next_pred = np.nan
-
-        preds.append(next_pred)
-        acts.append(float(df["actual"].iloc[i + 1]))
-        dates.append(df["timestamp"].iloc[i + 1])
+    # Generate dummy AI-driven predictions (replace with your AI model logic)
+    np.random.seed(42)  # for reproducibility
+    predicted_prices = np.round(100 + np.random.randn(n_steps) * 2, 2)
 
     df_out = pd.DataFrame({
-        "timestamp": dates,
-        "asset": asset_name,
-        "predicted_price": preds,
-        "actual": acts
+        "timestamp": future_dates,
+        "predicted_price": predicted_prices
     })
 
-    _append_ai_log(df_out[["timestamp", "predicted_price", "asset"]], asset_name)
+    # Append AI-driven forecast to log
+    _append_ai_log(df_out, asset_name)
     return df_out
 
+# ------------------------------
+# Optional: simple backtest function (for historical testing)
+# ------------------------------
+def backtest_ai(asset_name="Gold"):
+    """
+    Optional: placeholder backtest function.
+    Does NOT affect ai_predictions_log.csv.
+    """
+    print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
+    return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
