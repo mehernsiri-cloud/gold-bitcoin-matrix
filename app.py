@@ -88,9 +88,9 @@ def target_price_card(price, asset_name, horizon):
 def explanation_card(asset_df, asset_name):
     if asset_df.empty:
         return
-    assumptions_str = asset_df["assumptions"].iloc[-1]
+    assumptions_str = asset_df.get("assumptions", ["{}"])[-1]
     try:
-        assumptions = eval(assumptions_str) if assumptions_str else {}
+        assumptions = eval(assumptions_str)
     except:
         assumptions = {}
     if not assumptions:
@@ -110,10 +110,10 @@ def assumptions_card(asset_df, asset_name):
     if asset_df.empty:
         st.info(f"No assumptions available for {asset_name}")
         return
-    assumptions_str = asset_df["assumptions"].iloc[-1]
-    target_horizon = asset_df["target_horizon"].iloc[-1]
+    assumptions_str = asset_df.get("assumptions", ["{}"])[-1]
+    target_horizon = asset_df.get("target_horizon", ["Days"])[-1]
     try:
-        assumptions = eval(assumptions_str) if assumptions_str else {}
+        assumptions = eval(assumptions_str)
     except:
         assumptions = {}
     if not assumptions:
@@ -204,7 +204,7 @@ def get_default_assumption(df, key, fallback):
     if df.empty:
         return fallback
     try:
-        last_assumptions = eval(df["assumptions"].iloc[-1])
+        last_assumptions = eval(df.get("assumptions", ["{}"])[-1])
         return last_assumptions.get(key, fallback)
     except:
         return fallback
@@ -228,7 +228,6 @@ inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, st.session_st
 usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, st.session_state.usd_adj, 0.1, key="usd_adj")
 oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, st.session_state.oil_adj, 0.1, key="oil_adj")
 vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, st.session_state.vix_adj, 1.0, key="vix_adj")
-
 st.sidebar.button("Reset to Predicted Values", on_click=reset_sliders)
 
 def apply_what_if(df):
@@ -271,11 +270,14 @@ if menu == "Gold & Bitcoin":
                 explanation_card(df, name)
                 assumptions_card(df, name)
 
-                # Prepare AI forecast
+                # Updated AI forecast call
                 n_steps = 7
-                df_ai = predict_next_n(df_actual, df_pred, name, n_steps)
+                try:
+                    df_ai = predict_next_n(asset_name=name, n_steps=n_steps)
+                except TypeError:
+                    df_ai = pd.DataFrame()  # fallback if old call signature
 
-                # Plot combined chart: actual, model predicted, AI forecast
+                # Plot combined chart
                 theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
@@ -299,9 +301,11 @@ elif menu == "AI Forecast":
 
     for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
-        df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
+        try:
+            df_ai = predict_next_n(asset_name=asset, n_steps=n_steps)
+        except TypeError:
+            df_ai = pd.DataFrame()
         if not df_ai.empty:
-            # Combine historical actuals with AI forecast for plotting
             df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
