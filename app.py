@@ -105,11 +105,21 @@ def explanation_card(asset_df, asset_name):
 
 
 def assumptions_card(asset_df, asset_name):
-    theme = ASSET_THEMES[asset_name]
-    if asset_df.empty:
-        st.info(f"No assumptions available for {asset_name}")
-        return
-    assumptions_str = asset_df.get("assumptions", ["{}"])[-1]
+    st.subheader(f"📖 Assumptions for {asset_name}")
+
+    if "assumptions" in asset_df.columns and not asset_df.empty:
+        try:
+            assumptions_str = asset_df["assumptions"].iloc[-1]
+        except Exception:
+            assumptions_str = "{}"
+    else:
+        assumptions_str = "{}"
+
+    st.markdown(f"""
+        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
+            <b>Latest Assumptions:</b> {assumptions_str}
+        </div>
+    """, unsafe_allow_html=True)
     target_horizon = asset_df.get("target_horizon", ["Days"])[-1]
     try:
         assumptions = eval(assumptions_str)
