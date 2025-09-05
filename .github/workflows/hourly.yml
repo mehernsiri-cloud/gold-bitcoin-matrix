@@ -27,14 +27,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pandas yfinance requests pyyaml plotly textblob pytrends
+          pip install pandas yfinance requests pyyaml plotly textblob pytrends scikit-learn
 
-      # 4. Ensure data folder exists
-      - name: Create data folder if missing
+      # 4. Ensure data folder & CSV files exist
+      - name: Create data folder and CSV files if missing
         run: |
           mkdir -p data
           touch data/actual_data.csv
           touch data/predictions_log.csv
+          touch data/ai_predictions_log.csv
 
       # 5. Update market indicators dynamically
       - name: Update market indicators
@@ -55,7 +56,7 @@ jobs:
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add data/predictions_log.csv data/actual_data.csv weight.yaml
+          git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv weight.yaml
           git commit -m "Hourly update" || echo "No changes to commit"
 
           # Handle conflicts safely
