@@ -1,6 +1,11 @@
 
 # Gold & Bitcoin Predictive Matrix — Streamlit Web App
 
+
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/<your-github-mehernsiri-cloud>/<gold-bitcoin-matrix>/HEAD?filepath=run_app.py)
+
+
+
 This is a **no-install web app** to score macro drivers and predict 30‑day directional bias and magnitude for **Gold** and **Bitcoin**.
 
 ## Files
