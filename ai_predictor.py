@@ -4,7 +4,7 @@ from datetime import timedelta, datetime
 import numpy as np
 import pandas as pd
 import yaml
-from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
 
 # ------------------------------
 # Paths / constants
@@ -13,8 +13,6 @@ DATA_DIR = "data"
 AI_LOG_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 ACTUAL_DATA_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 WEIGHT_FILE = "weight.yaml"
-
-MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
 
 # ------------------------------
 # Helpers
@@ -70,76 +68,65 @@ def load_historical_prices(asset_name: str) -> pd.Series:
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
     
     df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
-    if asset_name.lower() == "gold":
-        col = "gold_actual"
-    elif asset_name.lower() == "bitcoin":
-        col = "bitcoin_actual"
-    else:
-        raise ValueError(f"Unknown asset: {asset_name}")
-
-    if col not in df.columns:
-        raise ValueError(f"{col} column not found in actual_data.csv")
+    col_map = {"gold": "gold_actual", "bitcoin": "bitcoin_actual"}
+    col = col_map.get(asset_name.lower())
+    if col is None or col not in df.columns:
+        raise ValueError(f"Column for {asset_name} not found in actual_data.csv")
 
     df = df.sort_values("timestamp")
-    return df[col].astype(float)
+    return df[col].astype(float).reset_index(drop=True)
 
 # ------------------------------
 # Forecast next n-steps
 # ------------------------------
-# ------------------------------
-# Forecast next n-steps
-# ------------------------------
-def predict_next_n(asset_name="Gold", n_steps=5):
+def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
     """
-    Train on historical actual_data.csv and forecast next n_steps prices.
-    Uses RandomForestRegressor with lag features (autoregressive).
-    Handles missing values in historical data.
+    Train on historical actual_data.csv and macro indicators to forecast next n_steps prices.
+    Uses XGBoost Regressor with lag features + macro indicators.
     """
     # 1. Load history
     prices = load_historical_prices(asset_name)
-
-    # Drop NaNs if any
     prices = prices.dropna().reset_index(drop=True)
 
-    # 2. Build lag features (autoregression)
-    lags = 5
+    # 2. Load latest macro indicators
+    macro = load_macro_indicators(asset_name)
+    macro_features = [macro.get(k, 0.0) for k in macro.keys()]
+
+    # 3. Build dataset with lag features + macro indicators
     X, y = [], []
     for i in range(lags, len(prices)):
-        lag_window = prices[i-lags:i].values
-        if np.any(np.isnan(lag_window)) or np.isnan(prices[i]):
-            continue  # skip rows with NaNs
-        X.append(lag_window)
+        lag_window = prices[i-lags:i].values.tolist()
+        if np.any(pd.isna(lag_window)) or pd.isna(prices[i]):
+            continue
+        X.append(lag_window + macro_features)
         y.append(prices[i])
     X, y = np.array(X), np.array(y)
 
     if len(X) == 0:
-        # Not enough historical data, fallback to last known price
+        # fallback if not enough data
         last_price = prices.iloc[-1] if len(prices) > 0 else (2000.0 if asset_name.lower() == "gold" else 30000.0)
         future_dates = pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps)
-        df_out = pd.DataFrame({
-            "timestamp": future_dates,
-            "predicted_price": [last_price] * n_steps
-        })
+        df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": [last_price]*n_steps})
         _append_ai_log(df_out, asset_name)
         return df_out
 
-    # 3. Train model
-    model = RandomForestRegressor(n_estimators=300, random_state=42)
+    # 4. Train model
+    model = XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=4, random_state=42)
     model.fit(X, y)
 
-    # 4. Predict forward autoregressively
+    # 5. Recursive prediction
     history = prices[-lags:].tolist()
     preds = []
     for _ in range(n_steps):
-        # ensure last lags have no NaN
-        input_features = [0 if np.isnan(v) else v for v in history[-lags:]]
+        input_features = history[-lags:] + macro_features
+        input_features = [0 if pd.isna(v) else v for v in input_features]
         next_pred = model.predict([input_features])[0]
         preds.append(next_pred)
         history.append(next_pred)
 
-    # 5. Prepare output dataframe
+    future_dates = pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps)
     df_out = pd.DataFrame({
-        "timestamp": pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps),
+        "timestamp": future_dates,
         "predicted_price": np.round(preds, 2)
     })
 
@@ -147,7 +134,6 @@ def predict_next_n(asset_name="Gold", n_steps=5):
     _append_ai_log(df_out, asset_name)
 
     return df_out
-
 
 # ------------------------------
 # Backtest (optional)
