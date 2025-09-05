@@ -17,10 +17,11 @@ import plotly.graph_objects as go
 DATA_DIR = "data"
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
+AI_LOG_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
 # ------------------------------
-# Theme & Icons (reused by renderer)
+# Theme & Icons
 # ------------------------------
 ASSET_THEMES = {
     "Gold": {
@@ -65,26 +66,36 @@ INDICATOR_ICONS = {
     "geopolitics": "🌍",
 }
 
+# Currently limited to these indicators
 MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
 
 # ------------------------------
-# Utilities
+# Helpers
 # ------------------------------
 def _safe_numeric(series):
-    """Coerce to numeric, keep NaNs if bad values exist."""
     return pd.to_numeric(series, errors="coerce")
 
 def _file_exists(*paths):
     return all(os.path.exists(p) for p in paths)
 
+def _append_ai_log(df_out, asset_name):
+    """Append AI predictions to ai_predictions_log.csv safely."""
+    if df_out.empty:
+        return
+    df_out = df_out.copy()
+    df_out["asset"] = asset_name
+
+    if os.path.exists(AI_LOG_FILE):
+        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
+        df_out = pd.concat([old, df_out]).drop_duplicates(
+            subset=["timestamp", "asset"], keep="last"
+        )
+    df_out.to_csv(AI_LOG_FILE, index=False)
+
 # ------------------------------
-# Load macro indicators from weight.yaml
+# Macro snapshot loader
 # ------------------------------
 def load_macro_indicators(asset_name: str) -> dict:
-    """
-    Reads static macro weights for the asset from weight.yaml.
-    These are treated as the latest macro snapshot and used as features.
-    """
     if not os.path.exists(WEIGHT_FILE):
         return {}
     with open(WEIGHT_FILE, "r") as f:
@@ -92,27 +103,19 @@ def load_macro_indicators(asset_name: str) -> dict:
     return weights.get(asset_name.lower(), {}) or {}
 
 # ------------------------------
-# Load historical data including macro indicators
+# Data loader
 # ------------------------------
 def load_data(asset_name: str, actual_col: str) -> pd.DataFrame:
-    """
-    Returns a dataframe with:
-      timestamp, actual, predicted_price, and MACRO_COLS
-    Macro columns are filled from weight.yaml (static snapshot),
-    so they are present even if not in actual CSV.
-    """
     if not _file_exists(PREDICTION_FILE, ACTUAL_FILE):
         return pd.DataFrame()
 
     df_pred = pd.read_csv(PREDICTION_FILE, parse_dates=["timestamp"])
     df_actual = pd.read_csv(ACTUAL_FILE, parse_dates=["timestamp"])
 
-    # Filter predictions for this asset
     df_asset = df_pred[df_pred["asset"] == asset_name].copy()
     if df_asset.empty:
         return pd.DataFrame()
 
-    # Merge actuals (asof to align on or before the prediction timestamp)
     if actual_col in df_actual.columns:
         df_asset = pd.merge_asof(
             df_asset.sort_values("timestamp"),
@@ -123,64 +126,43 @@ def load_data(asset_name: str, actual_col: str) -> pd.DataFrame:
     else:
         df_asset["actual"] = np.nan
 
-    # Coerce numerics
     df_asset["predicted_price"] = _safe_numeric(df_asset["predicted_price"])
     df_asset["actual"] = _safe_numeric(df_asset["actual"])
 
-    # Inject macro snapshot from weight.yaml (static values)
     macro_snapshot = load_macro_indicators(asset_name)
     for m in MACRO_COLS:
         df_asset[m] = float(macro_snapshot.get(m, 0.0))
 
-    # Keep only rows where we have both actual & model predicted_price
     df_asset.dropna(subset=["predicted_price", "actual"], inplace=True)
     df_asset.reset_index(drop=True, inplace=True)
     return df_asset[["timestamp", "actual", "predicted_price", *MACRO_COLS]]
 
 # ------------------------------
-# Create rolling window features (prices + macro)
+# Feature builder
 # ------------------------------
 def create_features(df: pd.DataFrame, window: int = 3):
-    """
-    Builds feature matrix X and target y.
-    Features = last `window` actuals + last `window` model_predicted + last `window` macro vectors.
-    """
     X, y = [], []
     n = len(df)
     a = df["actual"].to_numpy()
     p = df["predicted_price"].to_numpy()
-    M = df[MACRO_COLS].to_numpy()  # shape (n, 4)
+    M = df[MACRO_COLS].to_numpy()
 
     for i in range(window, n):
-        # prices
-        price_feat = np.concatenate([a[i - window : i], p[i - window : i]])  # shape 2*window
-        # macros (window x 4) -> flattened
-        macro_feat = M[i - window : i].reshape(-1)  # shape window*4
+        price_feat = np.concatenate([a[i - window : i], p[i - window : i]])
+        macro_feat = M[i - window : i].reshape(-1)
         X.append(np.concatenate([price_feat, macro_feat]))
         y.append(a[i])
 
-    X = np.asarray(X)
-    y = np.asarray(y)
-    return X, y
+    return np.asarray(X), np.asarray(y)
 
 # ------------------------------
-# Predict next n steps (iterative)
+# AI Forecast (future steps)
 # ------------------------------
-def predict_next_n(df_actual: pd.DataFrame,
-                   df_pred: pd.DataFrame,
-                   asset_name: str = "Gold",
-                   n_steps: int = 7,
-                   window: int = 3) -> pd.DataFrame:
-    """
-    Uses a RandomForestRegressor trained on rolling features (prices + macros) to produce
-    n-step ahead forecasts. Macro snapshot is kept constant during roll-forward.
-    """
-    # Load aligned dataset (independent from df_actual/df_pred args for simplicity)
+def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
     if df.empty or len(df) < window + 1:
         return pd.DataFrame(columns=["timestamp", "predicted_price"])
 
-    # Train
     X_train, y_train = create_features(df, window=window)
     if X_train.size == 0:
         return pd.DataFrame(columns=["timestamp", "predicted_price"])
@@ -188,34 +170,77 @@ def predict_next_n(df_actual: pd.DataFrame,
     model = RandomForestRegressor(n_estimators=300, random_state=42)
     model.fit(X_train, y_train)
 
-    # Rolling state
     last_actuals = df["actual"].to_numpy()[-window:].tolist()
     last_preds = df["predicted_price"].to_numpy()[-window:].tolist()
-    last_macros = df[MACRO_COLS].to_numpy()[-window:]  # shape (window, 4)
+    last_macros = df[MACRO_COLS].to_numpy()[-window:]
 
-    # Future dates (daily)
     start_ts = pd.to_datetime(df["timestamp"].max())
     future_dates = [start_ts + timedelta(days=i) for i in range(1, n_steps + 1)]
     out = []
 
     for _ in range(n_steps):
-        price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])  # 2*window
-        macro_feat = last_macros.reshape(-1)  # window*4
+        price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])
+        macro_feat = last_macros.reshape(-1)
         features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
 
         next_pred = float(model.predict(features)[0])
         out.append(next_pred)
 
-        # advance windows
-        last_actuals = last_actuals[1:] + [next_pred]     # use predicted as proxy for next actual
+        last_actuals = last_actuals[1:] + [next_pred]
         last_preds = last_preds[1:] + [next_pred]
-        # keep macro snapshot constant (append the last row)
         last_macros = np.vstack([last_macros[1:], last_macros[-1]])
 
-    return pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
+    df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
+    _append_ai_log(df_out, asset_name)  # 🔴 save forecast
+    return df_out
 
 # ------------------------------
-# Lightweight UI helpers (for AI Forecast section)
+# AI Backtest (past evaluation)
+# ------------------------------
+def backtest_ai(asset_name="Gold", window=3):
+    df = load_data(asset_name, f"{asset_name.lower()}_actual")
+    if df.empty or len(df) < window + 1:
+        return pd.DataFrame(columns=["timestamp", "asset", "predicted_ai", "actual"])
+
+    preds, acts, dates = [], [], []
+    for i in range(window, len(df) - 1):
+        train_df = df.iloc[:i+1]
+        X_train, y_train = create_features(train_df, window=window)
+        if X_train.size == 0:
+            continue
+
+        model = RandomForestRegressor(n_estimators=300, random_state=42)
+        model.fit(X_train, y_train)
+
+        price_feat = np.concatenate([
+            train_df["actual"].iloc[-window:].to_numpy(),
+            train_df["predicted_price"].iloc[-window:].to_numpy()
+        ])
+        macro_feat = train_df[MACRO_COLS].iloc[-window:].to_numpy().reshape(-1)
+        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
+        next_pred = float(model.predict(features)[0])
+
+        preds.append(next_pred)
+        acts.append(df["actual"].iloc[i+1])
+        dates.append(df["timestamp"].iloc[i+1])
+
+    df_out = pd.DataFrame({
+        "timestamp": dates,
+        "asset": asset_name,
+        "predicted_ai": preds,
+        "actual": acts
+    })
+
+    # log backtest results too
+    if os.path.exists(AI_LOG_FILE):
+        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
+        df_out = pd.concat([old, df_out]).drop_duplicates(subset=["timestamp","asset"], keep="last")
+    df_out.to_csv(AI_LOG_FILE, index=False)
+
+    return df_out
+
+# ------------------------------
+# UI helpers (unchanged)
 # ------------------------------
 def _alert_badge(signal: str, asset_name: str) -> str:
     theme = ASSET_THEMES[asset_name]
@@ -239,7 +264,6 @@ def _target_price_card(price, asset_name, horizon: str):
     )
 
 def _assumptions_panel(asset_name: str):
-    # show raw macro snapshot coming from weight.yaml
     weights = load_macro_indicators(asset_name)
     if not weights:
         st.info("No macro assumptions found.")
@@ -252,30 +276,20 @@ def _assumptions_panel(asset_name: str):
     st.json(shown)
 
 # ------------------------------
-# Render AI Forecast section (drop-in)
+# Render AI Forecast (unchanged)
 # ------------------------------
 def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: int = 7):
-    """
-    Side-by-side AI Forecast for Gold & Bitcoin, matching your pastel layout vibe.
-    Safe to call directly from app.py:
-        from ai_predictor import render_ai_forecast
-        ...
-        render_ai_forecast(df_actual, df_pred, n_steps)
-    """
     assets = [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]
     col1, col2 = st.columns(2)
 
     for col, (asset, actual_col) in zip([col1, col2], assets):
         with col:
             st.subheader(asset)
-
-            # Build forecast
             df_ai = predict_next_n(df_actual, df_pred, asset, n_steps)
             if df_ai.empty:
                 st.info(f"No AI prediction available for {asset}.")
                 continue
 
-            # Determine a simple signal vs latest actual
             latest_actual_series = df_actual.get(actual_col)
             latest_actual = None
             if latest_actual_series is not None:
@@ -289,7 +303,6 @@ def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: 
             else:
                 signal = "Buy" if last_pred > latest_actual else "Sell" if last_pred < latest_actual else "Hold"
 
-            # Trend from last 3 predicted points
             trend = "Neutral ⚖️"
             if len(df_ai) >= 3:
                 seq = df_ai["predicted_price"].tail(3)
@@ -303,37 +316,28 @@ def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: 
             _target_price_card(last_pred, asset, "Days")
             _assumptions_panel(asset)
 
-            # Plot actual + AI predictions
             theme = ASSET_THEMES[asset]
             if actual_col in df_actual.columns:
-                df_hist = (
-                    df_actual[["timestamp", actual_col]]
-                    .rename(columns={actual_col: "actual"})
-                    .copy()
-                )
+                df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"}).copy()
             else:
                 df_hist = pd.DataFrame({"timestamp": [], "actual": []})
 
             fig = go.Figure()
             if not df_hist.empty:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df_hist["timestamp"],
-                        y=pd.to_numeric(df_hist["actual"], errors="coerce"),
-                        mode="lines+markers",
-                        name="Actual",
-                        line=dict(color=theme["chart_actual"], width=2),
-                    )
-                )
-            fig.add_trace(
-                go.Scatter(
-                    x=df_ai["timestamp"],
-                    y=df_ai["predicted_price"],
+                fig.add_trace(go.Scatter(
+                    x=df_hist["timestamp"],
+                    y=pd.to_numeric(df_hist["actual"], errors="coerce"),
                     mode="lines+markers",
-                    name="AI Forecast",
-                    line=dict(color=theme["chart_ai"], dash="dot"),
-                )
-            )
+                    name="Actual",
+                    line=dict(color=theme["chart_actual"], width=2),
+                ))
+            fig.add_trace(go.Scatter(
+                x=df_ai["timestamp"],
+                y=df_ai["predicted_price"],
+                mode="lines+markers",
+                name="AI Forecast",
+                line=dict(color=theme["chart_ai"], dash="dot"),
+            ))
             fig.update_layout(
                 title=f"{asset} AI Forecast vs Actual",
                 xaxis_title="Date",
@@ -342,6 +346,4 @@ def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: 
                 paper_bgcolor="#FAFAFA",
             )
             st.plotly_chart(fig, use_container_width=True)
-
-            # Table
             st.dataframe(df_ai)
