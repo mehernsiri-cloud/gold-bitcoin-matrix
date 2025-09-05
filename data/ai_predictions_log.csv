@@ -1,1 +1,1 @@
-timestamp, asset, predicted_ai, actual
+timestamp,asset,predicted_price,actual,logged_at
