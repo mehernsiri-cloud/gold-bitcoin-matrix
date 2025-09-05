@@ -90,7 +90,6 @@ def explanation_card(asset_df, asset_name):
 
     if "assumptions" in asset_df.columns and not asset_df.empty:
         try:
-            # Get last row’s assumptions
             assumptions_str = asset_df["assumptions"].iloc[-1]
         except Exception:
             assumptions_str = "{}"
@@ -103,10 +102,10 @@ def explanation_card(asset_df, asset_name):
         </div>
     """, unsafe_allow_html=True)
 
-
 def assumptions_card(asset_df, asset_name):
     st.subheader(f"📖 Assumptions for {asset_name}")
 
+    # Safe assumptions
     if "assumptions" in asset_df.columns and not asset_df.empty:
         try:
             assumptions_str = asset_df["assumptions"].iloc[-1]
@@ -115,12 +114,22 @@ def assumptions_card(asset_df, asset_name):
     else:
         assumptions_str = "{}"
 
+    # Safe target horizon
+    if "target_horizon" in asset_df.columns and not asset_df.empty:
+        try:
+            target_horizon = asset_df["target_horizon"].iloc[-1]
+        except Exception:
+            target_horizon = "Days"
+    else:
+        target_horizon = "Days"
+
     st.markdown(f"""
         <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
-            <b>Latest Assumptions:</b> {assumptions_str}
+            <b>Latest Assumptions:</b> {assumptions_str}<br>
+            <b>Target Horizon:</b> {target_horizon}
         </div>
     """, unsafe_allow_html=True)
-    target_horizon = asset_df.get("target_horizon", ["Days"])[-1]
+
     try:
         assumptions = eval(assumptions_str)
     except:
@@ -128,10 +137,15 @@ def assumptions_card(asset_df, asset_name):
     if not assumptions:
         st.info(f"No assumptions available for {asset_name}")
         return
+
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
     icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
-    colors = [theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"] for v in values]
+    theme = ASSET_THEMES[asset_name]
+    colors = [
+        theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"]
+        for v in values
+    ]
 
     fig = go.Figure()
     for ind, val, icon, color in zip(indicators, values, icons, colors):
@@ -213,7 +227,7 @@ def get_default_assumption(df, key, fallback):
     if df.empty:
         return fallback
     try:
-        last_assumptions = eval(df.get("assumptions", ["{}"])[-1])
+        last_assumptions = eval(df["assumptions"].iloc[-1])
         return last_assumptions.get(key, fallback)
     except:
         return fallback
