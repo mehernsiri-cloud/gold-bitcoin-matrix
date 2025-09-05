@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestRegressor
 # ------------------------------
 DATA_DIR = "data"
 AI_LOG_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
-ACTUAL_DATA_FILE = os.path.join(DATA_DIR, "actual_data.csv")  # <-- add
+ACTUAL_DATA_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 WEIGHT_FILE = "weight.yaml"
 
 MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
@@ -22,13 +22,11 @@ MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
 def _ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
-def _safe_numeric(series):
-    return pd.to_numeric(series, errors="coerce")
-
 # ------------------------------
 # AI Log Writing
 # ------------------------------
 def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
+    """Append forecast results into ai_predictions_log.csv"""
     try:
         _ensure_data_dir()
         if df_out is None or df_out.empty:
@@ -37,9 +35,6 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
         df_to_write = df_out.copy()
         df_to_write["asset"] = asset_name
         df_to_write["logged_at"] = datetime.utcnow().isoformat()
-
-        if "predicted_price" not in df_to_write.columns and "predicted_ai" in df_to_write.columns:
-            df_to_write = df_to_write.rename(columns={"predicted_ai": "predicted_price"})
 
         if not os.path.exists(AI_LOG_FILE) or os.path.getsize(AI_LOG_FILE) == 0:
             df_to_write.to_csv(AI_LOG_FILE, index=False)
@@ -56,6 +51,7 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
 # Load macro indicators
 # ------------------------------
 def load_macro_indicators(asset_name: str) -> dict:
+    """Load optional macro weights for asset"""
     if not os.path.exists(WEIGHT_FILE):
         return {}
     try:
@@ -67,77 +63,59 @@ def load_macro_indicators(asset_name: str) -> dict:
         return {}
 
 # ------------------------------
-# Get last known price (baseline)
-# ------------------------------
-def get_last_actual_price(asset_name: str) -> float:
-    if os.path.exists(ACTUAL_DATA_FILE):
-        try:
-            df = pd.read_csv(ACTUAL_DATA_FILE)
-            df = df[df["asset"].str.lower() == asset_name.lower()]
-            if not df.empty and "actual" in df.columns:
-                return float(df["actual"].iloc[-1])
-        except Exception as e:
-            print(f"[ai_predictor] Warning: cannot read actual_data.csv ({e})")
-
-    # fallback baselines if no actual_data available
-    if asset_name.lower() == "gold":
-        return 2000.0
-    elif asset_name.lower() == "bitcoin":
-        return 30000.0
-    else:
-        return 100.0
-
-# ------------------------------
-# Forecast next n-steps (AI-driven only)
+# Train model & forecast
 # ------------------------------
 def predict_next_n(asset_name="Gold", n_steps=5):
     """
-    Generate AI-driven forecast for the next n_steps.
-    Baseline: last known actual price.
-    AI: RandomForestRegressor using synthetic features + macro indicators.
+    Train on historical actual_data.csv and forecast next n_steps prices.
+    Store predictions in ai_predictions_log.csv.
     """
-    future_dates = [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps + 1)]
+    # 1. Load history
+    if not os.path.exists(ACTUAL_DATA_FILE):
+        raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
 
-    # Load baseline last known price
-    last_price = get_last_actual_price(asset_name)
+    df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
+    df = df[df["asset"].str.lower() == asset_name.lower()].copy()
+    if df.empty or "actual" not in df.columns:
+        raise ValueError(f"No valid history found for {asset_name}")
 
-    # Load macro indicators
-    macro_snapshot = load_macro_indicators(asset_name)
-    macro_values = [float(macro_snapshot.get(m, 0.0)) for m in MACRO_COLS]
+    df = df.sort_values("timestamp")
+    prices = df["actual"].astype(float).values
 
-    # Build synthetic training data (simple autoregression with noise)
-    X_train = []
-    y_train = []
-    for i in range(30):  # last 30 "days"
-        features = [last_price * (1 + 0.001 * np.random.randn())] + macro_values
-        X_train.append(features)
-        y_train.append(last_price * (1 + 0.01 * np.random.randn()))
+    # 2. Build training data (lag features)
+    lags = 5
+    X, y = [], []
+    for i in range(lags, len(prices)):
+        X.append(prices[i-lags:i])  # past 5 values
+        y.append(prices[i])
+    X, y = np.array(X), np.array(y)
 
-    model = RandomForestRegressor(n_estimators=200, random_state=42)
-    model.fit(X_train, y_train)
+    # 3. Train RandomForest
+    model = RandomForestRegressor(n_estimators=300, random_state=42)
+    model.fit(X, y)
 
-    # Predict forward
-    X_future = []
-    base = last_price
+    # 4. Forecast autoregressively
+    history = prices[-lags:].tolist()
+    preds = []
     for _ in range(n_steps):
-        features = [base] + macro_values
-        pred = model.predict([features])[0]
-        X_future.append(pred)
-        base = pred  # autoregressive step
+        features = np.array(history[-lags:]).reshape(1, -1)
+        next_price = model.predict(features)[0]
+        preds.append(next_price)
+        history.append(next_price)
 
-    predicted_prices = np.round(X_future, 2)
-
+    future_dates = [df["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, n_steps + 1)]
     df_out = pd.DataFrame({
         "timestamp": future_dates,
-        "predicted_price": predicted_prices
+        "predicted_price": np.round(preds, 2)
     })
 
-    # Append AI-driven forecast to log
+    # 5. Save forecast
     _append_ai_log(df_out, asset_name)
+
     return df_out
 
 # ------------------------------
-# Optional: simple backtest function
+# Backtest placeholder
 # ------------------------------
 def backtest_ai(asset_name="Gold"):
     print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
