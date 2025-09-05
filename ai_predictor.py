@@ -48,36 +48,47 @@ def _safe_numeric(series):
 # ------------------------------
 def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
     """
-    Append AI predictions (forecast or backtest) to ai_predictions_log.csv.
-    Always ensures at least one row is written to avoid empty Git commits.
+    Append AI predictions (or backtest rows) to AI_LOG_FILE.
+    Ensures columns exist and writes safely.
     """
-    _ensure_data_dir()
+    try:
+        if df_out is None or df_out.empty:
+            print(f"[ai_predictor] No rows to log for {asset_name}; skipping write.")
+            return
 
-    # Ensure at least one row exists
-    if df_out is None or df_out.empty:
-        df_out = pd.DataFrame([{
-            "timestamp": datetime.utcnow().isoformat(),
-            "predicted_price": np.nan
-        }])
-        print(f"[ai_predictor] No predictions, adding dummy row for {asset_name}")
+        _ensure_data_dir()
+        df_to_write = df_out.copy()
+        df_to_write["asset"] = asset_name
+        df_to_write["logged_at"] = datetime.utcnow().isoformat()
 
-    df_out["asset"] = asset_name
-    df_out["logged_at"] = datetime.utcnow().isoformat()
+        # Ensure 'predicted_price' column exists
+        if "predicted_price" not in df_to_write.columns:
+            if "predicted_ai" in df_to_write.columns:
+                df_to_write = df_to_write.rename(columns={"predicted_ai": "predicted_price"})
+            else:
+                df_to_write["predicted_price"] = np.nan
 
-    # Read existing AI log
-    if os.path.exists(AI_LOG_FILE) and os.path.getsize(AI_LOG_FILE) > 0:
-        try:
-            old = pd.read_csv(AI_LOG_FILE)
-            combined = pd.concat([old, df_out], ignore_index=True)
-            combined = combined.drop_duplicates(subset=["timestamp", "asset"], keep="last")
-        except Exception as e:
-            print(f"[ai_predictor] Warning reading old AI log: {e}")
-            combined = df_out
-    else:
-        combined = df_out
+        # Ensure AI log file exists with correct columns
+        if not os.path.exists(AI_LOG_FILE) or os.path.getsize(AI_LOG_FILE) == 0:
+            df_to_write.to_csv(AI_LOG_FILE, index=False)
+            print(f"[ai_predictor] Wrote {len(df_to_write)} rows for {asset_name} to new AI log.")
+            return
 
-    combined.to_csv(AI_LOG_FILE, index=False)
-    print(f"[ai_predictor] AI log updated for {asset_name}, total rows: {len(combined)}")
+        # Read existing log
+        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"], infer_datetime_format=True)
+        # unify columns
+        for col in ["predicted_price", "asset", "logged_at"]:
+            if col not in old.columns:
+                old[col] = np.nan
+
+        combined = pd.concat([old, df_to_write], ignore_index=True, sort=False)
+        combined = combined.drop_duplicates(subset=["timestamp", "asset"], keep="last")
+        combined.to_csv(AI_LOG_FILE, index=False)
+        print(f"[ai_predictor] Appended {len(df_to_write)} rows for {asset_name}. AI log now has {len(combined)} rows.")
+
+    except Exception as e:
+        print(f"[ai_predictor] ERROR while writing AI log: {e}")
+
 
 # ------------------------------
 # Load macro indicators
