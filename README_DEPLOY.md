@@ -2,7 +2,8 @@
 # Gold & Bitcoin Predictive Matrix — Streamlit Web App
 
 
-[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/<your-github-mehernsiri-cloud>/<gold-bitcoin-matrix>/HEAD?filepath=run_app.py)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/mehernsiri-cloud/gold-bitcoin-matrix/HEAD?filepath=run_app.py)
+
 
 
 
