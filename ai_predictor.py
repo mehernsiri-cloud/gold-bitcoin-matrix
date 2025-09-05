@@ -6,10 +6,6 @@ import pandas as pd
 import yaml
 from sklearn.ensemble import RandomForestRegressor
 
-# UI helpers
-import streamlit as st
-import plotly.graph_objects as go
-
 # ------------------------------
 # Paths / constants
 # ------------------------------
@@ -20,19 +16,6 @@ AI_LOG_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 WEIGHT_FILE = "weight.yaml"
 
 MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
-
-ASSET_THEMES = {
-    "Gold": {
-        "chart_actual": "#FBC02D", "chart_pred": "#FFCC80", "chart_ai": "#FF6F61",
-        "buy": "#FFF9C4", "sell": "#FFE0B2", "hold": "#E0E0E0",
-        "target_bg": "#FFFDE7", "target_text": "black"
-    },
-    "Bitcoin": {
-        "chart_actual": "#42A5F5", "chart_pred": "#81D4FA", "chart_ai": "#FF6F61",
-        "buy": "#BBDEFB", "sell": "#FFCDD2", "hold": "#CFD8DC",
-        "target_bg": "#E3F2FD", "target_text": "black"
-    }
-}
 
 # ------------------------------
 # Helpers
@@ -47,9 +30,6 @@ def _safe_numeric(series):
 # AI Log Writing
 # ------------------------------
 def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
-    """
-    Append AI predictions to AI_LOG_FILE, always writing something.
-    """
     try:
         _ensure_data_dir()
         if df_out is None or df_out.empty:
@@ -69,7 +49,6 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
 
         if not os.path.exists(AI_LOG_FILE) or os.path.getsize(AI_LOG_FILE) == 0:
             df_to_write.to_csv(AI_LOG_FILE, index=False)
-            print(f"[ai_predictor] Wrote {len(df_to_write)} rows for {asset_name} to new AI log.")
             return
 
         old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"], infer_datetime_format=True)
@@ -80,7 +59,6 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
         combined = pd.concat([old, df_to_write], ignore_index=True, sort=False)
         combined = combined.drop_duplicates(subset=["timestamp", "asset"], keep="last")
         combined.to_csv(AI_LOG_FILE, index=False)
-        print(f"[ai_predictor] Appended {len(df_to_write)} rows for {asset_name}. AI log now has {len(combined)} rows.")
     except Exception as e:
         print(f"[ai_predictor] ERROR while writing AI log: {e}")
 
@@ -158,10 +136,9 @@ def create_features(df: pd.DataFrame, window: int = 3):
 # ------------------------------
 # Forecast next n-steps
 # ------------------------------
-def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
+def predict_next_n(df_actual=None, df_pred=None, asset_name="Gold", n_steps=7, window=3):
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
     if df.empty or len(df) < 1:
-        # fallback placeholder
         df_out = pd.DataFrame({
             "timestamp": [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps+1)],
             "predicted_price": [0.0]*n_steps
@@ -192,17 +169,51 @@ def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
         price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])
         macro_feat = last_macros.reshape(-1)
         features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
-
         try:
             next_pred = float(model.predict(features)[0])
         except Exception:
             next_pred = np.nan
-
         out.append(next_pred)
         last_actuals = last_actuals[1:] + [next_pred]
         last_preds = last_preds[1:] + [next_pred]
         last_macros = np.vstack([last_macros[1:], last_macros[-1]])
 
     df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
+    _append_ai_log(df_out, asset_name)
+    return df_out
+
+# ------------------------------
+# Backtest AI predictions
+# ------------------------------
+def backtest_ai(asset_name="Gold", window=3):
+    df = load_data(asset_name, f"{asset_name.lower()}_actual")
+    if df.empty or len(df) < window + 1:
+        return pd.DataFrame(columns=["timestamp", "predicted_price", "actual", "asset"])
+
+    preds, acts, dates = [], [], []
+    for i in range(window, len(df) - 1):
+        train_df = df.iloc[:i + 1].copy()
+        X_train, y_train = create_features(train_df, window)
+        if X_train.size == 0:
+            continue
+        model = RandomForestRegressor(n_estimators=300, random_state=42)
+        model.fit(X_train, y_train)
+        price_feat = np.concatenate([
+            train_df["actual"].iloc[-window:].to_numpy(),
+            train_df["predicted_price"].iloc[-window:].to_numpy()
+        ])
+        macro_feat = train_df[MACRO_COLS].iloc[-window:].to_numpy().reshape(-1)
+        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
+        next_pred = float(model.predict(features)[0])
+        preds.append(next_pred)
+        acts.append(float(df["actual"].iloc[i + 1]))
+        dates.append(df["timestamp"].iloc[i + 1])
+
+    df_out = pd.DataFrame({
+        "timestamp": dates,
+        "asset": asset_name,
+        "predicted_price": preds,
+        "actual": acts
+    })
     _append_ai_log(df_out, asset_name)
     return df_out
