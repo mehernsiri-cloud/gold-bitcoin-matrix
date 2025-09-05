@@ -147,13 +147,46 @@ def predict_next_n(df_actual=None, df_pred=None, asset_name="Gold", n_steps=7, w
         return df_out
 
     X_train, y_train = create_features(df, window=window)
-    if X_train.size == 0:
+
+    # --- NEW: remove any NaNs ---
+    mask = ~np.isnan(y_train)
+    X_train, y_train = X_train[mask], y_train[mask]
+
+    if X_train.size == 0 or y_train.size == 0:
         df_out = pd.DataFrame({
             "timestamp": [pd.Timestamp.utcnow() + timedelta(days=i) for i in range(1, n_steps+1)],
             "predicted_price": [0.0]*n_steps
         })
         _append_ai_log(df_out, asset_name)
         return df_out
+
+    model = RandomForestRegressor(n_estimators=300, random_state=42)
+    model.fit(X_train, y_train)
+
+    last_actuals = df["actual"].to_numpy()[-window:].tolist()
+    last_preds = df["predicted_price"].to_numpy()[-window:].tolist()
+    last_macros = df[MACRO_COLS].to_numpy()[-window:]
+    start_ts = pd.to_datetime(df["timestamp"].max())
+    future_dates = [start_ts + timedelta(days=i) for i in range(1, n_steps + 1)]
+
+    out = []
+    for step in range(n_steps):
+        price_feat = np.concatenate([np.array(last_actuals), np.array(last_preds)])
+        macro_feat = last_macros.reshape(-1)
+        features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
+        try:
+            next_pred = float(model.predict(features)[0])
+        except Exception:
+            next_pred = np.nan
+        out.append(next_pred)
+        last_actuals = last_actuals[1:] + [next_pred]
+        last_preds = last_preds[1:] + [next_pred]
+        last_macros = np.vstack([last_macros[1:], last_macros[-1]])
+
+    df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
+    _append_ai_log(df_out, asset_name)
+    return df_out
+
 
     model = RandomForestRegressor(n_estimators=300, random_state=42)
     model.fit(X_train, y_train)
