@@ -1,13 +1,13 @@
 # ai_predictor.py
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 import numpy as np
 import pandas as pd
 import yaml
 from sklearn.ensemble import RandomForestRegressor
 
-# UI helpers (safe to import even if not used by app.py)
+# UI helpers
 import streamlit as st
 import plotly.graph_objects as go
 
@@ -33,8 +33,6 @@ ASSET_THEMES = {
         "hold": "#E0E0E0",
         "target_bg": "#FFFDE7",
         "target_text": "black",
-        "assumption_pos": "#FFD54F",
-        "assumption_neg": "#FFAB91",
     },
     "Bitcoin": {
         "chart_actual": "#42A5F5",
@@ -45,28 +43,9 @@ ASSET_THEMES = {
         "hold": "#CFD8DC",
         "target_bg": "#E3F2FD",
         "target_text": "black",
-        "assumption_pos": "#64B5F6",
-        "assumption_neg": "#EF9A9A",
     },
 }
 
-INDICATOR_ICONS = {
-    "inflation": "💹",
-    "real_rates": "🏦",
-    "bond_yields": "📈",
-    "energy_prices": "🛢️",
-    "usd_strength": "💵",
-    "liquidity": "💧",
-    "equity_flows": "📊",
-    "regulation": "🏛️",
-    "adoption": "🤝",
-    "currency_instability": "⚖️",
-    "recession_probability": "📉",
-    "tail_risk_event": "🚨",
-    "geopolitics": "🌍",
-}
-
-# Currently limited to these indicators
 MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
 
 # ------------------------------
@@ -75,25 +54,24 @@ MACRO_COLS = ["inflation", "usd_strength", "energy_prices", "tail_risk_event"]
 def _safe_numeric(series):
     return pd.to_numeric(series, errors="coerce")
 
-def _file_exists(*paths):
-    return all(os.path.exists(p) for p in paths)
-
 def _append_ai_log(df_out, asset_name):
-    """Append AI predictions to ai_predictions_log.csv safely."""
+    """Append AI predictions to ai_predictions_log.csv with timestamp."""
     if df_out.empty:
         return
+    os.makedirs(DATA_DIR, exist_ok=True)
+
     df_out = df_out.copy()
     df_out["asset"] = asset_name
+    df_out["logged_at"] = datetime.utcnow()
 
     if os.path.exists(AI_LOG_FILE):
-        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
-        df_out = pd.concat([old, df_out]).drop_duplicates(
-            subset=["timestamp", "asset"], keep="last"
-        )
+        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp", "logged_at"])
+        df_out = pd.concat([old, df_out], ignore_index=True)
+
     df_out.to_csv(AI_LOG_FILE, index=False)
 
 # ------------------------------
-# Macro snapshot loader
+# Loaders
 # ------------------------------
 def load_macro_indicators(asset_name: str) -> dict:
     if not os.path.exists(WEIGHT_FILE):
@@ -102,11 +80,8 @@ def load_macro_indicators(asset_name: str) -> dict:
         weights = yaml.safe_load(f) or {}
     return weights.get(asset_name.lower(), {}) or {}
 
-# ------------------------------
-# Data loader
-# ------------------------------
 def load_data(asset_name: str, actual_col: str) -> pd.DataFrame:
-    if not _file_exists(PREDICTION_FILE, ACTUAL_FILE):
+    if not (os.path.exists(PREDICTION_FILE) and os.path.exists(ACTUAL_FILE)):
         return pd.DataFrame()
 
     df_pred = pd.read_csv(PREDICTION_FILE, parse_dates=["timestamp"])
@@ -134,11 +109,10 @@ def load_data(asset_name: str, actual_col: str) -> pd.DataFrame:
         df_asset[m] = float(macro_snapshot.get(m, 0.0))
 
     df_asset.dropna(subset=["predicted_price", "actual"], inplace=True)
-    df_asset.reset_index(drop=True, inplace=True)
     return df_asset[["timestamp", "actual", "predicted_price", *MACRO_COLS]]
 
 # ------------------------------
-# Feature builder
+# Features
 # ------------------------------
 def create_features(df: pd.DataFrame, window: int = 3):
     X, y = [], []
@@ -156,7 +130,7 @@ def create_features(df: pd.DataFrame, window: int = 3):
     return np.asarray(X), np.asarray(y)
 
 # ------------------------------
-# AI Forecast (future steps)
+# Forecast
 # ------------------------------
 def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
@@ -191,11 +165,11 @@ def predict_next_n(df_actual, df_pred, asset_name="Gold", n_steps=7, window=3):
         last_macros = np.vstack([last_macros[1:], last_macros[-1]])
 
     df_out = pd.DataFrame({"timestamp": future_dates, "predicted_price": out})
-    _append_ai_log(df_out, asset_name)  # 🔴 save forecast
+    _append_ai_log(df_out, asset_name)
     return df_out
 
 # ------------------------------
-# AI Backtest (past evaluation)
+# Backtest
 # ------------------------------
 def backtest_ai(asset_name="Gold", window=3):
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
@@ -231,25 +205,16 @@ def backtest_ai(asset_name="Gold", window=3):
         "actual": acts
     })
 
-    # log backtest results too
-    if os.path.exists(AI_LOG_FILE):
-        old = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
-        df_out = pd.concat([old, df_out]).drop_duplicates(subset=["timestamp","asset"], keep="last")
-    df_out.to_csv(AI_LOG_FILE, index=False)
-
+    _append_ai_log(df_out.rename(columns={"predicted_ai": "predicted_price"}), asset_name)
     return df_out
 
 # ------------------------------
-# UI helpers (unchanged)
+# UI
 # ------------------------------
 def _alert_badge(signal: str, asset_name: str) -> str:
     theme = ASSET_THEMES[asset_name]
     color = theme["buy"] if signal == "Buy" else theme["sell"] if signal == "Sell" else theme["hold"]
-    return (
-        f'<div style="background-color:{color};color:black;'
-        f'padding:8px;font-size:20px;text-align:center;border-radius:8px">'
-        f'{signal.upper()}</div>'
-    )
+    return f'<div style="background-color:{color};padding:8px;font-size:20px;text-align:center;border-radius:8px">{signal.upper()}</div>'
 
 def _target_price_card(price, asset_name, horizon: str):
     theme = ASSET_THEMES[asset_name]
@@ -263,21 +228,6 @@ def _target_price_card(price, asset_name, horizon: str):
         unsafe_allow_html=True,
     )
 
-def _assumptions_panel(asset_name: str):
-    weights = load_macro_indicators(asset_name)
-    if not weights:
-        st.info("No macro assumptions found.")
-        return
-    shown = {k: v for k, v in weights.items() if k in MACRO_COLS}
-    if not shown:
-        st.info("No macro assumptions found for the selected indicators.")
-        return
-    st.markdown("**Macro snapshot (from weight.yaml)**")
-    st.json(shown)
-
-# ------------------------------
-# Render AI Forecast (unchanged)
-# ------------------------------
 def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: int = 7):
     assets = [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]
     col1, col2 = st.columns(2)
@@ -303,18 +253,8 @@ def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: 
             else:
                 signal = "Buy" if last_pred > latest_actual else "Sell" if last_pred < latest_actual else "Hold"
 
-            trend = "Neutral ⚖️"
-            if len(df_ai) >= 3:
-                seq = df_ai["predicted_price"].tail(3)
-                if seq.is_monotonic_increasing:
-                    trend = "Bullish 📈"
-                elif seq.is_monotonic_decreasing:
-                    trend = "Bearish 📉"
-
             st.markdown(_alert_badge(signal, asset), unsafe_allow_html=True)
-            st.markdown(f"**Market Trend:** {trend}")
             _target_price_card(last_pred, asset, "Days")
-            _assumptions_panel(asset)
 
             theme = ASSET_THEMES[asset]
             if actual_col in df_actual.columns:
@@ -338,12 +278,6 @@ def render_ai_forecast(df_actual: pd.DataFrame, df_pred: pd.DataFrame, n_steps: 
                 name="AI Forecast",
                 line=dict(color=theme["chart_ai"], dash="dot"),
             ))
-            fig.update_layout(
-                title=f"{asset} AI Forecast vs Actual",
-                xaxis_title="Date",
-                yaxis_title="Price",
-                plot_bgcolor="#FAFAFA",
-                paper_bgcolor="#FAFAFA",
-            )
+            fig.update_layout(title=f"{asset} AI Forecast vs Actual", xaxis_title="Date", yaxis_title="Price")
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(df_ai)
