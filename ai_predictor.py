@@ -70,12 +70,18 @@ def load_historical_prices(asset_name: str) -> pd.Series:
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
     
     df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
-    df = df[df["asset"].str.lower() == asset_name.lower()]
-    if df.empty or "actual" not in df.columns:
-        raise ValueError(f"No historical prices found for {asset_name}")
-    
+    if asset_name.lower() == "gold":
+        col = "gold_actual"
+    elif asset_name.lower() == "bitcoin":
+        col = "bitcoin_actual"
+    else:
+        raise ValueError(f"Unknown asset: {asset_name}")
+
+    if col not in df.columns:
+        raise ValueError(f"{col} column not found in actual_data.csv")
+
     df = df.sort_values("timestamp")
-    return df["actual"].astype(float)
+    return df[col].astype(float)
 
 # ------------------------------
 # Forecast next n-steps
@@ -96,6 +102,17 @@ def predict_next_n(asset_name="Gold", n_steps=5):
         y.append(prices[i])
     X, y = np.array(X), np.array(y)
 
+    if len(X) == 0:
+        # Not enough historical data, fallback to last known price
+        last_price = prices.iloc[-1] if len(prices) > 0 else (2000.0 if asset_name.lower() == "gold" else 30000.0)
+        future_dates = pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps)
+        df_out = pd.DataFrame({
+            "timestamp": future_dates,
+            "predicted_price": [last_price] * n_steps
+        })
+        _append_ai_log(df_out, asset_name)
+        return df_out
+
     # 3. Train model
     model = RandomForestRegressor(n_estimators=300, random_state=42)
     model.fit(X, y)
@@ -108,13 +125,13 @@ def predict_next_n(asset_name="Gold", n_steps=5):
         preds.append(next_pred)
         history.append(next_pred)
 
-    future_dates = [prices.index[-1] + timedelta(days=i) for i in range(1, n_steps + 1)]
+    # 5. Prepare output dataframe
     df_out = pd.DataFrame({
-        "timestamp": pd.Timestamp.now() + pd.to_timedelta(range(1, n_steps+1), unit='D'),
+        "timestamp": pd.date_range(start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps),
         "predicted_price": np.round(preds, 2)
     })
 
-    # 5. Save to log
+    # 6. Save to log
     _append_ai_log(df_out, asset_name)
 
     return df_out
