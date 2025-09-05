@@ -86,24 +86,23 @@ def target_price_card(price, asset_name, horizon):
         """, unsafe_allow_html=True)
 
 def explanation_card(asset_df, asset_name):
-    if asset_df.empty:
-        return
-    assumptions_str = asset_df.get("assumptions", ["{}"])[-1]
-    try:
-        assumptions = eval(assumptions_str)
-    except:
-        assumptions = {}
-    if not assumptions:
-        return
-    strongest = max(assumptions.items(), key=lambda x: abs(x[1]))
-    indicator, impact = strongest
-    direction = "upward 📈" if impact > 0 else "downward 📉"
+    st.subheader(f"📖 Explanation for {asset_name}")
+
+    if "assumptions" in asset_df.columns and not asset_df.empty:
+        try:
+            # Get last row’s assumptions
+            assumptions_str = asset_df["assumptions"].iloc[-1]
+        except Exception:
+            assumptions_str = "{}"
+    else:
+        assumptions_str = "{}"
+
     st.markdown(f"""
-    <div style='background-color:#FAFAFA;padding:12px;border-radius:10px;margin-bottom:10px'>
-    🔍 **Forecast for {asset_name}:**  
-    The outlook suggests a **{direction} trend** mainly driven by **{indicator} {INDICATOR_ICONS.get(indicator,"")}**.
-    </div>
+        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
+            <b>Latest Assumptions:</b> {assumptions_str}
+        </div>
     """, unsafe_allow_html=True)
+
 
 def assumptions_card(asset_df, asset_name):
     theme = ASSET_THEMES[asset_name]
