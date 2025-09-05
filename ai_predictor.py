@@ -86,19 +86,29 @@ def load_historical_prices(asset_name: str) -> pd.Series:
 # ------------------------------
 # Forecast next n-steps
 # ------------------------------
+# ------------------------------
+# Forecast next n-steps
+# ------------------------------
 def predict_next_n(asset_name="Gold", n_steps=5):
     """
     Train on historical actual_data.csv and forecast next n_steps prices.
     Uses RandomForestRegressor with lag features (autoregressive).
+    Handles missing values in historical data.
     """
     # 1. Load history
     prices = load_historical_prices(asset_name)
-    
+
+    # Drop NaNs if any
+    prices = prices.dropna().reset_index(drop=True)
+
     # 2. Build lag features (autoregression)
     lags = 5
     X, y = [], []
     for i in range(lags, len(prices)):
-        X.append(prices[i-lags:i])
+        lag_window = prices[i-lags:i].values
+        if np.any(np.isnan(lag_window)) or np.isnan(prices[i]):
+            continue  # skip rows with NaNs
+        X.append(lag_window)
         y.append(prices[i])
     X, y = np.array(X), np.array(y)
 
@@ -121,7 +131,9 @@ def predict_next_n(asset_name="Gold", n_steps=5):
     history = prices[-lags:].tolist()
     preds = []
     for _ in range(n_steps):
-        next_pred = model.predict([history[-lags:]])[0]
+        # ensure last lags have no NaN
+        input_features = [0 if np.isnan(v) else v for v in history[-lags:]]
+        next_pred = model.predict([input_features])[0]
         preds.append(next_pred)
         history.append(next_pred)
 
@@ -135,6 +147,7 @@ def predict_next_n(asset_name="Gold", n_steps=5):
     _append_ai_log(df_out, asset_name)
 
     return df_out
+
 
 # ------------------------------
 # Backtest (optional)
