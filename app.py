@@ -135,21 +135,36 @@ def assumptions_card(asset_df, asset_name):
     else:
         target_horizon = "Days"
 
-    st.markdown(f"""
-        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
-            <b>Latest Assumptions:</b> {assumptions_str}<br>
-            <b>Target Horizon:</b> {target_horizon}
-        </div>
-    """, unsafe_allow_html=True)
-
+    # Parse assumptions
     try:
         assumptions = eval(assumptions_str)
     except:
         assumptions = {}
+
     if not assumptions:
         st.info(f"No assumptions available for {asset_name}")
         return
 
+    # --- NEW: create human-readable explanation ---
+    max_factor = max(assumptions.items(), key=lambda x: abs(x[1]))
+    factor_name, factor_value = max_factor
+    if factor_value > 0:
+        explanation = f"Predictions for **{asset_name}** are mainly supported by positive trends in **{factor_name.replace('_',' ')}**."
+    elif factor_value < 0:
+        explanation = f"Predictions for **{asset_name}** are mainly pressured by negative trends in **{factor_name.replace('_',' ')}**."
+    else:
+        explanation = f"Predictions for **{asset_name}** show no dominant influencing factor."
+
+    # Display clean explanation + horizon
+    st.markdown(f"""
+        <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; 
+                    box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
+            {explanation}<br>
+            <i>Forecast horizon: {target_horizon}</i>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- Chart ---
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
     icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
@@ -165,11 +180,15 @@ def assumptions_card(asset_df, asset_name):
             x=[f"{icon} {ind}"], y=[val],
             marker_color=color, text=[f"{val:.2f}"], textposition='auto'
         ))
-    fig.update_layout(title=f"{asset_name} Assumptions & Target ({target_horizon})",
-                      yaxis_title="Weight / Impact",
-                      plot_bgcolor="#FAFAFA",
-                      paper_bgcolor="#FAFAFA")
+
+    fig.update_layout(
+        title=f"{asset_name} Assumptions & Target ({target_horizon})",
+        yaxis_title="Weight / Impact",
+        plot_bgcolor="#FAFAFA",
+        paper_bgcolor="#FAFAFA"
+    )
     st.plotly_chart(fig, use_container_width=True)
+
 
 # ------------------------------
 # MERGE PREDICTIONS WITH ACTUALS
