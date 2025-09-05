@@ -220,24 +220,36 @@ def predict_next_n(df_actual=None, df_pred=None, asset_name="Gold", n_steps=7, w
 # ------------------------------
 def backtest_ai(asset_name="Gold", window=3):
     df = load_data(asset_name, f"{asset_name.lower()}_actual")
-    if df.empty or len(df) < window + 1:
-        return pd.DataFrame(columns=["timestamp", "predicted_price", "actual", "asset"])
+    if df.empty or len(df) < window + 2:
+        return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
 
     preds, acts, dates = [], [], []
     for i in range(window, len(df) - 1):
         train_df = df.iloc[:i + 1].copy()
         X_train, y_train = create_features(train_df, window)
-        if X_train.size == 0:
+        
+        # --- NEW: remove any NaNs ---
+        mask = ~np.isnan(y_train)
+        X_train, y_train = X_train[mask], y_train[mask]
+
+        if X_train.size == 0 or y_train.size == 0:
             continue
+
         model = RandomForestRegressor(n_estimators=300, random_state=42)
         model.fit(X_train, y_train)
+
         price_feat = np.concatenate([
             train_df["actual"].iloc[-window:].to_numpy(),
             train_df["predicted_price"].iloc[-window:].to_numpy()
         ])
         macro_feat = train_df[MACRO_COLS].iloc[-window:].to_numpy().reshape(-1)
         features = np.concatenate([price_feat, macro_feat]).reshape(1, -1)
-        next_pred = float(model.predict(features)[0])
+
+        try:
+            next_pred = float(model.predict(features)[0])
+        except Exception:
+            next_pred = np.nan
+
         preds.append(next_pred)
         acts.append(float(df["actual"].iloc[i + 1]))
         dates.append(df["timestamp"].iloc[i + 1])
@@ -248,5 +260,7 @@ def backtest_ai(asset_name="Gold", window=3):
         "predicted_price": preds,
         "actual": acts
     })
-    _append_ai_log(df_out, asset_name)
+
+    _append_ai_log(df_out[["timestamp", "predicted_price", "asset"]], asset_name)
     return df_out
+
