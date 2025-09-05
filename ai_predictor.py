@@ -26,7 +26,7 @@ def _ensure_data_dir():
 # AI Log Writing
 # ------------------------------
 def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
-    """Append forecast results into ai_predictions_log.csv"""
+    """Append AI predictions to ai_predictions_log.csv"""
     try:
         _ensure_data_dir()
         if df_out is None or df_out.empty:
@@ -51,7 +51,6 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
 # Load macro indicators
 # ------------------------------
 def load_macro_indicators(asset_name: str) -> dict:
-    """Load optional macro weights for asset"""
     if not os.path.exists(WEIGHT_FILE):
         return {}
     try:
@@ -63,59 +62,65 @@ def load_macro_indicators(asset_name: str) -> dict:
         return {}
 
 # ------------------------------
-# Train model & forecast
+# Get historical actual prices
+# ------------------------------
+def load_historical_prices(asset_name: str) -> pd.Series:
+    """Load historical prices for a given asset"""
+    if not os.path.exists(ACTUAL_DATA_FILE):
+        raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
+    
+    df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
+    df = df[df["asset"].str.lower() == asset_name.lower()]
+    if df.empty or "actual" not in df.columns:
+        raise ValueError(f"No historical prices found for {asset_name}")
+    
+    df = df.sort_values("timestamp")
+    return df["actual"].astype(float)
+
+# ------------------------------
+# Forecast next n-steps
 # ------------------------------
 def predict_next_n(asset_name="Gold", n_steps=5):
     """
     Train on historical actual_data.csv and forecast next n_steps prices.
-    Store predictions in ai_predictions_log.csv.
+    Uses RandomForestRegressor with lag features (autoregressive).
     """
     # 1. Load history
-    if not os.path.exists(ACTUAL_DATA_FILE):
-        raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
-
-    df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
-    df = df[df["asset"].str.lower() == asset_name.lower()].copy()
-    if df.empty or "actual" not in df.columns:
-        raise ValueError(f"No valid history found for {asset_name}")
-
-    df = df.sort_values("timestamp")
-    prices = df["actual"].astype(float).values
-
-    # 2. Build training data (lag features)
+    prices = load_historical_prices(asset_name)
+    
+    # 2. Build lag features (autoregression)
     lags = 5
     X, y = [], []
     for i in range(lags, len(prices)):
-        X.append(prices[i-lags:i])  # past 5 values
+        X.append(prices[i-lags:i])
         y.append(prices[i])
     X, y = np.array(X), np.array(y)
 
-    # 3. Train RandomForest
+    # 3. Train model
     model = RandomForestRegressor(n_estimators=300, random_state=42)
     model.fit(X, y)
 
-    # 4. Forecast autoregressively
+    # 4. Predict forward autoregressively
     history = prices[-lags:].tolist()
     preds = []
     for _ in range(n_steps):
-        features = np.array(history[-lags:]).reshape(1, -1)
-        next_price = model.predict(features)[0]
-        preds.append(next_price)
-        history.append(next_price)
+        next_pred = model.predict([history[-lags:]])[0]
+        preds.append(next_pred)
+        history.append(next_pred)
 
-    future_dates = [df["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, n_steps + 1)]
+    future_dates = [prices.index[-1] + timedelta(days=i) for i in range(1, n_steps + 1)]
     df_out = pd.DataFrame({
-        "timestamp": future_dates,
+        "timestamp": pd.Timestamp.now() + pd.to_timedelta(range(1, n_steps+1), unit='D'),
         "predicted_price": np.round(preds, 2)
     })
 
-    # 5. Save forecast
+    # 5. Save to log
     _append_ai_log(df_out, asset_name)
 
     return df_out
 
 # ------------------------------
-# Backtest placeholder
+# Backtest (optional)
 # ------------------------------
 def backtest_ai(asset_name="Gold"):
     print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
