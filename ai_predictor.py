@@ -67,7 +67,7 @@ def load_macro_indicators(asset_name: str) -> dict:
 # ------------------------------
 # Get historical daily prices
 # ------------------------------
-def load_historical_prices(asset_name: str) -> pd.Series:
+def load_historical_prices(asset_name: str) -> pd.DataFrame:
     """Load daily average historical prices for a given asset"""
     if not os.path.exists(ACTUAL_DATA_FILE):
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
@@ -81,7 +81,8 @@ def load_historical_prices(asset_name: str) -> pd.Series:
     # Convert to daily average
     df_daily = df.groupby(df["timestamp"].dt.date)[col].mean().reset_index()
     df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
-    return df_daily[col].astype(float).reset_index(drop=True)
+    df_daily.rename(columns={col: "actual_price"}, inplace=True)
+    return df_daily
 
 
 # ------------------------------
@@ -94,7 +95,8 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
     Uses XGBoost Regressor with lag features + macro indicators.
     """
     # 1. Load history
-    prices = load_historical_prices(asset_name).dropna().reset_index(drop=True)
+    df_hist = load_historical_prices(asset_name)
+    prices = df_hist["actual_price"].dropna().reset_index(drop=True)
 
     # 2. Load latest macro indicators
     macro = load_macro_indicators(asset_name)
@@ -155,12 +157,34 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
 
 
 # ------------------------------
-# Backtest (optional)
+# Compare predictions vs actuals
 # ------------------------------
-def backtest_ai(asset_name="Gold"):
-    """Backtest placeholder for comparing AI predictions vs actual prices"""
-    print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
-    return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
+def compare_predictions_vs_actuals(asset_name="Gold") -> pd.DataFrame:
+    """
+    Merge AI predictions from ai_predictions_log.csv with actual prices
+    from actual_data.csv for plotting.
+    """
+    if not os.path.exists(AI_LOG_FILE):
+        raise FileNotFoundError(f"{AI_LOG_FILE} not found")
+    if not os.path.exists(ACTUAL_DATA_FILE):
+        raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
+
+    # Load predictions
+    preds = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
+    preds = preds[preds["asset"].str.lower() == asset_name.lower()]
+
+    # Load actuals
+    actuals = load_historical_prices(asset_name)
+
+    # Merge
+    merged = pd.merge(
+        preds,
+        actuals,
+        on="timestamp",
+        how="left"
+    )
+
+    return merged[["timestamp", "asset", "predicted_price", "actual_price"]]
 
 
 # ------------------------------
@@ -171,3 +195,7 @@ if __name__ == "__main__":
         print(f"Predicting {asset}...")
         df_pred = predict_next_n(asset_name=asset, n_steps=7, lags=5)
         print(df_pred)
+
+        print(f"\nComparison for {asset}:")
+        df_cmp = compare_predictions_vs_actuals(asset)
+        print(df_cmp.tail())
