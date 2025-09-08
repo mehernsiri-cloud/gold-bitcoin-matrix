@@ -18,6 +18,7 @@ st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide")
 # ------------------------------
 DATA_DIR = "data"
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
+AI_PRED_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")  # <- new AI predictions file
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 WEIGHT_FILE = "weight.yaml"
 
@@ -33,6 +34,7 @@ def load_csv_safe(path, default_cols):
 
 df_pred = load_csv_safe(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "volatility", "risk"])
 df_actual = load_csv_safe(ACTUAL_FILE, ["timestamp", "gold_actual", "bitcoin_actual"])
+df_ai_pred_log = load_csv_safe(AI_PRED_FILE, ["timestamp", "asset", "predicted_price"])  # <- load AI predictions
 
 if os.path.exists(WEIGHT_FILE):
     with open(WEIGHT_FILE, "r") as f:
@@ -336,55 +338,61 @@ elif menu == "AI Forecast":
     st.markdown("This dashboard shows **AI-predicted prices** based on historical data.")
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
 
-    # Two-column layout for Gold (left) and Bitcoin (right)
     col1, col2 = st.columns(2)
 
     for col, asset, actual_col in zip([col1, col2], ["Gold", "Bitcoin"], ["gold_actual", "bitcoin_actual"]):
         with col:
             st.subheader(asset)
 
-            # --- Historical AI predictions vs Actual ---
+            # --- Historical AI predictions vs Actual from CSV files ---
             st.markdown("**Historical AI Predictions vs Actual**")
-            try:
-                df_cmp = compare_predictions_vs_actuals(asset)
-                if not df_cmp.empty:
-                    fig_cmp = go.Figure()
-                    fig_cmp.add_trace(go.Scatter(x=df_cmp["timestamp"], y=df_cmp["actual_price"],
-                                                 mode="lines+markers", name="Actual Price",
-                                                 line=dict(color="green")))
-                    fig_cmp.add_trace(go.Scatter(x=df_cmp["timestamp"], y=df_cmp["predicted_price"],
-                                                 mode="lines+markers", name="Predicted Price",
-                                                 line=dict(color="orange", dash="dot")))
-                    fig_cmp.update_layout(title=f"{asset} – Historical AI Predictions vs Actual",
-                                          xaxis_title="Date", yaxis_title="Price",
-                                          template="plotly_white")
-                    st.plotly_chart(fig_cmp, use_container_width=True)
-                else:
-                    st.info(f"No historical prediction data for {asset}.")
-            except Exception as e:
-                st.warning(f"Could not load historical comparison for {asset}: {e}")
+            df_hist_actual = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
+            df_hist_pred = df_ai_pred_log[df_ai_pred_log["asset"] == asset][["timestamp", "predicted_price"]]
+
+            if not df_hist_actual.empty and not df_hist_pred.empty:
+                fig_cmp = go.Figure()
+                fig_cmp.add_trace(go.Scatter(
+                    x=df_hist_actual["timestamp"], y=df_hist_actual["actual"],
+                    mode="lines+markers", name="Actual Price", line=dict(color="green")
+                ))
+                fig_cmp.add_trace(go.Scatter(
+                    x=df_hist_pred["timestamp"], y=df_hist_pred["predicted_price"],
+                    mode="lines+markers", name="Predicted Price", line=dict(color="orange", dash="dot")
+                ))
+                fig_cmp.update_layout(
+                    title=f"{asset} – Historical AI Predictions vs Actual",
+                    xaxis_title="Date", yaxis_title="Price",
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig_cmp, use_container_width=True)
+            else:
+                st.info(f"No historical data available for {asset}.")
 
             # --- Future AI Forecast ---
             st.markdown("**Future AI Forecast**")
             try:
-                df_ai = predict_next_n(asset_name=asset, n_steps=n_steps)
+                df_ai_future = predict_next_n(asset_name=asset, n_steps=n_steps)
             except TypeError:
-                df_ai = pd.DataFrame()
-            if not df_ai.empty:
-                df_hist = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"})
+                df_ai_future = pd.DataFrame()
+
+            if not df_ai_future.empty:
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df_hist["timestamp"], y=df_hist["actual"],
-                                         mode="lines+markers", name="Actual",
-                                         line=dict(color="#42A5F5", width=2)))
-                fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"],
-                                         mode="lines+markers", name="AI Predicted",
-                                         line=dict(color="#FF6F61", dash="dash")))
-                fig.update_layout(title=f"{asset} AI Forecast vs Actual",
-                                  xaxis_title="Date", yaxis_title="Price",
-                                  plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA")
+                fig.add_trace(go.Scatter(
+                    x=df_hist_actual["timestamp"], y=df_hist_actual["actual"],
+                    mode="lines+markers", name="Actual", line=dict(color="#42A5F5", width=2)
+                ))
+                fig.add_trace(go.Scatter(
+                    x=df_ai_future["timestamp"], y=df_ai_future["predicted_price"],
+                    mode="lines+markers", name="AI Predicted", line=dict(color="#FF6F61", dash="dash")
+                ))
+                fig.update_layout(
+                    title=f"{asset} AI Forecast vs Actual",
+                    xaxis_title="Date", yaxis_title="Price",
+                    plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA"
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info(f"No AI prediction available for {asset}.")
+                st.info(f"No AI forecast available for {asset}.")
 
 elif menu == "Jobs":
     jobs_dashboard()
