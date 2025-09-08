@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import yaml
 from datetime import timedelta
 from jobs_app import jobs_dashboard
-from ai_predictor import predict_next_n
+from ai_predictor import predict_next_n, compare_predictions_vs_actuals
 
 # ------------------------------
 # PAGE CONFIG
@@ -98,11 +98,9 @@ def explanation_card(asset_df, asset_name):
         assumptions = {}
 
     if assumptions:
-        # Find the most impactful indicator (largest absolute value)
         main_indicator = max(assumptions.items(), key=lambda x: abs(x[1]))
         indicator, value = main_indicator
         direction = "rising 📈" if value > 0 else "falling 📉" if value < 0 else "stable ⚖️"
-
         explanation_text = f"The latest forecast for **{asset_name}** was mainly driven by **{indicator.replace('_',' ').title()}**, which is {direction} ({value:.2f})."
     else:
         explanation_text = f"No clear driver identified for {asset_name}."
@@ -117,7 +115,6 @@ def explanation_card(asset_df, asset_name):
 def assumptions_card(asset_df, asset_name):
     st.subheader(f"📖 Assumptions for {asset_name}")
 
-    # Safe assumptions
     if "assumptions" in asset_df.columns and not asset_df.empty:
         try:
             assumptions_str = asset_df["assumptions"].iloc[-1]
@@ -126,7 +123,6 @@ def assumptions_card(asset_df, asset_name):
     else:
         assumptions_str = "{}"
 
-    # Safe target horizon
     if "target_horizon" in asset_df.columns and not asset_df.empty:
         try:
             target_horizon = asset_df["target_horizon"].iloc[-1]
@@ -135,7 +131,6 @@ def assumptions_card(asset_df, asset_name):
     else:
         target_horizon = "Days"
 
-    # Parse assumptions
     try:
         assumptions = eval(assumptions_str)
     except:
@@ -145,7 +140,6 @@ def assumptions_card(asset_df, asset_name):
         st.info(f"No assumptions available for {asset_name}")
         return
 
-    # --- NEW: create human-readable explanation ---
     max_factor = max(assumptions.items(), key=lambda x: abs(x[1]))
     factor_name, factor_value = max_factor
     if factor_value > 0:
@@ -155,7 +149,6 @@ def assumptions_card(asset_df, asset_name):
     else:
         explanation = f"Predictions for **{asset_name}** show no dominant influencing factor."
 
-    # Display clean explanation + horizon
     st.markdown(f"""
         <div style="background-color:#FDF6EC; padding:12px; border-radius:12px; 
                     box-shadow:0px 1px 3px rgba(0,0,0,0.1);">
@@ -164,22 +157,15 @@ def assumptions_card(asset_df, asset_name):
         </div>
     """, unsafe_allow_html=True)
 
-    # --- Chart ---
     indicators = list(assumptions.keys())
     values = [assumptions[k] for k in indicators]
     icons = [INDICATOR_ICONS.get(k, "❔") for k in indicators]
     theme = ASSET_THEMES[asset_name]
-    colors = [
-        theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"]
-        for v in values
-    ]
+    colors = [theme["assumption_pos"] if v > 0 else theme["assumption_neg"] if v < 0 else theme["hold"] for v in values]
 
     fig = go.Figure()
     for ind, val, icon, color in zip(indicators, values, icons, colors):
-        fig.add_trace(go.Bar(
-            x=[f"{icon} {ind}"], y=[val],
-            marker_color=color, text=[f"{val:.2f}"], textposition='auto'
-        ))
+        fig.add_trace(go.Bar(x=[f"{icon} {ind}"], y=[val], marker_color=color, text=[f"{val:.2f}"], textposition='auto'))
 
     fig.update_layout(
         title=f"{asset_name} Assumptions & Target ({target_horizon})",
@@ -188,7 +174,6 @@ def assumptions_card(asset_df, asset_name):
         paper_bgcolor="#FAFAFA"
     )
     st.plotly_chart(fig, use_container_width=True)
-
 
 # ------------------------------
 # MERGE PREDICTIONS WITH ACTUALS
@@ -324,14 +309,12 @@ if menu == "Gold & Bitcoin":
                 explanation_card(df, name)
                 assumptions_card(df, name)
 
-                # Updated AI forecast call
                 n_steps = 7
                 try:
                     df_ai = predict_next_n(asset_name=name, n_steps=n_steps)
                 except TypeError:
-                    df_ai = pd.DataFrame()  # fallback if old call signature
+                    df_ai = pd.DataFrame()
 
-                # Plot combined chart
                 theme = ASSET_THEMES[name]
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers",
@@ -355,6 +338,30 @@ elif menu == "AI Forecast":
 
     for asset, actual_col in [("Gold", "gold_actual"), ("Bitcoin", "bitcoin_actual")]:
         st.subheader(asset)
+
+        # --- Historical AI predictions vs Actual ---
+        st.markdown("**Historical AI Predictions vs Actual**")
+        try:
+            df_cmp = compare_predictions_vs_actuals(asset)
+            if not df_cmp.empty:
+                fig_cmp = go.Figure()
+                fig_cmp.add_trace(go.Scatter(x=df_cmp["timestamp"], y=df_cmp["actual_price"],
+                                             mode="lines+markers", name="Actual Price",
+                                             line=dict(color="green")))
+                fig_cmp.add_trace(go.Scatter(x=df_cmp["timestamp"], y=df_cmp["predicted_price"],
+                                             mode="lines+markers", name="Predicted Price",
+                                             line=dict(color="orange", dash="dot")))
+                fig_cmp.update_layout(title=f"{asset} – Historical AI Predictions vs Actual",
+                                      xaxis_title="Date", yaxis_title="Price",
+                                      template="plotly_white")
+                st.plotly_chart(fig_cmp, use_container_width=True)
+            else:
+                st.info(f"No historical prediction data for {asset}.")
+        except Exception as e:
+            st.warning(f"Could not load historical comparison for {asset}: {e}")
+
+        # --- Future AI Forecast ---
+        st.markdown("**Future AI Forecast**")
         try:
             df_ai = predict_next_n(asset_name=asset, n_steps=n_steps)
         except TypeError:
