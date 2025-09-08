@@ -68,21 +68,22 @@ def load_macro_indicators(asset_name: str) -> dict:
 # Get historical daily prices
 # ------------------------------
 def load_historical_prices(asset_name: str) -> pd.DataFrame:
-    """Load daily average historical prices for a given asset"""
+    """Load daily average historical prices for a given asset (returns DataFrame with timestamp & actual_price)"""
     if not os.path.exists(ACTUAL_DATA_FILE):
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
 
-    df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"])
+    df = pd.read_csv(ACTUAL_DATA_FILE, parse_dates=["timestamp"], infer_datetime_format=True)
     col_map = {"gold": "gold_actual", "bitcoin": "bitcoin_actual"}
     col = col_map.get(asset_name.lower())
     if col is None or col not in df.columns:
         raise ValueError(f"Column for {asset_name} not found in actual_data.csv")
 
-    # Convert to daily average
+    # Convert to daily average (group by date)
     df_daily = df.groupby(df["timestamp"].dt.date)[col].mean().reset_index()
-    df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
+    # ensure timestamp is datetime (midnight)
+    df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"]).dt.normalize()
     df_daily.rename(columns={col: "actual_price"}, inplace=True)
-    return df_daily
+    return df_daily[["timestamp", "actual_price"]]
 
 
 # ------------------------------
@@ -118,7 +119,7 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
             2000.0 if asset_name.lower() == "gold" else 30000.0
         )
         future_dates = pd.date_range(
-            start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps
+            start=pd.Timestamp.now().normalize() + pd.Timedelta(days=1), periods=n_steps
         )
         df_out = pd.DataFrame(
             {"timestamp": future_dates, "predicted_price": [last_price] * n_steps}
@@ -145,7 +146,7 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
 
     # 7. Output dataframe
     future_dates = pd.date_range(
-        start=pd.Timestamp.now() + pd.Timedelta(days=1), periods=n_steps
+        start=pd.Timestamp.now().normalize() + pd.Timedelta(days=1), periods=n_steps
     )
     df_out = pd.DataFrame(
         {"timestamp": future_dates, "predicted_price": np.round(preds, 2)}
@@ -157,34 +158,75 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
 
 
 # ------------------------------
-# Compare predictions vs actuals
+# Compare predictions vs actuals (robust)
 # ------------------------------
 def compare_predictions_vs_actuals(asset_name="Gold") -> pd.DataFrame:
     """
-    Merge AI predictions from ai_predictions_log.csv with actual prices
-    from actual_data.csv for plotting.
+    Merge AI predictions from data/ai_predictions_log.csv with actual prices
+    from data/actual_data.csv for plotting.
+
+    This function:
+      - parses timestamps from both files,
+      - normalizes them to dates (midnight) to avoid time-of-day mismatches,
+      - merges on the normalized date.
     """
     if not os.path.exists(AI_LOG_FILE):
         raise FileNotFoundError(f"{AI_LOG_FILE} not found")
     if not os.path.exists(ACTUAL_DATA_FILE):
         raise FileNotFoundError(f"{ACTUAL_DATA_FILE} not found")
 
-    # Load predictions
-    preds = pd.read_csv(AI_LOG_FILE, parse_dates=["timestamp"])
-    preds = preds[preds["asset"].str.lower() == asset_name.lower()]
+    # Load predictions (don't trust dtypes — coerce)
+    preds = pd.read_csv(AI_LOG_FILE)
+    if "timestamp" not in preds.columns:
+        raise ValueError(f"'timestamp' column not found in {AI_LOG_FILE}")
 
-    # Load actuals
+    # parse timestamps (coerce errors to NaT) and keep original timestamp for plotting
+    preds["timestamp"] = pd.to_datetime(preds["timestamp"], errors="coerce", infer_datetime_format=True)
+    # Drop rows where timestamp couldn't be parsed
+    bad_preds = preds["timestamp"].isna().sum()
+    if bad_preds:
+        print(f"[ai_predictor] Warning: {bad_preds} rows in {AI_LOG_FILE} have unparseable timestamps and will be dropped.")
+    preds = preds.dropna(subset=["timestamp"]).copy()
+
+    # filter by asset (case-insensitive)
+    preds = preds[preds["asset"].str.lower() == asset_name.lower()].copy()
+    if preds.empty:
+        return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual_price"])
+
+    # normalize to date for matching
+    preds["date"] = preds["timestamp"].dt.normalize()
+
+    # Load actuals (already returns timestamp normalized)
     actuals = load_historical_prices(asset_name)
+    # ensure timestamp parsed and normalized
+    actuals["timestamp"] = pd.to_datetime(actuals["timestamp"], errors="coerce").dt.normalize()
+    actuals = actuals.dropna(subset=["timestamp"]).copy()
+    actuals = actuals.rename(columns={"timestamp": "date"})
 
-    # Merge
-    merged = pd.merge(
-        preds,
-        actuals,
-        on="timestamp",
-        how="left"
-    )
+    # Merge on normalized date
+    merged = pd.merge(preds, actuals[["date", "actual_price"]], on="date", how="left")
 
-    return merged[["timestamp", "asset", "predicted_price", "actual_price"]]
+    # Convert predicted_price to numeric (coerce)
+    if "predicted_price" in merged.columns:
+        merged["predicted_price"] = pd.to_numeric(merged["predicted_price"], errors="coerce")
+    else:
+        merged["predicted_price"] = np.nan
+
+    # Return friendly columns: keep original timestamp (not the normalized date)
+    out = merged.rename(columns={"timestamp": "timestamp"})[["timestamp", "asset", "predicted_price", "actual_price"]]
+    # Ensure timestamp is datetime and sorted
+    out["timestamp"] = pd.to_datetime(out["timestamp"], errors="coerce")
+    out = out.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+    return out
+
+
+# ------------------------------
+# Backtest (optional)
+# ------------------------------
+def backtest_ai(asset_name="Gold"):
+    """Backtest placeholder for comparing AI predictions vs actual prices"""
+    print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
+    return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
 
 
 # ------------------------------
@@ -195,7 +237,8 @@ if __name__ == "__main__":
         print(f"Predicting {asset}...")
         df_pred = predict_next_n(asset_name=asset, n_steps=7, lags=5)
         print(df_pred)
-
-        print(f"\nComparison for {asset}:")
-        df_cmp = compare_predictions_vs_actuals(asset)
-        print(df_cmp.tail())
+        try:
+            cmp = compare_predictions_vs_actuals(asset)
+            print(cmp.tail())
+        except Exception as e:
+            print(f"compare failed: {e}")
