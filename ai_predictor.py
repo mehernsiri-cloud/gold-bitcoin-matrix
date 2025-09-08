@@ -21,6 +21,7 @@ WEIGHT_FILE = "weight.yaml"
 def _ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
+
 # ------------------------------
 # AI Log Writing
 # ------------------------------
@@ -46,10 +47,12 @@ def _append_ai_log(df_out: pd.DataFrame, asset_name: str):
     except Exception as e:
         print(f"[ai_predictor] ERROR while writing AI log: {e}")
 
+
 # ------------------------------
 # Load macro indicators
 # ------------------------------
 def load_macro_indicators(asset_name: str) -> dict:
+    """Load macro indicators (weights) from weight.yaml for a given asset"""
     if not os.path.exists(WEIGHT_FILE):
         return {}
     try:
@@ -59,6 +62,7 @@ def load_macro_indicators(asset_name: str) -> dict:
     except Exception as e:
         print(f"[ai_predictor] Warning: failed to load weight.yaml ({e})")
         return {}
+
 
 # ------------------------------
 # Get historical daily prices
@@ -78,6 +82,7 @@ def load_historical_prices(asset_name: str) -> pd.Series:
     df_daily = df.groupby(df["timestamp"].dt.date)[col].mean().reset_index()
     df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
     return df_daily[col].astype(float).reset_index(drop=True)
+
 
 # ------------------------------
 # Forecast next n-steps
@@ -148,9 +153,21 @@ def predict_next_n(asset_name="Gold", n_steps=5, lags=5):
     _append_ai_log(df_out, asset_name)
     return df_out
 
+
 # ------------------------------
 # Backtest (optional)
 # ------------------------------
 def backtest_ai(asset_name="Gold"):
+    """Backtest placeholder for comparing AI predictions vs actual prices"""
     print(f"[ai_predictor] backtest_ai for {asset_name} called (no log stored).")
     return pd.DataFrame(columns=["timestamp", "asset", "predicted_price", "actual"])
+
+
+# ------------------------------
+# Main for manual run
+# ------------------------------
+if __name__ == "__main__":
+    for asset in ["Gold", "Bitcoin"]:
+        print(f"Predicting {asset}...")
+        df_pred = predict_next_n(asset_name=asset, n_steps=7, lags=5)
+        print(df_pred)
