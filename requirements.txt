@@ -16,7 +16,5 @@ yfinance>=0.2.27
 scikit-learn>=1.3.0
 xgboost>=1.7.6
 
-# Panel ecosystem (replacement for Streamlit)
-panel>=1.4.0
-bokeh>=3.3.0
-holoviews>=1.18.0
+# Streamlit for the dashboard
+streamlit==1.36.0
