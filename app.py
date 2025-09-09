@@ -7,6 +7,7 @@ import yaml
 from datetime import timedelta
 from jobs_app import jobs_dashboard
 from ai_predictor import predict_next_n, compare_predictions_vs_actuals
+from real_estate_bot import real_estate_dashboard
 
 # ------------------------------
 # PAGE CONFIG
@@ -292,7 +293,11 @@ def generate_summary(asset_df, asset_name):
 # ------------------------------
 # MAIN MENU
 # ------------------------------
-menu = st.sidebar.radio("📊 Choose Dashboard", ["Gold & Bitcoin", "AI Forecast", "Jobs"])
+
+menu = st.sidebar.radio(
+    "📊 Choose Dashboard",
+    ["Gold & Bitcoin", "AI Forecast", "Jobs", "Real Estate Bot"]
+)
 
 if menu == "Gold & Bitcoin":
     st.title("🌸 Gold & Bitcoin Market Dashboard (Pastel Theme)")
@@ -396,3 +401,7 @@ elif menu == "AI Forecast":
 
 elif menu == "Jobs":
     jobs_dashboard()
+
+elif menu == "Real Estate Bot":
+    real_estate_dashboard()
+
