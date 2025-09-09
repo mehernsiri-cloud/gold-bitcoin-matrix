@@ -1,15 +1,15 @@
 # real_estate_bot.py
 """
-Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided form.
+Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided form + auto GitHub push.
 
 Features:
 - Guided form: user fills fields with format hints
 - Mandatory fields enforced: name, phone, email, budget, property type, area
 - Static market data for ROI & area recommendations
 - Saves leads to local CSV (data/real_estate_leads.csv)
-- CSV is auto-created if missing
+- CSV auto-created if missing
 - Allows downloading leads directly from Streamlit
-- Fully self-contained: no APIs or OpenAI required
+- Automatically commits & pushes CSV to GitHub
 """
 
 import os
@@ -18,6 +18,7 @@ import streamlit as st
 import pandas as pd
 import re
 import json
+from git import Repo
 
 # ------------------------------
 # Config / paths
@@ -70,6 +71,7 @@ def save_lead(fields: dict):
     df = pd.read_csv(LEADS_CSV)
     df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
+    commit_leads_to_github()
 
 def recommend_areas(budget_aed: int):
     if budget_aed < 500_000:
@@ -91,11 +93,22 @@ def build_recommendation_text(budget: int, area: str = None):
         lines.append(f"- {a}: {price_range} AED — ROI: {roi}%")
     return "\n".join(lines)
 
+def commit_leads_to_github():
+    """Commit and push CSV to GitHub"""
+    try:
+        repo = Repo(BASE_DIR)
+        repo.git.add(LEADS_CSV)
+        repo.git.commit('-m', f"Add new lead {datetime.utcnow().isoformat()}")
+        repo.git.push()
+        st.info("✅ Leads CSV updated in GitHub repository")
+    except Exception as e:
+        st.warning(f"Git push failed: {e}")
+
 # ------------------------------
 # Streamlit UI
 # ------------------------------
 def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — Form-Based MVP")
+    st.title("🏠 Dubai Real Estate Bot — Form-Based MVP with GitHub Push")
     st.write("Please fill out all mandatory fields (*)")
 
     with st.form(key="lead_form"):
