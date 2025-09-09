@@ -7,9 +7,8 @@ Features:
 - Mandatory fields enforced: name, phone, email, budget, property type, area
 - Static market data for ROI & area recommendations
 - Saves leads to local CSV (data/real_estate_leads.csv)
-- CSV auto-created if missing
-- Allows downloading leads directly from Streamlit
-- Automatically commits & pushes CSV to GitHub
+- Auto-creates CSV if missing
+- Pushes CSV to GitHub automatically (token required)
 """
 
 import os
@@ -29,8 +28,12 @@ LEADS_CSV = os.path.join(DATA_DIR, "real_estate_leads.csv")
 MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# GitHub repo info
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO = "https://github.com/<USERNAME>/<REPO>.git"  # replace <USERNAME>/<REPO>
+
 # ------------------------------
-# Ensure CSV exists with headers
+# Ensure CSV exists
 # ------------------------------
 def init_leads_csv():
     if not os.path.exists(LEADS_CSV):
@@ -71,7 +74,6 @@ def save_lead(fields: dict):
     df = pd.read_csv(LEADS_CSV)
     df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
-    commit_leads_to_github()
 
 def recommend_areas(budget_aed: int):
     if budget_aed < 500_000:
@@ -93,14 +95,24 @@ def build_recommendation_text(budget: int, area: str = None):
         lines.append(f"- {a}: {price_range} AED — ROI: {roi}%")
     return "\n".join(lines)
 
-def commit_leads_to_github():
-    """Commit and push CSV to GitHub"""
+def push_csv_to_github():
+    """Commit and push leads CSV to GitHub using HTTPS token"""
+    if not GITHUB_TOKEN:
+        st.warning("GITHUB_TOKEN not set — cannot push leads to GitHub.")
+        return
     try:
+        # Replace HTTPS URL with token
+        remote_url = GITHUB_REPO.replace("https://", f"https://{GITHUB_TOKEN}@")
         repo = Repo(BASE_DIR)
+        # Local identity for automated commit
+        with repo.config_writer() as git_config:
+            git_config.set_value("user", "name", "Real Estate Bot")
+            git_config.set_value("user", "email", "bot@example.com")
+
         repo.git.add(LEADS_CSV)
         repo.git.commit('-m', f"Add new lead {datetime.utcnow().isoformat()}")
-        repo.git.push()
-        st.info("✅ Leads CSV updated in GitHub repository")
+        repo.git.push(remote_url, "HEAD")
+        st.success("✅ Leads CSV pushed to GitHub successfully!")
     except Exception as e:
         st.warning(f"Git push failed: {e}")
 
@@ -108,7 +120,7 @@ def commit_leads_to_github():
 # Streamlit UI
 # ------------------------------
 def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — Form-Based MVP with GitHub Push")
+    st.title("🏠 Dubai Real Estate Bot — Form + Auto GitHub Push")
     st.write("Please fill out all mandatory fields (*)")
 
     with st.form(key="lead_form"):
@@ -149,14 +161,8 @@ def real_estate_dashboard():
             st.subheader("Recommended Areas & ROI:")
             st.text(build_recommendation_text(budget, area))
 
-            # Allow CSV download
-            with open(LEADS_CSV, "rb") as f:
-                st.download_button(
-                    label="📥 Download Leads CSV",
-                    data=f,
-                    file_name="real_estate_leads.csv",
-                    mime="text/csv"
-                )
+            # Push CSV to GitHub
+            push_csv_to_github()
 
 # ------------------------------
 if __name__ == "__main__":
