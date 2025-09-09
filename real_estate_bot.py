@@ -1,23 +1,22 @@
 # real_estate_bot.py
 """
-Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided form + auto GitHub push.
+Dubai Real Estate Sales Bot (MVP) — Streamlit with GitHub push
 
 Features:
-- Guided form: user fills fields with format hints
-- Mandatory fields enforced: name, phone, email, budget, property type, area
-- Static market data for ROI & area recommendations
-- Saves leads to local CSV (data/real_estate_leads.csv)
-- Auto-creates CSV if missing
-- Pushes CSV to GitHub automatically (token required)
+- Form-based lead collection (name, phone, email, budget, property type, area)
+- Mandatory field validation
+- Saves leads to CSV automatically
+- Commits & pushes CSV to GitHub on each submission using GH_PAT
+- Provides recommended areas & ROI
 """
 
 import os
+import re
+import json
+import subprocess
 from datetime import datetime
 import streamlit as st
 import pandas as pd
-import re
-import json
-from git import Repo
 
 # ------------------------------
 # Config / paths
@@ -27,20 +26,6 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LEADS_CSV = os.path.join(DATA_DIR, "real_estate_leads.csv")
 MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
-
-# GitHub repo info
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = "https://github.com/<USERNAME>/<REPO>.git"  # replace <USERNAME>/<REPO>
-
-# ------------------------------
-# Ensure CSV exists
-# ------------------------------
-def init_leads_csv():
-    if not os.path.exists(LEADS_CSV):
-        df = pd.DataFrame(columns=["name","phone","email","budget","preference","area","timestamp"])
-        df.to_csv(LEADS_CSV, index=False)
-
-init_leads_csv()
 
 # ------------------------------
 # Static market data
@@ -65,15 +50,37 @@ PROPERTY_TYPES = ["Studio", "1BR", "2BR", "3BR", "Apartment", "Villa", "Penthous
 AREAS = list(MARKET_DATA.keys())
 
 # ------------------------------
+# Initialize CSV if missing
+# ------------------------------
+if not os.path.exists(LEADS_CSV):
+    df = pd.DataFrame(columns=["name","phone","email","budget","preference","area","timestamp"])
+    df.to_csv(LEADS_CSV, index=False)
+
+# ------------------------------
 # Helper functions
 # ------------------------------
 def save_lead(fields: dict):
-    """Save lead to CSV with timestamp"""
+    """Save lead locally to CSV and push to GitHub."""
     lead = fields.copy()
     lead["timestamp"] = datetime.utcnow().isoformat()
     df = pd.read_csv(LEADS_CSV)
     df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
+    # Try GitHub push
+    gh_pat = os.getenv("GH_PAT")
+    if not gh_pat:
+        st.warning("⚠️ GH_PAT not set — cannot push leads to GitHub.")
+        return
+    try:
+        repo_url = f"https://{gh_pat}@github.com/mehernsiri-cloud/gold-bitcoin-matrix.git"
+        subprocess.run(["git", "config", "--global", "user.email", "bot@localhost"], check=True)
+        subprocess.run(["git", "config", "--global", "user.name", "RealEstateBot"], check=True)
+        subprocess.run(["git", "add", LEADS_CSV], check=True)
+        subprocess.run(["git", "commit", "-m", f"Add new lead {datetime.utcnow().isoformat()}"], check=False)
+        subprocess.run(["git", "pull", "--rebase", "-X", "theirs", repo_url], check=True)
+        subprocess.run(["git", "push", repo_url], check=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Git push failed: {e}")
 
 def recommend_areas(budget_aed: int):
     if budget_aed < 500_000:
@@ -87,7 +94,6 @@ def build_recommendation_text(budget: int, area: str = None):
     recommended_areas = recommend_areas(budget)
     if area and area in recommended_areas:
         recommended_areas = [area] + [a for a in recommended_areas if a != area]
-
     lines = []
     for a in recommended_areas:
         roi = MARKET_DATA.get(a, {}).get("roi", "N/A")
@@ -95,32 +101,11 @@ def build_recommendation_text(budget: int, area: str = None):
         lines.append(f"- {a}: {price_range} AED — ROI: {roi}%")
     return "\n".join(lines)
 
-def push_csv_to_github():
-    """Commit and push leads CSV to GitHub using HTTPS token"""
-    if not GITHUB_TOKEN:
-        st.warning("GITHUB_TOKEN not set — cannot push leads to GitHub.")
-        return
-    try:
-        # Replace HTTPS URL with token
-        remote_url = GITHUB_REPO.replace("https://", f"https://{GITHUB_TOKEN}@")
-        repo = Repo(BASE_DIR)
-        # Local identity for automated commit
-        with repo.config_writer() as git_config:
-            git_config.set_value("user", "name", "Real Estate Bot")
-            git_config.set_value("user", "email", "bot@example.com")
-
-        repo.git.add(LEADS_CSV)
-        repo.git.commit('-m', f"Add new lead {datetime.utcnow().isoformat()}")
-        repo.git.push(remote_url, "HEAD")
-        st.success("✅ Leads CSV pushed to GitHub successfully!")
-    except Exception as e:
-        st.warning(f"Git push failed: {e}")
-
 # ------------------------------
 # Streamlit UI
 # ------------------------------
 def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — Form + Auto GitHub Push")
+    st.title("🏠 Dubai Real Estate Bot — GitHub Auto-Push MVP")
     st.write("Please fill out all mandatory fields (*)")
 
     with st.form(key="lead_form"):
@@ -130,11 +115,9 @@ def real_estate_dashboard():
         budget = st.number_input("Budget in AED *", min_value=100_000, step=50_000, value=500_000)
         preference = st.selectbox("Property Type *", PROPERTY_TYPES)
         area = st.selectbox("Preferred Area *", AREAS)
-
         submit_btn = st.form_submit_button("Submit")
 
     if submit_btn:
-        # Validation
         errors = []
         if not name.strip():
             errors.append("Name is required.")
@@ -156,14 +139,19 @@ def real_estate_dashboard():
                 "area": area
             }
             save_lead(lead_data)
-            st.success("✅ Lead saved successfully!")
+            st.success("✅ Lead saved and pushed to GitHub!")
 
             st.subheader("Recommended Areas & ROI:")
             st.text(build_recommendation_text(budget, area))
 
-            # Push CSV to GitHub
-            push_csv_to_github()
+            # Allow CSV download
+            with open(LEADS_CSV, "rb") as f:
+                st.download_button(
+                    label="📥 Download Leads CSV",
+                    data=f,
+                    file_name="real_estate_leads.csv",
+                    mime="text/csv"
+                )
 
-# ------------------------------
 if __name__ == "__main__":
     real_estate_dashboard()
