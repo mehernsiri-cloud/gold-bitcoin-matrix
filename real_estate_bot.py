@@ -1,22 +1,21 @@
 # real_estate_bot.py
 """
-Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided flow.
+Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided form.
 
 Features:
-- Step-by-step conversation: asks for missing info until all required fields are collected
-- Extracts name, phone, email, budget, property type, preferred area
+- Guided form: user fills fields with format hints
+- Mandatory fields enforced: name, phone, email, budget, property type, area
 - Static market data for ROI & area recommendations
 - Saves leads to local CSV (data/real_estate_leads.csv)
 - Fully self-contained: no APIs or OpenAI required
 """
 
 import os
-import re
-import json
 from datetime import datetime
-
 import streamlit as st
 import pandas as pd
+import re
+import json
 
 # ------------------------------
 # Config / paths
@@ -25,7 +24,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 LEADS_CSV = os.path.join(DATA_DIR, "real_estate_leads.csv")
 MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
-
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
@@ -47,71 +45,14 @@ if not os.path.exists(MARKET_DATA_JSON):
 with open(MARKET_DATA_JSON, "r", encoding="utf-8") as f:
     MARKET_DATA = json.load(f)
 
-# ------------------------------
-# Keywords for extraction
-# ------------------------------
-AREA_KEYWORDS = list(MARKET_DATA.keys())
-PREF_KEYWORDS = ["studio", "apartment", "1br", "2br", "3br", "villa", "penthouse", "townhouse"]
-
-REQUIRED_FIELDS = ["name", "phone", "email", "budget", "preference", "area"]
+PROPERTY_TYPES = ["Studio", "1BR", "2BR", "3BR", "Apartment", "Villa", "Penthouse", "Townhouse"]
+AREAS = list(MARKET_DATA.keys())
 
 # ------------------------------
 # Helper functions
 # ------------------------------
-def parse_budget(text: str):
-    txt = text.replace(",", "").lower()
-    m = re.search(r"(\d+\.?\d*)\s*(k|m)?", txt)
-    if not m:
-        return None
-    num = float(m.group(1))
-    mult = m.group(2)
-    if mult == "k":
-        return int(num * 1000)
-    if mult == "m":
-        return int(num * 1_000_000)
-    return int(num)
-
-def extract_entities(text: str, current_fields: dict):
-    """Update existing fields with any info found in user text."""
-    res = current_fields.copy()
-
-    # Email
-    if not res.get("email"):
-        m = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
-        if m: res["email"] = m.group(0)
-
-    # Phone (UAE pattern)
-    if not res.get("phone"):
-        m = re.search(r"(\+971\s?\d{7,9}|\b05\d{7}\b)", text)
-        if m: res["phone"] = m.group(0)
-
-    # Budget
-    if not res.get("budget"):
-        b = parse_budget(text)
-        if b: res["budget"] = str(b)
-
-    # Property type
-    if not res.get("preference"):
-        for k in PREF_KEYWORDS:
-            if re.search(r"\b" + re.escape(k) + r"\b", text, flags=re.I):
-                res["preference"] = k.lower()
-                break
-
-    # Area
-    if not res.get("area"):
-        for a in AREA_KEYWORDS:
-            if a.lower() in text.lower():
-                res["area"] = a
-                break
-
-    # Name (simple pattern)
-    if not res.get("name"):
-        m = re.search(r"(?:my name is|i am|this is)\s+([A-Z][a-zA-Z\- ]+)", text, flags=re.I)
-        if m: res["name"] = m.group(1).strip()
-
-    return res
-
 def save_lead(fields: dict):
+    """Save lead to CSV with timestamp"""
     lead = fields.copy()
     lead["timestamp"] = datetime.utcnow().isoformat()
     if os.path.exists(LEADS_CSV):
@@ -145,46 +86,46 @@ def build_recommendation_text(budget: int, area: str = None):
 # Streamlit UI
 # ------------------------------
 def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — Guided MVP")
+    st.title("🏠 Dubai Real Estate Bot — Form-Based MVP")
+    st.write("Please fill out all mandatory fields (*).")
 
-    if "history" not in st.session_state:
-        st.session_state.history = []
-    if "fields" not in st.session_state:
-        st.session_state.fields = {f: None for f in REQUIRED_FIELDS}
+    with st.form(key="lead_form"):
+        name = st.text_input("Full Name *", placeholder="e.g., John Doe")
+        phone = st.text_input("Phone (UAE format) *", placeholder="e.g., +971501234567")
+        email = st.text_input("Email *", placeholder="e.g., example@gmail.com")
+        budget = st.number_input("Budget in AED *", min_value=100_000, step=50_000, value=500_000)
+        preference = st.selectbox("Property Type *", PROPERTY_TYPES)
+        area = st.selectbox("Preferred Area *", AREAS)
 
-    user_text = st.text_area("Client message:", "")
-    if st.button("Send"):
-        # Update collected info
-        st.session_state.fields = extract_entities(user_text, st.session_state.fields)
+        submit_btn = st.form_submit_button("Submit")
 
-        # Determine missing fields
-        missing_fields = [k for k, v in st.session_state.fields.items() if not v]
+    if submit_btn:
+        # Validation
+        errors = []
+        if not name.strip():
+            errors.append("Name is required.")
+        if not re.match(r"[\w\.-]+@[\w\.-]+\.\w+$", email):
+            errors.append("Invalid email format.")
+        if not re.match(r"(\+971\s?\d{7,9}|05\d{7})", phone):
+            errors.append("Invalid UAE phone number.")
 
-        if missing_fields:
-            reply_text = "Hello! Could you please provide your " + ", ".join(missing_fields) + "?"
+        if errors:
+            for e in errors:
+                st.error(e)
         else:
-            # All info collected → give recommendations
-            budget = int(st.session_state.fields["budget"])
-            reply_text = "Thanks for sharing your info!\n\nHere are some suggested areas based on your budget:\n"
-            reply_text += build_recommendation_text(budget, st.session_state.fields.get("area"))
-            # Save lead
-            save_lead(st.session_state.fields)
-            # Reset fields for next client
-            st.session_state.fields = {f: None for f in REQUIRED_FIELDS}
+            lead_data = {
+                "name": name.strip(),
+                "phone": phone.strip(),
+                "email": email.strip(),
+                "budget": budget,
+                "preference": preference,
+                "area": area
+            }
+            save_lead(lead_data)
+            st.success("✅ Lead saved successfully!")
 
-        # Append to history
-        st.session_state.history.append({
-            "user": user_text,
-            "bot": reply_text,
-            "extracted": st.session_state.fields
-        })
+            st.subheader("Recommended Areas & ROI:")
+            st.text(build_recommendation_text(budget, area))
 
-    # Show last 20 messages
-    for msg in st.session_state.history[-20:]:
-        st.markdown(f"**Client:** {msg['user']}")
-        st.markdown(f"**Bot:** {msg['bot']}")
-        st.markdown(f"_Current collected info:_ {msg['extracted']}")
-
-# ------------------------------
 if __name__ == "__main__":
     real_estate_dashboard()
