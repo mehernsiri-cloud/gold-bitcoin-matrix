@@ -6,8 +6,9 @@ Features:
 - Guided form: user fills fields with format hints
 - Mandatory fields enforced: name, phone, email, budget, property type, area
 - Static market data for ROI & area recommendations
-- Saves leads to local CSV (data/real_estate_leads.csv) with automatic initialization
-- Download CSV button available in Streamlit
+- Saves leads to local CSV (data/real_estate_leads.csv)
+- CSV is auto-created if missing
+- Allows downloading leads directly from Streamlit
 - Fully self-contained: no APIs or OpenAI required
 """
 
@@ -28,10 +29,14 @@ MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
-# Initialize CSV if not exists
+# Ensure CSV exists with headers
 # ------------------------------
-if not os.path.exists(LEADS_CSV):
-    pd.DataFrame(columns=["name","phone","email","budget","preference","area","timestamp"]).to_csv(LEADS_CSV, index=False)
+def init_leads_csv():
+    if not os.path.exists(LEADS_CSV):
+        df = pd.DataFrame(columns=["name","phone","email","budget","preference","area","timestamp"])
+        df.to_csv(LEADS_CSV, index=False)
+
+init_leads_csv()
 
 # ------------------------------
 # Static market data
@@ -91,7 +96,7 @@ def build_recommendation_text(budget: int, area: str = None):
 # ------------------------------
 def real_estate_dashboard():
     st.title("🏠 Dubai Real Estate Bot — Form-Based MVP")
-    st.write("Please fill out all mandatory fields (*).")
+    st.write("Please fill out all mandatory fields (*)")
 
     with st.form(key="lead_form"):
         name = st.text_input("Full Name *", placeholder="e.g., John Doe")
@@ -131,14 +136,14 @@ def real_estate_dashboard():
             st.subheader("Recommended Areas & ROI:")
             st.text(build_recommendation_text(budget, area))
 
-            # Offer CSV download
-            df = pd.read_csv(LEADS_CSV)
-            st.download_button(
-                label="📥 Download all leads as CSV",
-                data=df.to_csv(index=False).encode('utf-8'),
-                file_name="real_estate_leads.csv",
-                mime="text/csv"
-            )
+            # Allow CSV download
+            with open(LEADS_CSV, "rb") as f:
+                st.download_button(
+                    label="📥 Download Leads CSV",
+                    data=f,
+                    file_name="real_estate_leads.csv",
+                    mime="text/csv"
+                )
 
 # ------------------------------
 if __name__ == "__main__":
