@@ -1,13 +1,13 @@
 # real_estate_bot.py
 """
-Dubai Real Estate Sales Bot (MVP) — Streamlit version.
+Dubai Real Estate Sales Bot (MVP) — Streamlit version with guided flow.
 
 Features:
-- Streamlit UI for lead capture and basic recommendations
+- Step-by-step conversation: asks for missing info until all required fields are collected
 - Extracts name, phone, email, budget, property type, preferred area
 - Static market data for ROI & area recommendations
-- Stores leads in local CSV (data/real_estate_leads.csv)
-- Fully self-contained: no APIs, no OpenAI required
+- Saves leads to local CSV (data/real_estate_leads.csv)
+- Fully self-contained: no APIs or OpenAI required
 """
 
 import os
@@ -29,7 +29,7 @@ MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
-# Static market data (basic Phase 2)
+# Static market data
 # ------------------------------
 DEFAULT_MARKET_DATA = {
     "JVC": {"roi": 6.0, "price_range": "400K-500K"},
@@ -53,6 +53,8 @@ with open(MARKET_DATA_JSON, "r", encoding="utf-8") as f:
 AREA_KEYWORDS = list(MARKET_DATA.keys())
 PREF_KEYWORDS = ["studio", "apartment", "1br", "2br", "3br", "villa", "penthouse", "townhouse"]
 
+REQUIRED_FIELDS = ["name", "phone", "email", "budget", "preference", "area"]
+
 # ------------------------------
 # Helper functions
 # ------------------------------
@@ -69,37 +71,43 @@ def parse_budget(text: str):
         return int(num * 1_000_000)
     return int(num)
 
-def extract_entities(text: str):
-    res = {"name": None, "phone": None, "email": None, "budget": None, "preference": None, "area": None}
+def extract_entities(text: str, current_fields: dict):
+    """Update existing fields with any info found in user text."""
+    res = current_fields.copy()
 
     # Email
-    m = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
-    if m: res["email"] = m.group(0)
+    if not res.get("email"):
+        m = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+        if m: res["email"] = m.group(0)
 
     # Phone (UAE pattern)
-    m = re.search(r"(\+971\s?\d{7,9}|\b05\d{7}\b)", text)
-    if m: res["phone"] = m.group(0)
+    if not res.get("phone"):
+        m = re.search(r"(\+971\s?\d{7,9}|\b05\d{7}\b)", text)
+        if m: res["phone"] = m.group(0)
 
     # Budget
-    b = parse_budget(text)
-    if b: res["budget"] = str(b)
+    if not res.get("budget"):
+        b = parse_budget(text)
+        if b: res["budget"] = str(b)
 
     # Property type
-    for k in PREF_KEYWORDS:
-        if re.search(r"\b" + re.escape(k) + r"\b", text, flags=re.I):
-            res["preference"] = k.lower()
-            break
+    if not res.get("preference"):
+        for k in PREF_KEYWORDS:
+            if re.search(r"\b" + re.escape(k) + r"\b", text, flags=re.I):
+                res["preference"] = k.lower()
+                break
 
     # Area
-    for a in AREA_KEYWORDS:
-        if a.lower() in text.lower():
-            res["area"] = a
-            break
+    if not res.get("area"):
+        for a in AREA_KEYWORDS:
+            if a.lower() in text.lower():
+                res["area"] = a
+                break
 
     # Name (simple pattern)
-    m = re.search(r"(?:my name is|i am|this is)\s+([A-Z][a-zA-Z\- ]+)", text, flags=re.I)
-    if m:
-        res["name"] = m.group(1).strip()
+    if not res.get("name"):
+        m = re.search(r"(?:my name is|i am|this is)\s+([A-Z][a-zA-Z\- ]+)", text, flags=re.I)
+        if m: res["name"] = m.group(1).strip()
 
     return res
 
@@ -137,33 +145,45 @@ def build_recommendation_text(budget: int, area: str = None):
 # Streamlit UI
 # ------------------------------
 def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — MVP")
+    st.title("🏠 Dubai Real Estate Bot — Guided MVP")
 
     if "history" not in st.session_state:
         st.session_state.history = []
+    if "fields" not in st.session_state:
+        st.session_state.fields = {f: None for f in REQUIRED_FIELDS}
 
     user_text = st.text_area("Client message:", "")
     if st.button("Send"):
-        extracted = extract_entities(user_text)
-        reply_text = "Thanks for sharing your info!"
+        # Update collected info
+        st.session_state.fields = extract_entities(user_text, st.session_state.fields)
 
-        # Build recommendations if budget known
-        if extracted.get("budget"):
-            budget = int(extracted["budget"])
-            reply_text += "\n\nHere are some suggested areas based on your budget:\n"
-            reply_text += build_recommendation_text(budget, extracted.get("area"))
+        # Determine missing fields
+        missing_fields = [k for k, v in st.session_state.fields.items() if not v]
 
-        st.session_state.history.append({"user": user_text, "bot": reply_text, "extracted": extracted})
+        if missing_fields:
+            reply_text = "Hello! Could you please provide your " + ", ".join(missing_fields) + "?"
+        else:
+            # All info collected → give recommendations
+            budget = int(st.session_state.fields["budget"])
+            reply_text = "Thanks for sharing your info!\n\nHere are some suggested areas based on your budget:\n"
+            reply_text += build_recommendation_text(budget, st.session_state.fields.get("area"))
+            # Save lead
+            save_lead(st.session_state.fields)
+            # Reset fields for next client
+            st.session_state.fields = {f: None for f in REQUIRED_FIELDS}
 
-        # Save lead if any info collected
-        if extracted.get("email") or extracted.get("phone") or extracted.get("name"):
-            save_lead(extracted)
+        # Append to history
+        st.session_state.history.append({
+            "user": user_text,
+            "bot": reply_text,
+            "extracted": st.session_state.fields
+        })
 
     # Show last 20 messages
     for msg in st.session_state.history[-20:]:
         st.markdown(f"**Client:** {msg['user']}")
         st.markdown(f"**Bot:** {msg['bot']}")
-        st.markdown(f"_Extracted:_ {msg['extracted']}")
+        st.markdown(f"_Current collected info:_ {msg['extracted']}")
 
 # ------------------------------
 if __name__ == "__main__":
