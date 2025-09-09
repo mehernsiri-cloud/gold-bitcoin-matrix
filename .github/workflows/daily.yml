@@ -3,7 +3,7 @@ name: Daily Predictions Update
 # Trigger every day at 08:00 UTC
 on:
   schedule:
-    - cron: '0 8 * * *'  # daily at 08:00 UTC
+  #  - cron: '0 8 * * *'  # daily at 08:00 UTC
   workflow_dispatch:      # allows manual trigger
 
 jobs:
@@ -51,3 +51,4 @@ jobs:
         git add data/predictions_log.csv data/actual_data.csv
         git commit -m "Daily predictions update" || echo "No changes to commit"
         git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+
