@@ -6,7 +6,8 @@ Features:
 - Guided form: user fills fields with format hints
 - Mandatory fields enforced: name, phone, email, budget, property type, area
 - Static market data for ROI & area recommendations
-- Saves leads to local CSV (data/real_estate_leads.csv)
+- Saves leads to local CSV (data/real_estate_leads.csv) with automatic initialization
+- Download CSV button available in Streamlit
 - Fully self-contained: no APIs or OpenAI required
 """
 
@@ -25,6 +26,12 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LEADS_CSV = os.path.join(DATA_DIR, "real_estate_leads.csv")
 MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# ------------------------------
+# Initialize CSV if not exists
+# ------------------------------
+if not os.path.exists(LEADS_CSV):
+    pd.DataFrame(columns=["name","phone","email","budget","preference","area","timestamp"]).to_csv(LEADS_CSV, index=False)
 
 # ------------------------------
 # Static market data
@@ -55,11 +62,8 @@ def save_lead(fields: dict):
     """Save lead to CSV with timestamp"""
     lead = fields.copy()
     lead["timestamp"] = datetime.utcnow().isoformat()
-    if os.path.exists(LEADS_CSV):
-        df = pd.read_csv(LEADS_CSV)
-        df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
-    else:
-        df = pd.DataFrame([lead])
+    df = pd.read_csv(LEADS_CSV)
+    df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
 
 def recommend_areas(budget_aed: int):
@@ -127,5 +131,15 @@ def real_estate_dashboard():
             st.subheader("Recommended Areas & ROI:")
             st.text(build_recommendation_text(budget, area))
 
+            # Offer CSV download
+            df = pd.read_csv(LEADS_CSV)
+            st.download_button(
+                label="📥 Download all leads as CSV",
+                data=df.to_csv(index=False).encode('utf-8'),
+                file_name="real_estate_leads.csv",
+                mime="text/csv"
+            )
+
+# ------------------------------
 if __name__ == "__main__":
     real_estate_dashboard()
