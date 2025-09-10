@@ -1,4 +1,4 @@
-name: Hourly Predictions Update
+name: Hourly Predictions & ROI Update
 
 on:
   schedule:
@@ -53,19 +53,22 @@ jobs:
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py
 
-      # 9. Commit & push CSV updates safely
-      - name: Commit & push CSV updates
+      # 9. Update ROI data from DLD open portal
+      - name: Update ROI data
+        run: python update_roi_data.py
+
+      # 10. Commit & push updates safely
+      - name: Commit & push CSV/JSON updates
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
 
-          git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv weight.yaml
-          git commit -m "Hourly update" || echo "No changes to commit"
+          git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv data/roi_data.json weight.yaml
+          git commit -m "Hourly update with ROI refresh" || echo "No changes to commit"
 
           # Pull with "theirs" strategy to prefer workflow changes in conflicts
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
-
