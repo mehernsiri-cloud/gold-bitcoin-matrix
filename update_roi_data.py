@@ -1,67 +1,81 @@
-import csv
 import json
 import requests
 
-# Define the URL for the CSV data
-CSV_URL = 'https://www.dubaipulse.gov.ae/data/dld-registration/dld_land_registry-open?organisation=dld&page=6&service=dld-registration'
+# ------------------------------
+# Config
+# ------------------------------
+# Replace this URL with the actual DLD JSON Open Data endpoint for property transactions
+DLD_JSON_URL = "https://www.dubaipulse.gov.ae/data/dld-registration/dld_land_registry-open?format=json"
 
-# Define the path for the output JSON file
-OUTPUT_JSON_PATH = 'roi_data.json'
+OUTPUT_JSON_PATH = "data/roi_data.json"
 
-def fetch_csv_data(url):
-    """Fetch CSV data from the provided URL."""
+# ------------------------------
+# Helper functions
+# ------------------------------
+def fetch_dld_json(url):
     response = requests.get(url)
     response.raise_for_status()
-    return response.text
+    return response.json()
 
-def parse_csv_to_dict(csv_data):
-    """Parse CSV data into a list of dictionaries."""
-    reader = csv.DictReader(csv_data.splitlines())
-    return [row for row in reader]
+def transform_to_roi(data):
+    """
+    Transforms raw DLD JSON data to roi_data.json structure:
+    roi_data[area][property_type] = {"avg_price": float, "roi": float}
+    """
+    roi_data = {}
 
-def transform_data_to_roi_format(parsed_data):
-    """Transform parsed data into the desired ROI format."""
-    roi_data = []
-    for row in parsed_data:
-        roi_entry = {
-            'transaction_id': row['Transaction Number'],
-            'transaction_date': row['Transaction Date'],
-            'transaction_type': row['Transaction Type'],
-            'property_type': row['Property Type'],
-            'amount': row['Amount'],
-            'property_size': row['Property Size (sq.m)'],
-            'location': {
-                'area': row['Area'],
-                'zone': row['Zone']
-            }
-        }
-        roi_data.append(roi_entry)
+    for record in data.get("result", []):
+        # Map fields; adjust keys based on actual JSON structure
+        prop_type = record.get("Property Type")
+        area = record.get("Area")
+        amount = record.get("Amount")
+
+        if not prop_type or not area or not amount:
+            continue
+
+        # Clean amount to float
+        try:
+            amount = float(str(amount).replace(",", "").replace("AED", "").strip())
+        except ValueError:
+            continue
+
+        # Initialize area/property_type
+        if area not in roi_data:
+            roi_data[area] = {}
+        if prop_type not in roi_data[area]:
+            roi_data[area][prop_type] = {"total_price": 0, "count": 0}
+
+        roi_data[area][prop_type]["total_price"] += amount
+        roi_data[area][prop_type]["count"] += 1
+
+    # Compute average price and assign placeholder ROI
+    for area, types in roi_data.items():
+        for prop_type, values in types.items():
+            count = values.pop("count")
+            avg_price = values.pop("total_price") / count if count > 0 else 0
+            # Placeholder ROI: example formula (adjust as needed)
+            roi = 5 + (1 if avg_price > 1_000_000 else 0)
+            roi_data[area][prop_type] = {"avg_price": avg_price, "roi": roi}
+
     return roi_data
 
-def save_to_json(data, path):
-    """Save the transformed data to a JSON file."""
-    with open(path, 'w', encoding='utf-8') as json_file:
-        json.dump(data, json_file, ensure_ascii=False, indent=4)
+def save_json(data, path):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
+# ------------------------------
+# Main
+# ------------------------------
 def main():
-    """Main function to orchestrate the data fetching, processing, and saving."""
     try:
-        # Fetch and parse the CSV data
-        csv_data = fetch_csv_data(CSV_URL)
-        parsed_data = parse_csv_to_dict(csv_data)
-
-        # Transform the data into the desired format
-        roi_data = transform_data_to_roi_format(parsed_data)
-
-        # Save the transformed data to a JSON file
-        save_to_json(roi_data, OUTPUT_JSON_PATH)
-
-        print(f"ROI data successfully updated and saved to {OUTPUT_JSON_PATH}")
-
-    except requests.RequestException as e:
-        print(f"Error fetching data: {e}")
+        print("Fetching DLD JSON data...")
+        raw_data = fetch_dld_json(DLD_JSON_URL)
+        print("Transforming data into ROI format...")
+        roi_data = transform_to_roi(raw_data)
+        save_json(roi_data, OUTPUT_JSON_PATH)
+        print(f"✅ ROI data updated successfully and saved to {OUTPUT_JSON_PATH}")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"❌ An error occurred: {e}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
