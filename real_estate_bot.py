@@ -8,8 +8,12 @@ Features:
 - Saves leads to CSV automatically (data/real_estate_leads.csv)
 - Pushes CSV to GitHub via REST API on each submission using GH_PAT + GH_REPO
 - Provides recommended areas & ROI
+
 Notes:
-- On Streamlit Cloud set secrets: GH_PAT (token) and GH_REPO (owner/repo), optional GH_BRANCH
+- On Streamlit Cloud set secrets:
+    GH_PAT = "your_github_pat"
+    GH_REPO = "username/repo"
+    GH_BRANCH = "main"   # optional
 - Add `requests` to requirements.txt
 """
 
@@ -75,12 +79,12 @@ def push_csv_to_github_api(commit_message: str = None) -> bool:
       - GH_BRANCH (optional, default 'main')
     Returns True on success, False on failure.
     """
-    token = os.getenv("GH_PAT")
-    repo = os.getenv("GH_REPO")
-    branch = os.getenv("GH_BRANCH", "main")
+    token = st.secrets.get("GH_PAT")
+    repo = st.secrets.get("GH_REPO")
+    branch = st.secrets.get("GH_BRANCH", "main")
 
     if not token or not repo:
-        st.warning("GH_PAT or GH_REPO not set — cannot push leads to GitHub. Add them in Streamlit Cloud Secrets.")
+        st.warning("⚠️ GH_PAT or GH_REPO not set — add them in Streamlit Cloud Secrets.")
         return False
 
     api_url = f"https://api.github.com/repos/{repo}/contents/data/real_estate_leads.csv"
@@ -102,19 +106,8 @@ def push_csv_to_github_api(commit_message: str = None) -> bool:
         commit_message = f"Update leads CSV — {datetime.utcnow().isoformat()}"
 
     # Check whether the file already exists on the repo to obtain its sha
-    try:
-        resp_get = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
-    except requests.RequestException as e:
-        st.error(f"Network error while contacting GitHub: {e}")
-        return False
-
-    if resp_get.status_code == 200:
-        sha = resp_get.json().get("sha")
-    elif resp_get.status_code == 404:
-        sha = None
-    else:
-        st.error(f"GitHub API GET error ({resp_get.status_code}): {resp_get.text}")
-        return False
+    resp_get = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
+    sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
     payload = {
         "message": commit_message,
@@ -124,28 +117,19 @@ def push_csv_to_github_api(commit_message: str = None) -> bool:
     if sha:
         payload["sha"] = sha
 
-    try:
-        resp_put = requests.put(api_url, headers=headers, json=payload, timeout=30)
-    except requests.RequestException as e:
-        st.error(f"Network error while uploading to GitHub: {e}")
-        return False
+    resp_put = requests.put(api_url, headers=headers, json=payload, timeout=30)
 
     if resp_put.status_code in (200, 201):
-        # 201 = created, 200 = updated
         st.info("✅ Leads CSV pushed to GitHub successfully.")
         return True
     else:
-        st.error(f"GitHub API PUT error ({resp_put.status_code}): {resp_put.text}")
+        st.error(f"GitHub API error ({resp_put.status_code}): {resp_put.text}")
         return False
 
 # ------------------------------
 # Lead handling
 # ------------------------------
 def save_lead_and_push(fields: dict) -> bool:
-    """
-    Append lead to local CSV, then attempt to push to GitHub.
-    Returns True if push succeeded, False otherwise.
-    """
     lead = fields.copy()
     lead["timestamp"] = datetime.utcnow().isoformat()
 
@@ -158,9 +142,7 @@ def save_lead_and_push(fields: dict) -> bool:
     df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
 
-    # Push to GitHub (REST API)
-    success = push_csv_to_github_api()
-    return success
+    return push_csv_to_github_api()
 
 # ------------------------------
 # Recommendation helpers
@@ -190,10 +172,6 @@ def build_recommendation_text(budget: int, area: str = None):
 def real_estate_dashboard():
     st.title("🏠 Dubai Real Estate Bot — GitHub Push MVP")
     st.write("Please fill out all mandatory fields (*).")
-    st.markdown(
-        "⚠️ Make sure your Streamlit Cloud app secrets include `GH_PAT` (token) and `GH_REPO` (owner/repo). "
-        "Optional: `GH_BRANCH` (default: main)."
-    )
 
     with st.form(key="lead_form"):
         name = st.text_input("Full Name *", placeholder="e.g., John Doe")
@@ -237,18 +215,12 @@ def real_estate_dashboard():
             st.subheader("Recommended Areas & ROI:")
             st.text(build_recommendation_text(int(budget), area))
 
-            # Show local CSV path and offer download
-            st.write(f"Local CSV path: `{LEADS_CSV}`")
-            try:
-                with open(LEADS_CSV, "rb") as f:
-                    st.download_button(
-                        label="📥 Download Leads CSV",
-                        data=f,
-                        file_name="real_estate_leads.csv",
-                        mime="text/csv"
-                    )
-            except Exception as e:
-                st.warning(f"Could not offer download: {e}")
+            st.download_button(
+                label="📥 Download Leads CSV",
+                data=open(LEADS_CSV, "rb").read(),
+                file_name="real_estate_leads.csv",
+                mime="text/csv"
+            )
 
 # ------------------------------
 if __name__ == "__main__":
