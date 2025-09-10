@@ -3,7 +3,7 @@
 Dubai Real Estate Sales Bot (MVP) — Streamlit with GitHub REST API push
 
 Features:
-- Form-based lead collection (name, phone, email, budget, property type, area)
+- Form-based lead collection (name, phone, email, budget, property type, area, country, nationality, purpose, horizon, payment type)
 - Mandatory field validation
 - Saves leads to CSV automatically (data/real_estate_leads.csv)
 - Pushes CSV to GitHub via REST API on each submission using GH_PAT + GH_REPO
@@ -57,12 +57,31 @@ with open(MARKET_DATA_JSON, "r", encoding="utf-8") as f:
 PROPERTY_TYPES = ["Studio", "1BR", "2BR", "3BR", "Apartment", "Villa", "Penthouse", "Townhouse"]
 AREAS = list(MARKET_DATA.keys())
 
+PURPOSES = ["Investment", "Personal Use", "Holiday Home", "Mixed"]
+HORIZONS = ["<1 year", "1-3 years", "3-5 years", "5+ years"]
+PAYMENT_TYPES = ["Cash", "Payment Plan", "Mortgage"]
+
+# ------------------------------
+# Country list for dropdowns
+# ------------------------------
+COUNTRIES = [
+    "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Oman", "Bahrain",
+    "France", "Germany", "United Kingdom", "United States", "Canada", "India",
+    "Pakistan", "China", "Russia", "Italy", "Spain", "Australia", "South Africa",
+    "Brazil", "Turkey", "Egypt", "Lebanon", "Jordan", "Philippines"
+]
+# For nationality we reuse the same list (can be expanded to nationality-specific values)
+NATIONALITIES = COUNTRIES
+
 # ------------------------------
 # Ensure CSV exists with headers
 # ------------------------------
 def init_leads_csv():
     if not os.path.exists(LEADS_CSV):
-        df = pd.DataFrame(columns=["name", "phone", "email", "budget", "preference", "area", "timestamp"])
+        df = pd.DataFrame(columns=[
+            "name", "phone", "email", "budget", "preference", "area",
+            "country", "nationality", "purpose", "horizon", "payment_type", "timestamp"
+        ])
         df.to_csv(LEADS_CSV, index=False)
 
 init_leads_csv()
@@ -71,14 +90,6 @@ init_leads_csv()
 # GitHub REST API helper
 # ------------------------------
 def push_csv_to_github_api(commit_message: str = None) -> bool:
-    """
-    Push data/real_estate_leads.csv to GitHub via REST API.
-    Requires Streamlit Cloud secrets:
-      - GH_PAT  (token with repo contents write)
-      - GH_REPO (owner/repo e.g. myuser/myrepo)
-      - GH_BRANCH (optional, default 'main')
-    Returns True on success, False on failure.
-    """
     token = st.secrets.get("GH_PAT")
     repo = st.secrets.get("GH_REPO")
     branch = st.secrets.get("GH_BRANCH", "main")
@@ -93,7 +104,6 @@ def push_csv_to_github_api(commit_message: str = None) -> bool:
         "Accept": "application/vnd.github+json"
     }
 
-    # Read and base64-encode file content
     try:
         with open(LEADS_CSV, "rb") as f:
             content_bytes = f.read()
@@ -105,7 +115,6 @@ def push_csv_to_github_api(commit_message: str = None) -> bool:
     if not commit_message:
         commit_message = f"Update leads CSV — {datetime.utcnow().isoformat()}"
 
-    # Check whether the file already exists on the repo to obtain its sha
     resp_get = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
     sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
@@ -133,11 +142,13 @@ def save_lead_and_push(fields: dict) -> bool:
     lead = fields.copy()
     lead["timestamp"] = datetime.utcnow().isoformat()
 
-    # Append to CSV
     try:
         df = pd.read_csv(LEADS_CSV)
     except Exception:
-        df = pd.DataFrame(columns=["name", "phone", "email", "budget", "preference", "area", "timestamp"])
+        df = pd.DataFrame(columns=[
+            "name", "phone", "email", "budget", "preference", "area",
+            "country", "nationality", "purpose", "horizon", "payment_type", "timestamp"
+        ])
 
     df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
     df.to_csv(LEADS_CSV, index=False)
@@ -180,10 +191,16 @@ def real_estate_dashboard():
         budget = st.number_input("Budget in AED *", min_value=100_000, step=50_000, value=500_000)
         preference = st.selectbox("Property Type *", PROPERTY_TYPES)
         area = st.selectbox("Preferred Area *", AREAS)
+
+        country = st.selectbox("Country of Residence *", COUNTRIES)
+        nationality = st.selectbox("Nationality *", NATIONALITIES)
+        purpose = st.radio("Purpose of Investment *", PURPOSES, horizontal=True)
+        horizon = st.radio("Investment Horizon *", HORIZONS, horizontal=True)
+        payment_type = st.radio("Preferred Payment Type *", PAYMENT_TYPES, horizontal=True)
+
         submit_btn = st.form_submit_button("Submit")
 
     if submit_btn:
-        # Validation
         errors = []
         if not name.strip():
             errors.append("Name is required.")
@@ -202,7 +219,12 @@ def real_estate_dashboard():
                 "email": email.strip(),
                 "budget": int(budget),
                 "preference": preference,
-                "area": area
+                "area": area,
+                "country": country,
+                "nationality": nationality,
+                "purpose": purpose,
+                "horizon": horizon,
+                "payment_type": payment_type
             }
 
             pushed = save_lead_and_push(lead_data)
