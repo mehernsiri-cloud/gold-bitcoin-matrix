@@ -3,17 +3,10 @@
 Dubai Real Estate Sales Bot (MVP) — Streamlit with GitHub REST API push + Dynamic ROI insights
 
 Features:
-- Form-based lead collection (name, phone, email, budget, property type, area, country, nationality, purpose, horizon, payment_type)
-- Mandatory field validation
-- Saves leads to CSV automatically (data/real_estate_leads.csv)
-- Pushes CSV to GitHub via REST API on each submission using GH_PAT + GH_REPO (set as Streamlit secrets)
-- Loads dynamic ROI data (data/roi_data.json) and shows property-type-specific ROI insights and a bar chart
-Notes:
-- On Streamlit Cloud add secrets:
-    GH_PAT = "your_github_pat"
-    GH_REPO = "username/repo"   (format: owner/repo)
-    GH_BRANCH = "main"          (optional)
-- Add `requests` to requirements.txt
+- Form-based lead collection
+- Saves leads to CSV (data/real_estate_leads.csv)
+- Pushes leads CSV to GitHub using GH_PAT + GH_REPO
+- Loads ROI data from data/roi_data.json (refreshed hourly via GitHub Actions)
 """
 import os
 import re
@@ -36,7 +29,7 @@ ROI_DATA_JSON = os.path.join(DATA_DIR, "roi_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------
-# Load / create market_data.json (fallback static)
+# Load / create market_data.json
 # ------------------------------
 DEFAULT_MARKET_DATA = {
     "JVC": {"roi": 6.0, "price_range": "400K-500K"},
@@ -82,6 +75,7 @@ if not os.path.exists(ROI_DATA_JSON):
         json.dump(DEFAULT_ROI_SAMPLE, f, indent=2)
 with open(ROI_DATA_JSON, "r", encoding="utf-8") as f:
     ROI_DATA = json.load(f)
+
 
 # ------------------------------
 # Form choices & lists
