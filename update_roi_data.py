@@ -57,20 +57,23 @@ def fetch_json(params):
         return None
 
 def extract_records(json_data):
+    # Numbeo provides "prices" array
     if isinstance(json_data, dict) and "prices" in json_data and isinstance(json_data["prices"], list):
         return json_data["prices"]
     return []
 
 def transform_records_to_roi(records):
+    from collections import defaultdict
     roi = defaultdict(dict)
     for rec in records:
         prop_type = rec.get("item_name")
         avg_price = rec.get("average_price")
         if not prop_type or avg_price is None:
             continue
-        # Using placeholder area "Dubai"
+        # Use placeholder area "Dubai"
         roi["Dubai"][prop_type] = {"avg_price": round(avg_price, 2), "roi": 6.0}
     return roi
+
 
 
 def save_roi(roi_dict, path):
