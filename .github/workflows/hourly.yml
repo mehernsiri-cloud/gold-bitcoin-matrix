@@ -54,34 +54,9 @@ jobs:
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      # 9a. Backup previous ROI data
-      - name: Backup previous ROI data
-        run: |
-          cp data/roi_data.json data/roi_data_backup.json || echo "⚠️ No previous ROI backup found"
-
-      # 9b. Run scraper to update ROI
-      - name: Update ROI data from Dubai property listings
-        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
-
-      # 9c. Restore backup if new ROI is empty
-      - name: Restore ROI backup if new data empty
-        run: python - <<'PYTHON'
-import os
-import json
-
-roi_path = 'data/roi_data.json'
-backup_path = 'data/roi_data_backup.json'
-
-try:
-    with open(roi_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    if not data:
-        raise ValueError("ROI data is empty")
-except Exception:
-    print("⚠️ ROI data empty, restoring previous backup")
-    if os.path.exists(backup_path):
-        os.replace(backup_path, roi_path)
-PYTHON
+      # 9. Update ROI data safely from Dubai property listings
+      - name: Update ROI data safely
+        run: python scripts/roi_safe_update.py
 
       # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
