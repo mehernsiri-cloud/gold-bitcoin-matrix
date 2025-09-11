@@ -64,7 +64,7 @@ jobs:
           python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
           
           # Restore backup if new ROI is empty
-          python -<<'EOF'
+                    python - <<'PYTHON'
 import os
 import json
 roi_path = 'data/roi_data.json'
@@ -96,5 +96,6 @@ EOF
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+
 
 
