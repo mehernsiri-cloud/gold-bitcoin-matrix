@@ -1,16 +1,16 @@
 """
 update_roi_data.py
-Fetch Dubai property listings from Bayut's hidden JSON feed,
-compute average prices per area/type, add placeholder ROI,
-save safely to data/roi_data.json with backup restore.
+Fetches Dubai property listings from Bayut.com using Playwright,
+extracts area, type, price, computes average prices per area/type,
+adds placeholder ROI, and saves to data/roi_data.json safely.
 """
 
 import os
 import json
-import requests
-import re
+import asyncio
 from collections import defaultdict
 import shutil
+from playwright.async_api import async_playwright
 
 # ------------------------------
 # Config
@@ -21,66 +21,44 @@ ROI_JSON_PATH = os.path.join(DATA_DIR, "roi_data.json")
 ROI_BACKUP_PATH = os.path.join(DATA_DIR, "roi_data_backup.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-BAYUT_MAIN_URLS = [
-    "https://www.bayut.com/to-rent/apartments/dubai/",
-    "https://www.bayut.com/to-rent/villas/dubai/",
-    "https://www.bayut.com/for-sale/apartments/dubai/",
-    "https://www.bayut.com/for-sale/villas/dubai/"
-]
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/139.0.0.0 Safari/537.36"
-}
-
 PLACEHOLDER_ROI = 6.0  # %
+
+# Bayut pages
+BAYUT_URLS = [
+    "https://www.bayut.com/for-sale/apartments/dubai/",
+    "https://www.bayut.com/for-sale/villas/dubai/",
+    "https://www.bayut.com/to-rent/apartments/dubai/",
+    "https://www.bayut.com/to-rent/villas/dubai/"
+]
 
 # ------------------------------
 # Functions
 # ------------------------------
 
-def get_build_id(url):
-    """Auto-locate BUILD_ID from Bayut page HTML."""
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        if resp.status_code != 200:
-            print(f"⚠️ Failed to fetch {url}: {resp.status_code}")
-            return None
-        # Search for BUILD_ID in the page
-        match = re.search(r'"BUILD_ID":"(.*?)"', resp.text)
-        if match:
-            return match.group(1)
-        else:
-            print(f"⚠️ BUILD_ID not found in {url}")
-            return None
-    except Exception as e:
-        print(f"❌ Error fetching {url} for BUILD_ID: {e}")
-        return None
+async def fetch_listings_playwright(url):
+    """Fetch listings from Bayut page using Playwright (JS rendered)."""
+    listings = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url, timeout=60000)  # 60 sec timeout
+        await page.wait_for_selector("div[class*='ListingCard']")  # Wait until listings render
 
-def fetch_listings_from_json(build_id, page=1, type_filter="rent"):
-    """Fetch listings JSON using hidden feed."""
-    url = f"https://www.bayut.com/_next/data/{build_id}/{type_filter}/dubai.json?page={page}"
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        if resp.status_code != 200:
-            print(f"⚠️ JSON feed failed {url}: {resp.status_code}")
-            return []
-        data = resp.json()
-        # Traverse to listings (structure may change)
-        # Typically: pageProps -> listings
-        listings = []
-        hits = data.get("pageProps", {}).get("listings", {}).get("hits", [])
-        for item in hits:
-            prop_type = item.get("property_type", "Unknown")
-            area = item.get("community_name", "Unknown")
-            price = item.get("price", None)
-            if prop_type and area and price is not None:
-                listings.append({"property_type": prop_type, "area": area, "price": float(price)})
-        return listings
-    except Exception as e:
-        print(f"❌ Error fetching JSON listings: {e}")
-        return []
+        # Extract all listings
+        cards = await page.query_selector_all("div[class*='ListingCard']")
+        for card in cards:
+            try:
+                prop_type = await card.query_selector_eval("h2", "el => el.innerText") or "Unknown"
+                area = await card.query_selector_eval("div[class*='PropertyLocation']", "el => el.innerText") or "Unknown"
+                price_text = await card.query_selector_eval("div[class*='Price']", "el => el.innerText") or None
+                if price_text:
+                    price_text = price_text.replace(",", "").replace("AED", "").replace("/month", "").replace("/yr", "").strip()
+                    price = float(price_text)
+                    listings.append({"property_type": prop_type.strip(), "area": area.strip(), "price": price})
+            except Exception:
+                continue
+        await browser.close()
+    return listings
 
 def compute_roi(listings):
     """Compute average price per area/type with placeholder ROI."""
@@ -100,58 +78,48 @@ def compute_roi(listings):
             if info["count"] == 0:
                 continue
             avg_price = info["total"] / info["count"]
-            roi[area][prop_type] = {"avg_price": round(avg_price, 2), "roi": PLACEHOLDER_ROI}
+            roi[area][prop_type] = {"avg_price": round(avg_price, 2), "roi": round(PLACEHOLDER_ROI, 2)}
     return roi
 
-def save_roi_safe(roi_dict, path=ROI_JSON_PATH):
-    """Save ROI safely; restore previous if empty or fails."""
-    # Backup previous
-    if os.path.exists(path):
-        try:
-            shutil.copyfile(path, ROI_BACKUP_PATH)
-        except Exception as e:
-            print(f"⚠️ Failed to backup previous ROI: {e}")
-
-    # Save new ROI
+def save_roi_safely(roi_dict):
+    """Save ROI safely; restore backup if empty."""
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        if os.path.exists(ROI_JSON_PATH):
+            shutil.copyfile(ROI_JSON_PATH, ROI_BACKUP_PATH)
+        with open(ROI_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(roi_dict, f, indent=2, ensure_ascii=False)
-        print(f"✅ Saved ROI data to {path}")
+
+        if not roi_dict and os.path.exists(ROI_BACKUP_PATH):
+            shutil.copyfile(ROI_BACKUP_PATH, ROI_JSON_PATH)
+            print("⚠️ ROI data empty, restored previous backup")
+        else:
+            print(f"✅ Saved ROI data to {ROI_JSON_PATH}")
     except Exception as e:
         print(f"❌ Error saving ROI data: {e}")
         if os.path.exists(ROI_BACKUP_PATH):
-            shutil.copyfile(ROI_BACKUP_PATH, path)
-            print("⚠️ Restored previous ROI backup due to save error")
-
-    # Restore backup if ROI is empty
-    if not roi_dict and os.path.exists(ROI_BACKUP_PATH):
-        shutil.copyfile(ROI_BACKUP_PATH, path)
-        print("⚠️ ROI data empty, restored previous backup")
+            shutil.copyfile(ROI_BACKUP_PATH, ROI_JSON_PATH)
 
 # ------------------------------
 # Main
 # ------------------------------
 
-def main():
+async def main():
     all_listings = []
-
-    for url in BAYUT_MAIN_URLS:
-        print(f"Processing {url}")
-        build_id = get_build_id(url)
-        if not build_id:
-            continue
-        # Fetch first 2 pages for each URL
-        for page in range(1, 3):
-            listings = fetch_listings_from_json(build_id, page=page)
+    for url in BAYUT_URLS:
+        print(f"Fetching listings from: {url}")
+        try:
+            listings = await fetch_listings_playwright(url)
             all_listings.extend(listings)
+        except Exception as e:
+            print(f"❌ Failed to fetch {url}: {e}")
 
     if not all_listings:
         print("⚠️ No listings fetched. Using empty ROI dataset.")
-        save_roi_safe({})
+        save_roi_safely({})
         return
 
     roi_dict = compute_roi(all_listings)
-    save_roi_safe(roi_dict)
+    save_roi_safely(roi_dict)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
