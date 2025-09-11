@@ -1,7 +1,8 @@
 # update_roi_data.py
 """
-Fetch Dubai Land Department (DLD) real estate transactions from DubaiPulse API
-and update data/roi_data.json with average price & ROI estimates by area and property type.
+Fetch DLD real estate transactions from DubaiPulse JSON API,
+update data/roi_data.json with avg_price + placeholder ROI by area & property type.
+Improved to handle empty responses and restricted endpoints.
 """
 
 import os
@@ -17,69 +18,71 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ROI_JSON_PATH = os.path.join(DATA_DIR, "roi_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Use the DubaiPulse DLD transactions API
-DLD_JSON_URL = "https://www.dubaipulse.gov.ae/data/dld-transactions/dld_transactions-open-api"  # examine if this returns JSON
-# Sometimes you need query parameters like ?$limit=1000 or similar
+# DLD JSON endpoint
+DLD_JSON_URL = "https://www.dubaipulse.gov.ae/data/dld-transactions/dld_transactions-open-api"
+
+# Try with parameters
 PARAMS = {
-    "page": 1,
-    "per_page": 1000
+    "limit": 1000,   # or "page" / "per_page" if supported
+    "page": 1
 }
 
-def fetch_transactions(page=1, per_page=1000):
-    params = {"page": page, "per_page": per_page}
+# Some APIs require a header to accept JSON
+HEADERS = {
+    "Accept": "application/json"
+}
+
+def fetch_json(params):
     try:
-        resp = requests.get(DLD_JSON_URL, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = requests.get(DLD_JSON_URL, params=params, headers=HEADERS, timeout=30)
+        print(f"Fetching {resp.url}")
+        status = resp.status_code
+        print(f"Status code: {status}")
+        if status != 200:
+            print(f"Non-200 response: {resp.text[:200]}")
+            return None
+        content = resp.content
+        if not content or content.strip() == b'':
+            print("Empty response content.")
+            return None
+        try:
+            data = resp.json()
+            return data
+        except Exception as e:
+            print(f"JSON decode error: {e} — first 500 bytes: {content[:500]}")
+            return None
     except Exception as e:
-        print(f"❌ HTTP error fetching page {page}: {e}")
+        print(f"HTTP request error: {e}")
         return None
 
-    try:
-        data = resp.json()
-    except ValueError as e:
-        print(f"❌ JSON parse error on page {page}: {e}")
-        return None
-
-    return data
-
-def extract_records(data):
-    """
-    Extract list of records from the API output.
-    The key may be "data", "results", or direct list depending on API schema.
-    """
-    # Try common keys
-    if isinstance(data, dict):
-        for key in ("data", "results", "records", "items"):
-            if key in data and isinstance(data[key], list):
-                return data[key]
-        # Otherwise maybe it's root list
-        if "result" in data and isinstance(data["result"], list):
-            return data["result"]
-    if isinstance(data, list):
-        return data
+def extract_records(json_data):
+    # Try common patterns
+    if isinstance(json_data, dict):
+        for key in ("data", "records", "results", "items"):
+            if key in json_data and isinstance(json_data[key], list):
+                return json_data[key]
+        # Socrata style?
+        if "result" in json_data and isinstance(json_data["result"], list):
+            return json_data["result"]
+    if isinstance(json_data, list):
+        return json_data
     return []
 
 def transform_records_to_roi(records):
-    """
-    Aggregates average price per area + property type,
-    computes placeholder ROI.
-    """
     area_prop_sums = defaultdict(lambda: defaultdict(lambda: {"total": 0.0, "count": 0}))
 
     for rec in records:
-        # You must adjust these keys to match the API schema:
-        prop_type = rec.get("Property Type") or rec.get("property_type") or rec.get("propertySubType") or rec.get("property_sub_type")
-        area = rec.get("Area") or rec.get("area") or rec.get("area")  # adjust key
-        amount = rec.get("Amount") or rec.get("amount") or rec.get("transactionAmount") or rec.get("price")
+        # Adjust keys based on what you see in JSON
+        prop_type = rec.get("Property Type") or rec.get("property_type") or rec.get("PropertySubType") or rec.get("Property Sub Type")
+        area = rec.get("Area") or rec.get("area") or rec.get("community") or rec.get("District")
+        amount_field = rec.get("Amount") or rec.get("amount") or rec.get("Transaction Amount") or rec.get("transactionAmount") or rec.get("price")
 
-        # Skip if missing
-        if not prop_type or not area or not amount:
+        if not prop_type or not area or not amount_field:
             continue
 
         # Clean amount
         try:
-            # Remove commas, currency words if present
-            amt_str = str(amount).replace(",", "").replace("AED", "").strip()
+            amt_str = str(amount_field).replace(",", "").replace("AED", "").strip()
             amt = float(amt_str)
             if amt <= 0:
                 continue
@@ -99,47 +102,35 @@ def transform_records_to_roi(records):
             if cnt == 0:
                 continue
             avg_price = info["total"] / cnt
-            # Example placeholder ROI calculation: assume 6% always, or could use rent data when available
-            roi_value = 6.0  # or adjust logic here
-            roi[area][prop_type] = {
-                "avg_price": round(avg_price, 2),
-                "roi": round(roi_value, 2)
-            }
+            # Placeholder ROI — replace later with more accurate formula
+            roi_value = 6.0
+            roi[area][prop_type] = {"avg_price": round(avg_price, 2), "roi": round(roi_value, 2)}
+
     return roi
 
 def save_roi(roi_dict, path):
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(roi_dict, f, indent=2, ensure_ascii=False)
-        print(f"✅ Saved updated ROI data to {path}")
+        print(f"✅ Saved ROI data to {path}")
     except Exception as e:
         print(f"❌ Error saving ROI data: {e}")
 
 def main():
-    # Try fetching first page
     all_records = []
-    page = 1
-    while True:
-        print(f"Fetching page {page}...")
-        data = fetch_transactions(page=page, per_page=1000)
-        if data is None:
-            print("❌ Stopping due to fetch error.")
-            break
-        recs = extract_records(data)
-        if not recs:
-            print(f"⚠️ No records found on page {page}. Ending.")
-            break
-        all_records.extend(recs)
-        # If pagination info available, check if more pages
-        # Some APIs return total count or has_more flag
-        # For now, break if fewer than per_page => likely last page
-        if len(recs) < PARAMS["per_page"]:
-            break
-        page += 1
-
-    if not all_records:
-        print("❌ No records collected. Keeping old ROI data (if any).")
+    # try first page
+    json_data = fetch_json(PARAMS)
+    if not json_data:
+        print("❌ Failed to fetch valid JSON data.")
         return
+    recs = extract_records(json_data)
+    if not recs:
+        print("⚠️ No records found in fetched JSON.")
+        return
+    all_records.extend(recs)
+
+    # If the API supports pagination (check if json_data includes total or next-page)
+    # Here we just skip paging for simplicity.
 
     roi_dict = transform_records_to_roi(all_records)
     save_roi(roi_dict, ROI_JSON_PATH)
