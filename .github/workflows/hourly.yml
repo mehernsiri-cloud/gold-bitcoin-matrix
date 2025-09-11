@@ -22,14 +22,14 @@ jobs:
         with:
           python-version: '3.10'
 
-# 3. Install dependencies
-- name: Install Python dependencies
-  run: |
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    pip install pandas yfinance requests pyyaml plotly textblob pytrends scikit-learn beautifulsoup4
-    pip install playwright
-    playwright install chromium
+      # 3. Install Python dependencies including Playwright
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pandas yfinance requests pyyaml plotly textblob pytrends scikit-learn beautifulsoup4
+          pip install playwright
+          playwright install chromium
 
       # 4. Ensure data folder & CSV/JSON files exist
       - name: Create data folder and CSV/JSON files if missing
@@ -58,7 +58,7 @@ jobs:
 
       # 9. Update ROI data safely from Dubai property listings
       - name: Update ROI data safely
-        run: python update_roi_data.py
+        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, continuing"
 
       # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
@@ -75,4 +75,3 @@ jobs:
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
-
