@@ -1,8 +1,7 @@
-# update_roi_data.py
 """
-Fetch DLD real estate transactions from DubaiPulse JSON API,
+Fetch ROI data from a free public JSON feed (Numbeo),
 update data/roi_data.json with avg_price + placeholder ROI by area & property type.
-Improved to handle empty responses and restricted endpoints.
+Structure and logging preserved from original DLD version.
 """
 
 import os
@@ -18,23 +17,25 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ROI_JSON_PATH = os.path.join(DATA_DIR, "roi_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# DLD JSON endpoint
-DLD_JSON_URL = "https://www.dubaipulse.gov.ae/data/dld-transactions/dld_transactions-open-api"
+# ------------------------------
+# Public JSON source (Numbeo)
+# ------------------------------
+NUMBEO_URL = "https://www.numbeo.com/api/city_prices"
+CITY = "Dubai"
+CURRENCY = "AED"
 
-# Try with parameters
-PARAMS = {
-    "limit": 1000,   # or "page" / "per_page" if supported
-    "page": 1
-}
-
-# Some APIs require a header to accept JSON
 HEADERS = {
     "Accept": "application/json"
 }
 
+PARAMS = {
+    "query": CITY,
+    "currency": CURRENCY
+}
+
 def fetch_json(params):
     try:
-        resp = requests.get(DLD_JSON_URL, params=params, headers=HEADERS, timeout=30)
+        resp = requests.get(NUMBEO_URL, params=params, headers=HEADERS, timeout=30)
         print(f"Fetching {resp.url}")
         status = resp.status_code
         print(f"Status code: {status}")
@@ -56,42 +57,47 @@ def fetch_json(params):
         return None
 
 def extract_records(json_data):
-    # Try common patterns
-    if isinstance(json_data, dict):
-        for key in ("data", "records", "results", "items"):
-            if key in json_data and isinstance(json_data[key], list):
-                return json_data[key]
-        # Socrata style?
-        if "result" in json_data and isinstance(json_data["result"], list):
-            return json_data["result"]
-    if isinstance(json_data, list):
-        return json_data
+    # Numbeo returns "prices" list
+    if isinstance(json_data, dict) and "prices" in json_data:
+        return json_data["prices"]
     return []
 
 def transform_records_to_roi(records):
     area_prop_sums = defaultdict(lambda: defaultdict(lambda: {"total": 0.0, "count": 0}))
 
+    # Use a flat mapping for simplicity: city center vs outside
     for rec in records:
-        # Adjust keys based on what you see in JSON
-        prop_type = rec.get("Property Type") or rec.get("property_type") or rec.get("PropertySubType") or rec.get("Property Sub Type")
-        area = rec.get("Area") or rec.get("area") or rec.get("community") or rec.get("District")
-        amount_field = rec.get("Amount") or rec.get("amount") or rec.get("Transaction Amount") or rec.get("transactionAmount") or rec.get("price")
+        name = rec.get("item_name")
+        avg_price = rec.get("average_price")
 
-        if not prop_type or not area or not amount_field:
+        if not name or avg_price is None:
             continue
 
-        # Clean amount
+        # Map names to property types / areas
+        if "City Centre" in name:
+            area = "city_center"
+        elif "Outside of Centre" in name:
+            area = "outside_center"
+        else:
+            area = "other"
+
+        if "Apartment" in name and "1 bedroom" in name:
+            prop_type = "1_bedroom_apartment"
+        elif "Apartment" in name and "2 bedrooms" in name:
+            prop_type = "2_bedroom_apartment"
+        else:
+            prop_type = "other_property"
+
+        # accumulate
+        d = area_prop_sums[area][prop_type]
         try:
-            amt_str = str(amount_field).replace(",", "").replace("AED", "").strip()
-            amt = float(amt_str)
+            amt = float(avg_price)
             if amt <= 0:
                 continue
+            d["total"] += amt
+            d["count"] += 1
         except Exception:
             continue
-
-        d = area_prop_sums[area][prop_type]
-        d["total"] += amt
-        d["count"] += 1
 
     # Build ROI dict
     roi = {}
@@ -118,20 +124,19 @@ def save_roi(roi_dict, path):
 
 def main():
     all_records = []
-    # try first page
     json_data = fetch_json(PARAMS)
     if not json_data:
-        print("❌ Failed to fetch valid JSON data.")
+        print("❌ Failed to fetch valid JSON data. Using empty ROI dataset.")
+        save_roi({}, ROI_JSON_PATH)
         return
+
     recs = extract_records(json_data)
     if not recs:
-        print("⚠️ No records found in fetched JSON.")
+        print("⚠️ No records found in fetched JSON. Using empty ROI dataset.")
+        save_roi({}, ROI_JSON_PATH)
         return
+
     all_records.extend(recs)
-
-    # If the API supports pagination (check if json_data includes total or next-page)
-    # Here we just skip paging for simplicity.
-
     roi_dict = transform_records_to_roi(all_records)
     save_roi(roi_dict, ROI_JSON_PATH)
 
