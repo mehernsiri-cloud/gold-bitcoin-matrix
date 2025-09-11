@@ -1,6 +1,5 @@
 name: Hourly Predictions & ROI Update
-import os
-import json
+
 on:
   schedule:
     - cron: '0 * * * *'  # every hour at minute 0
@@ -65,8 +64,9 @@ jobs:
           python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
           
           # Restore backup if new ROI is empty
-          python - <<'EOF'
-
+          python -<<'EOF'
+import os
+import json
 roi_path = 'data/roi_data.json'
 backup_path = 'data/roi_data_backup.json'
 
@@ -96,4 +96,5 @@ EOF
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+
 
