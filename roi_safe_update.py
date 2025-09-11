@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 """
 roi_safe_update.py
-
-Scrapes Bayut property listings (rent & sale) in UAE, computes avg price and placeholder ROI,
-and safely updates data/roi_data.json. If scraping fails or no listings are found,
-previous ROI backup is restored.
+Scrapes Dubai property listings from Bayut.com (public listings),
+extracts area, type, price, computes average prices per area/type,
+adds placeholder ROI, and safely saves to data/roi_data.json.
+If the new scrape is empty, restores previous backup.
 """
 
 import os
@@ -17,158 +16,138 @@ import time
 # ------------------------------
 # Config
 # ------------------------------
-DATA_DIR = "data"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 ROI_JSON_PATH = os.path.join(DATA_DIR, "roi_data.json")
 ROI_BACKUP_PATH = os.path.join(DATA_DIR, "roi_data_backup.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Bayut URLs (current working URLs)
-URLS = {
-    "apartments_rent": "https://www.bayut.com/to-rent/apartments/uae/",
-    "villas_rent": "https://www.bayut.com/to-rent/villas/uae/",
-    "apartments_sale": "https://www.bayut.com/for-sale/apartments/uae/",
-    "villas_sale": "https://www.bayut.com/for-sale/villas/uae/"
+# Bayut URLs for Dubai properties
+BAYUT_URLS = [
+    "https://www.bayut.com/to-rent/apartments/uae/",
+    "https://www.bayut.com/to-rent/villas/uae/",
+    "https://www.bayut.com/for-sale/apartments/uae/",
+    "https://www.bayut.com/for-sale/villas/uae/"
+]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 }
 
-# Maximum pages to scrape per URL
-MAX_PAGES = 5
-
-# Placeholder ROI value
-PLACEHOLDER_ROI = 6.0
+MAX_PAGES = 3  # adjust as needed
 
 # ------------------------------
-# Functions
+# Scraper
 # ------------------------------
-
-def fetch_listings(url_base):
-    """
-    Fetch listings from Bayut with pagination.
-    Returns a list of dicts: {'area': str, 'type': str, 'price': float}
-    """
+def fetch_listings(url, max_pages=MAX_PAGES):
     listings = []
-    for page in range(1, MAX_PAGES + 1):
-        url = f"{url_base}?page={page}"
-        print(f"Fetching listings from: {url}")
+    for page in range(1, max_pages + 1):
+        full_url = f"{url}?page={page}"
         try:
-            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            resp = requests.get(full_url, headers=HEADERS, timeout=15)
             if resp.status_code != 200:
-                print(f"Failed to fetch {url}: {resp.status_code}")
+                print(f"Failed to fetch {full_url}: {resp.status_code}")
                 continue
-            soup = BeautifulSoup(resp.text, "html.parser")
 
-            # Find listing cards
-            cards = soup.find_all("div", {"data-testid": "listing-card"})
+            soup = BeautifulSoup(resp.text, "html.parser")
+            # New listing cards structure
+            cards = soup.find_all("div", class_="ListingCard")
             if not cards:
-                print(f"No listings found on page {page} for {url_base}")
-                break
+                print(f"No listings found on page {page} for {url}")
+                continue
 
             for card in cards:
                 try:
-                    area_tag = card.select_one("div[data-testid='listing-location'] a")
-                    area = area_tag.text.strip() if area_tag else "Unknown"
+                    # Property type (rent/sale + apartment/villa)
+                    prop_type_tag = card.find("h2")
+                    prop_type = prop_type_tag.get_text(strip=True) if prop_type_tag else "Unknown"
 
-                    price_tag = card.select_one("span[data-testid='price']")
-                    price_text = price_tag.text.strip() if price_tag else None
-                    if not price_text:
-                        continue
-                    # Remove currency symbols and commas
-                    price = float(
-                        "".join(c for c in price_text if c.isdigit() or c == ".")
-                    )
+                    # Area / community
+                    area_tag = card.find("div", class_="ListingCard__location")
+                    area = area_tag.get_text(strip=True) if area_tag else "Unknown"
 
-                    property_type = "apartment" if "apartment" in url_base else "villa"
+                    # Price
+                    price_tag = card.find("span", class_="ListingPrice__price")
+                    price_text = price_tag.get_text(strip=True) if price_tag else None
+                    if price_text:
+                        price_text = price_text.replace(",", "").replace("AED", "").replace("/month", "").replace("د.إ", "").strip()
+                        try:
+                            price = float(price_text)
+                        except ValueError:
+                            price = None
+                    else:
+                        price = None
 
-                    listings.append({
-                        "area": area,
-                        "type": property_type,
-                        "price": price
-                    })
-                except Exception as e:
-                    print(f"Skipping a listing due to parse error: {e}")
-            time.sleep(1)  # polite delay
+                    if prop_type and area and price:
+                        listings.append({"property_type": prop_type, "area": area, "price": price})
+                except Exception:
+                    continue
+
+            time.sleep(1)  # polite delay between pages
         except Exception as e:
-            print(f"Error fetching {url}: {e}")
+            print(f"Error fetching {full_url}: {e}")
     return listings
 
-
+# ------------------------------
+# ROI computation
+# ------------------------------
 def compute_roi(listings):
-    """
-    Compute average prices per area & type and add placeholder ROI.
-    Returns a nested dict: roi[area][type] = {'avg_price': ..., 'roi': ...}
-    """
-    area_type_sum = defaultdict(lambda: defaultdict(lambda: {"total": 0.0, "count": 0}))
-    for l in listings:
-        area_type_sum[l["area"]][l["type"]]["total"] += l["price"]
-        area_type_sum[l["area"]][l["type"]]["count"] += 1
+    area_prop_sums = defaultdict(lambda: defaultdict(lambda: {"total": 0.0, "count": 0}))
+    for rec in listings:
+        area = rec["area"]
+        prop_type = rec["property_type"]
+        price = rec["price"]
+        d = area_prop_sums[area][prop_type]
+        d["total"] += price
+        d["count"] += 1
 
     roi = {}
-    for area, types in area_type_sum.items():
+    for area, props in area_prop_sums.items():
         roi[area] = {}
-        for prop_type, info in types.items():
+        for prop_type, info in props.items():
             if info["count"] == 0:
                 continue
             avg_price = info["total"] / info["count"]
-            roi[area][prop_type] = {
-                "avg_price": round(avg_price, 2),
-                "roi": PLACEHOLDER_ROI
-            }
+            roi_value = 6.0  # placeholder ROI %
+            roi[area][prop_type] = {"avg_price": round(avg_price, 2), "roi": round(roi_value, 2)}
     return roi
 
-
-def save_roi_safe(roi):
-    """
-    Safely save ROI to JSON, restoring backup if empty
-    """
-    # Backup previous ROI
-    if os.path.exists(ROI_JSON_PATH):
-        try:
-            os.replace(ROI_JSON_PATH, ROI_BACKUP_PATH)
-        except Exception as e:
-            print(f"⚠️ Failed to backup previous ROI: {e}")
-
-    # Save new ROI
+# ------------------------------
+# Safe save
+# ------------------------------
+def save_roi_safe(new_roi, path, backup_path):
     try:
-        with open(ROI_JSON_PATH, "w", encoding="utf-8") as f:
-            json.dump(roi, f, indent=2, ensure_ascii=False)
-        print(f"✅ Saved ROI data to {ROI_JSON_PATH}")
+        # Backup old data
+        if os.path.exists(path):
+            os.replace(path, backup_path)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(new_roi, f, indent=2, ensure_ascii=False)
+        print(f"✅ Saved ROI data to {path}")
     except Exception as e:
         print(f"❌ Error saving ROI data: {e}")
-        # Restore backup
-        if os.path.exists(ROI_BACKUP_PATH):
-            os.replace(ROI_BACKUP_PATH, ROI_JSON_PATH)
-            print("⚠️ Restored previous ROI backup due to save error")
-
-    # Check if ROI is empty
-    try:
-        with open(ROI_JSON_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not data and os.path.exists(ROI_BACKUP_PATH):
-            os.replace(ROI_BACKUP_PATH, ROI_JSON_PATH)
-            print("⚠️ ROI data empty, restored previous backup")
-    except Exception:
-        if os.path.exists(ROI_BACKUP_PATH):
-            os.replace(ROI_BACKUP_PATH, ROI_JSON_PATH)
-            print("⚠️ ROI data load failed, restored previous backup")
-
+        # Restore backup if failure
+        if os.path.exists(backup_path):
+            os.replace(backup_path, path)
+            print(f"⚠️ Restored previous ROI backup due to save error")
 
 # ------------------------------
 # Main
 # ------------------------------
 def main():
     all_listings = []
-    for url in URLS.values():
+    for url in BAYUT_URLS:
+        print(f"Fetching listings from: {url}")
         listings = fetch_listings(url)
-        if listings:
-            all_listings.extend(listings)
+        all_listings.extend(listings)
 
     if not all_listings:
-        print("⚠️ No listings fetched. Using empty ROI dataset.")
-        roi = {}
-    else:
-        roi = compute_roi(all_listings)
+        print("⚠️ No listings fetched. Restoring previous ROI backup if exists.")
+        if os.path.exists(ROI_BACKUP_PATH):
+            os.replace(ROI_BACKUP_PATH, ROI_JSON_PATH)
+        return
 
-    save_roi_safe(roi)
-
+    roi_dict = compute_roi(all_listings)
+    save_roi_safe(roi_dict, ROI_JSON_PATH, ROI_BACKUP_PATH)
 
 if __name__ == "__main__":
     main()
