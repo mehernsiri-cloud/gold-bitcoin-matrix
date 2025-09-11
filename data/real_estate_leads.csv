@@ -1,3 +1,4 @@
 name,phone,email,budget,preference,area,country,nationality,purpose,horizon,payment_type,timestamp
 "g""g""",9711234567,g@gmail.com,500000,Studio,JVC,France,Canada,Investment,<1 year,Payment Plan,2025-09-10T15:16:18.153403
-"g""rg""",+9711234567,gg@gmail.cc,500000,Studio,Business Bay,United Arab Emirates,United Arab Emirates,Investment,<1 year,Cash,2025-09-10T15:48:10.566852
+"g""rg""",9711234567,gg@gmail.cc,500000,Studio,Business Bay,United Arab Emirates,United Arab Emirates,Investment,<1 year,Cash,2025-09-10T15:48:10.566852
+"""t""r",+9711234567,f@g.fr,500000,Studio,Business Bay,United Arab Emirates,United Arab Emirates,Investment,<1 year,Cash,2025-09-11T06:58:13.197775
