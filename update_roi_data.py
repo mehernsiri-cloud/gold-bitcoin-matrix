@@ -22,8 +22,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Bayut search URL (for example, for apartments and villas in Dubai)
 BAYUT_URLS = [
-    "https://www.bayut.com/to-rent/property/dubai/apartments/",
-    "https://www.bayut.com/to-rent/property/dubai/villas/"
+    "https://www.bayut.com/for-sale/apartments/uae/",
+    "https://www.bayut.com/for-sale/villas/uae/"
 ]
 
 HEADERS = {
