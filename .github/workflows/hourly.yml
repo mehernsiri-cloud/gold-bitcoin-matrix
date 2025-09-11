@@ -50,21 +50,35 @@ jobs:
       - name: Run headless prediction script
         run: python predict_headless.py || echo "⚠️ predict_headless.py failed, continuing"
 
-      # 8. Generate AI predictions and backtest (ensures ai_predictions_log.csv is filled)
+      # 8. Generate AI predictions and backtest
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
       # 9. Update ROI data from Dubai property listings
       - name: Update ROI data
         run: |
-          python - <<'EOF' || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
+          # Backup previous ROI data
+          cp data/roi_data.json data/roi_data_backup.json || echo "⚠️ No previous ROI backup found"
+          
+          # Run scraper
+          python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
+          
+          # Restore backup if new ROI is empty
+          python - <<'EOF'
 import os
 import json
+roi_path = 'data/roi_data.json'
+backup_path = 'data/roi_data_backup.json'
+
 try:
-    from update_roi_data import main as scrape_main
-    scrape_main()
-except Exception as e:
-    print(f"⚠️ ROI update failed: {e}")
+    with open(roi_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    if not data:
+        raise ValueError("ROI data is empty")
+except Exception:
+    print("⚠️ ROI data empty, restoring previous backup")
+    if os.path.exists(backup_path):
+        os.replace(backup_path, roi_path)
 EOF
 
       # 10. Commit & push CSV/JSON updates
