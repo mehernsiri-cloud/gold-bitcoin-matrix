@@ -54,19 +54,21 @@ jobs:
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      # 9. Update ROI data from Dubai property listings
-      - name: Update ROI data
+      # 9a. Backup previous ROI data
+      - name: Backup previous ROI data
         run: |
-          # Backup previous ROI data
           cp data/roi_data.json data/roi_data_backup.json || echo "⚠️ No previous ROI backup found"
-          
-          # Run scraper
-          python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
-          
-          # Restore backup if new ROI is empty
-         run: python - <<'PYTHON'
+
+      # 9b. Run scraper to update ROI
+      - name: Update ROI data from Dubai property listings
+        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
+
+      # 9c. Restore backup if new ROI is empty
+      - name: Restore ROI backup if new data empty
+        run: python - <<'PYTHON'
 import os
 import json
+
 roi_path = 'data/roi_data.json'
 backup_path = 'data/roi_data_backup.json'
 
@@ -79,7 +81,8 @@ except Exception:
     print("⚠️ ROI data empty, restoring previous backup")
     if os.path.exists(backup_path):
         os.replace(backup_path, roi_path)
-EOF
+PYTHON
+
 
       # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
@@ -96,6 +99,7 @@ EOF
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+
 
 
 
