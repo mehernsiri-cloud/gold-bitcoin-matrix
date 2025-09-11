@@ -56,7 +56,7 @@ jobs:
 
       # 9. Update ROI data safely from Dubai property listings
       - name: Update ROI data safely
-        run: python roi_safe_update.py
+        run: python update_roi_data.py
 
       # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
