@@ -27,10 +27,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pandas yfinance requests pyyaml plotly textblob pytrends scikit-learn
+          pip install pandas yfinance requests pyyaml plotly textblob pytrends scikit-learn beautifulsoup4
 
-      # 4. Ensure data folder & CSV files exist
-      - name: Create data folder and CSV files if missing
+      # 4. Ensure data folder & CSV/JSON files exist
+      - name: Create data folder and CSV/JSON files if missing
         run: |
           mkdir -p data
           touch data/actual_data.csv
@@ -54,11 +54,20 @@ jobs:
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      # 9. Update ROI data from public JSON feed (Numbeo)
+      # 9. Update ROI data from Dubai property listings
       - name: Update ROI data
-        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
+        run: |
+          python - <<'EOF' || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
+import os
+import json
+try:
+    from update_roi_data import main as scrape_main
+    scrape_main()
+except Exception as e:
+    print(f"⚠️ ROI update failed: {e}")
+EOF
 
-      # 10. Commit & push updates safely
+      # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
