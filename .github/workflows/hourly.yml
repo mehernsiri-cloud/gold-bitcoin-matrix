@@ -36,26 +36,27 @@ jobs:
           touch data/actual_data.csv
           touch data/predictions_log.csv
           touch data/ai_predictions_log.csv
+          touch data/roi_data.json
 
       # 5. Update market indicators dynamically
       - name: Update market indicators
-        run: python update_weights.py
+        run: python update_weights.py || echo "⚠️ update_weights.py failed, continuing"
 
       # 6. Fetch actual data
       - name: Fetch actual data
-        run: python fetch_data.py
+        run: python fetch_data.py || echo "⚠️ fetch_data.py failed, continuing"
 
       # 7. Generate predictions
       - name: Run headless prediction script
-        run: python predict_headless.py
+        run: python predict_headless.py || echo "⚠️ predict_headless.py failed, continuing"
 
       # 8. Generate AI predictions and backtest (ensures ai_predictions_log.csv is filled)
       - name: Generate AI predictions & backtest
-        run: python run_ai_predictions.py
+        run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      # 9. Update ROI data from DLD open portal
+      # 9. Update ROI data from public JSON feed (Numbeo)
       - name: Update ROI data
-        run: python update_roi_data.py
+        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, keeping previous ROI data"
 
       # 10. Commit & push updates safely
       - name: Commit & push CSV/JSON updates
