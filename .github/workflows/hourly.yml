@@ -83,7 +83,6 @@ except Exception:
         os.replace(backup_path, roi_path)
 PYTHON
 
-
       # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
         env:
@@ -99,8 +98,3 @@ PYTHON
           git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
 
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
-
-
-
-
-
