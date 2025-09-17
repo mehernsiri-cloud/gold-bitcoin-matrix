@@ -2,9 +2,9 @@ bitcoin:
   adoption: 0.020000000000000004
   bond_yields: -0.10499999999999997
   currency_instability: -0.10245249999999999
-  energy_prices: 0.004333333333333336
+  energy_prices: 0.006099999999999994
   equity_flows: 0.32771822222222224
-  geopolitics: -0.020000000000000004
+  geopolitics: -0.0181
   inflation: -0.0040000000000000036
   liquidity: -0.09200000000000001
   real_rates: -0.021999999999999978
@@ -16,9 +16,9 @@ gold:
   adoption: 0.0
   bond_yields: -0.17499999999999996
   currency_instability: -0.06147149999999999
-  energy_prices: 0.013000000000000006
+  energy_prices: 0.018299999999999983
   equity_flows: 0.09363377777777779
-  geopolitics: -0.12
+  geopolitics: -0.10859999999999999
   inflation: -0.020000000000000018
   liquidity: -0.0575
   real_rates: -0.10999999999999988
