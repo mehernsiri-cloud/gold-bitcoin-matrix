@@ -8,6 +8,7 @@ from datetime import timedelta, datetime
 from jobs_app import jobs_dashboard
 from ai_predictor import predict_next_n, compare_predictions_vs_actuals
 from real_estate_bot import real_estate_dashboard
+from typing import List
 
 # ------------------------------
 # PAGE CONFIG
