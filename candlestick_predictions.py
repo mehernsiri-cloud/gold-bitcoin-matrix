@@ -217,19 +217,26 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # -------------------------------
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     st.title("🕯️ Candlestick Predictions")
+
     if df_actual.empty:
         st.error("No actual Bitcoin OHLC data available.")
         return
-    required_cols = ["bitcoin_open","bitcoin_high","bitcoin_low","bitcoin_close","timestamp"]
+
+    required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close", "timestamp"]
     missing = [c for c in required_cols if c not in df_actual.columns]
     if missing:
         st.error(f"Missing columns in actual data: {missing}")
         return
+
     df_ohlc = df_actual.rename(columns={
-        "bitcoin_open":"open","bitcoin_high":"high","bitcoin_low":"low","bitcoin_close":"close"
-    }).dropna(subset=["open","high","low","close"])
+        "bitcoin_open": "open",
+        "bitcoin_high": "high",
+        "bitcoin_low": "low",
+        "bitcoin_close": "close"
+    }).dropna(subset=["open", "high", "low", "close"])
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
 
+    # Short-term & classical patterns
     df_last_week = df_ohlc[df_ohlc["timestamp"] >= df_ohlc["timestamp"].max()-timedelta(days=7)]
     short_patterns = detect_candle_patterns_on_series(df_last_week)
     df_last_month = df_ohlc[df_ohlc["timestamp"] >= df_ohlc["timestamp"].max()-timedelta(days=30)]
@@ -240,6 +247,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     signal = decide_weekly_signal(weekly_patterns)
     st.subheader(f"Weekly Signal: {signal}")
 
+    # Predicted candles
     df_predicted = synthesize_predicted_candles(df_last_week.tail(5), signal)
     if not df_predicted.empty:
         log_weekly_candlestick_predictions(df_predicted)
@@ -258,27 +266,27 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         ))
     fig.update_layout(title="Bitcoin Candlestick Predictions", xaxis_title="Date", yaxis_title="Price")
     st.plotly_chart(fig, use_container_width=True)
-    st.write("### Weekly Pattern Counts")
-    st.json(weekly_patterns)
 
     # --- Stacked Pattern Contribution Chart ---
-    bull = {k:v for k,v in weekly_patterns.items() if "bullish" in k or "Bottom" in k or "Cup & Handle" in k or "Ascending" in k or "Falling Wedge" in k}
-    bear = {k:v for k,v in weekly_patterns.items() if "bearish" in k or "Top" in k or "Head & Shoulders" in k or "Descending" in k or "Rising Wedge" in k}
-    neutral = {k:v for k,v in weekly_patterns.items() if "neutral" in k or "Doji" in k or "Flag/Pennant" in k}
+    st.write("### Weekly Pattern Contributions")
 
-    def color_top_3(d):
-    sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
-colors = {}
-for i, (k, _) in enumerate(sorted_items):
-if i == 0:
-colors[k] = "#a8e6cf"  # pastel green
-elif i == 1:
-colors[k] = "#dcedff"  # pastel blue
-elif i == 2:
-colors[k] = "#ffd3e0"  # pastel pink
-else:
-colors[k] = "#f0f0f0"  # light pastel gray
-return colors
+    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"])}
+    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"])}
+    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Neutral","Doji","Flag/Pennant"])}
+
+    def color_top_3(d: Dict[str,int]) -> Dict[str,str]:
+        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
+        colors = {}
+        for i, (k, _) in enumerate(sorted_items):
+            if i == 0:
+                colors[k] = "#a8e6cf"  # pastel green
+            elif i == 1:
+                colors[k] = "#dcedff"  # pastel blue
+            elif i == 2:
+                colors[k] = "#ffd3e0"  # pastel pink
+            else:
+                colors[k] = "#f0f0f0"  # light pastel gray
+        return colors
 
     fig2 = go.Figure()
     bull_colors = color_top_3(bull)
