@@ -1,15 +1,14 @@
 # app.py
 # Rewritten full application file with separate "Candlestick Predictions" menu and
-# next-week synthetic candlestick generation based on last 7 days of Bitcoin OHLC.
+# next-week synthetic candlestick generation moved to candlestick_predictions.py.
 #
 # Features:
 #  - Gold & Bitcoin dashboards
-#  - AI Forecast dashboard
-#  - New: Candlestick Predictions menu (last week -> predicted next week)
+#  - AI Forecast dashboard (candlestick-related predictions removed from here)
+#  - Dedicated: Candlestick Predictions menu (calls render_candlestick_dashboard)
 #  - Jobs & Real Estate Bot placeholders preserved
 #  - Logging of predicted daily values into data/ai_predictions_log.csv
 #
-# Note: This file intentionally verbose and long (>600 lines) to satisfy user request.
 # Author: ChatGPT (generated for user)
 # Date: 2025-10-03
 # ------------------------------------------------------------------------------
@@ -44,6 +43,16 @@ try:
 except Exception:
     def real_estate_dashboard():
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
+
+
+# -------------------------------------------------------------------
+# NEW: candlestick module import (all candlestick-specific logic moved there)
+# -------------------------------------------------------------------
+try:
+    from candlestick_predictions import render_candlestick_dashboard
+except Exception as e:
+    def render_candlestick_dashboard(df_actual, df_ai_pred_log):
+        st.error(f"Candlestick module not found: {e}\nPlease ensure candlestick_predictions.py exists.")
 
 
 # -------------------------------------------------------------------
@@ -464,203 +473,12 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 
 
 # -------------------------------------------------------------------
-# CANDLESTICK PATTERN DETECTION (single-candle and weekly aggregation)
+# NOTE: CANDLESTICK PATTERN DETECTION & SYNTHESIS
 # -------------------------------------------------------------------
-def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Timestamp, List[str]]]:
-    """
-    Detect patterns for each candle in df_ohlc (requires at least 3 candles to detect multi-candle patterns).
-    Returns list of tuples: (timestamp_of_candle, [patterns_detected_for_that_candle])
-    """
-    results: List[Tuple[pd.Timestamp, List[str]]] = []
-    if df_ohlc is None or df_ohlc.shape[0] < 3:
-        return results
-
-    df_sorted = df_ohlc.sort_values("timestamp").reset_index(drop=True)
-    n = df_sorted.shape[0]
-    for i in range(2, n):  # start from index 2 to have previous two candles
-        window = df_sorted.iloc[i-2:i+1].copy().reset_index(drop=True)  # 3-candle window
-        ts = window.loc[2, "timestamp"]
-        patterns = detect_patterns_in_3_candles(window)
-        results.append((ts, patterns))
-    return results
-
-
-def detect_patterns_in_3_candles(window: pd.DataFrame) -> List[str]:
-    """
-    Given 3-row window DataFrame with columns [timestamp, open, high, low, close],
-    return detected patterns for the last candle considering the previous two candles.
-    Simple rules: Doji, Hammer, Shooting Star, Bullish Engulfing, Bearish Engulfing, Piercing, Dark Cloud.
-    """
-    patterns: List[str] = []
-    if window is None or window.shape[0] != 3:
-        return patterns
-
-    # latest is index 2, prior 1 and 0
-    try:
-        c0 = window.loc[2]
-        c1 = window.loc[1]
-        c2 = window.loc[0]
-
-        c0_open = float(c0["open"])
-        c0_high = float(c0["high"])
-        c0_low = float(c0["low"])
-        c0_close = float(c0["close"])
-        body0 = abs(c0_close - c0_open)
-        range0 = (c0_high - c0_low) if (c0_high - c0_low) > 0 else 1.0
-        upper_wick = c0_high - max(c0_open, c0_close)
-        lower_wick = min(c0_open, c0_close) - c0_low
-
-        # Doji
-        if body0 < 0.15 * range0:
-            patterns.append("Doji (indecision)")
-
-        # Hammer
-        if lower_wick > 2 * body0 and upper_wick < body0 and c0_close > c0_open:
-            patterns.append("Hammer (bullish reversal)")
-
-        # Shooting Star
-        if upper_wick > 2 * body0 and lower_wick < body0 and c0_close < c0_open:
-            patterns.append("Shooting Star (bearish reversal)")
-
-        # Bullish Engulfing
-        if (float(c1["close"]) < float(c1["open"])) and (c0_close > c0_open) and (c0_close > float(c1["open"])) and (c0_open < float(c1["close"])):
-            patterns.append("Bullish Engulfing")
-
-        # Bearish Engulfing
-        if (float(c1["close"]) > float(c1["open"])) and (c0_close < c0_open) and (c0_open > float(c1["close"])) and (c0_close < float(c1["open"])):
-            patterns.append("Bearish Engulfing")
-
-        # Piercing Line-ish (bullish)
-        if (float(c1["close"]) < float(c1["open"])) and (c0_close > c0_open) and (c0_close > (float(c1["open"]) + float(c1["close"]))/2):
-            patterns.append("Piercing Line-ish (bullish)")
-
-        # Dark Cloud Cover-ish (bearish)
-        if (float(c1["close"]) > float(c1["open"])) and (c0_close < c0_open) and (c0_close < (float(c1["open"]) + float(c1["close"]))/2):
-            patterns.append("Dark Cloud Cover-ish (bearish)")
-
-    except Exception:
-        # on any error return patterns collected so far
-        pass
-
-    # dedupe while preserving order
-    seen = set()
-    unique = []
-    for p in patterns:
-        if p not in seen:
-            unique.append(p)
-            seen.add(p)
-    return unique
-
-
-def aggregate_weekly_patterns(df_ohlc: pd.DataFrame, lookback_days: int = 7) -> Dict[str, int]:
-    """
-    Analyze the last `lookback_days` days of df_ohlc and return aggregated counts of bullish/bearish/neutral patterns.
-    Returns dict: {'bullish': int, 'bearish': int, 'neutral': int, 'patterns_list': [..]}
-    """
-    result = {"bullish": 0, "bearish": 0, "neutral": 0, "patterns": []}
-    if df_ohlc is None or df_ohlc.empty:
-        return result
-
-    # filter last lookback_days by timestamp
-    try:
-        df_sorted = df_ohlc.sort_values("timestamp")
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
-        recent = df_sorted[df_sorted["timestamp"] >= cutoff]
-        if recent.shape[0] < 3:
-            # not enough data in the strict last N days; fallback to last N rows
-            recent = df_sorted.tail(lookback_days)
-    except Exception:
-        recent = df_ohlc.tail(lookback_days)
-
-    detections = detect_candle_patterns_on_series(recent)
-    # detections: list of (timestamp, [patterns])
-    for ts, pats in detections:
-        for p in pats:
-            lower = p.lower()
-            result["patterns"].append(p)
-            if any(k in lower for k in ["bull", "hammer", "piercing", "piercing line"]):
-                result["bullish"] += 1
-            elif any(k in lower for k in ["bear", "shooting", "dark cloud", "star"]):
-                result["bearish"] += 1
-            else:
-                result["neutral"] += 1
-    return result
-
-
-def decide_weekly_signal(agg: Dict[str, int]) -> str:
-    """
-    Turn aggregated counts into a final weekly signal: Bullish, Bearish, Neutral.
-    Conservative rule:
-      - if bullish_count > bearish_count by >=1 -> Bullish
-      - if bearish_count > bullish_count by >=1 -> Bearish
-      - else Neutral
-    """
-    b = agg.get("bullish", 0)
-    r = agg.get("bearish", 0)
-    if b > r:
-        return "Bullish"
-    elif r > b:
-        return "Bearish"
-    else:
-        return "Neutral"
-
-
-# -------------------------------------------------------------------
-# SYNTHETIC CANDLE GENERATION (for predicted days)
-# -------------------------------------------------------------------
-def synthesize_predicted_candles(start_date: pd.Timestamp, start_open: float, drift_per_day: float, n_days: int = 7) -> pd.DataFrame:
-    """
-    Generate n_days synthetic OHLC candles starting from start_date (next day).
-    - start_open: the open for the first predicted day (we use last close)
-    - drift_per_day: fractional drift to apply to close each day (e.g., 0.01 for +1%).
-    Returns DataFrame with columns: timestamp, open, high, low, close
-    Deterministic generation: high = max(open, close) * (1 + 0.002), low = min(open, close) * (1 - 0.002)
-    """
-    rows = []
-    prev_close = start_open  # we feed last close as the base open for first predicted day
-    current_date = pd.to_datetime(start_date)
-    # Predictions will be made for next n_days: day1 = next calendar day after start_date
-    for i in range(1, n_days + 1):
-        pred_date = (current_date + pd.Timedelta(days=i)).normalize()
-        open_price = prev_close
-        close_price = open_price * (1.0 + drift_per_day)
-        high_price = max(open_price, close_price) * 1.002  # small wiggle
-        low_price = min(open_price, close_price) * 0.998
-        # store
-        rows.append({
-            "timestamp": pred_date,
-            "open": round(open_price, 8),
-            "high": round(high_price, 8),
-            "low": round(low_price, 8),
-            "close": round(close_price, 8)
-        })
-        # next day's open is this day's close (simple assumption)
-        prev_close = close_price
-    df = pd.DataFrame(rows)
-    return df
-
-
-# -------------------------------------------------------------------
-# LOGGING PREDICTIONS (write each predicted day's close to ai_predictions_log.csv)
-# -------------------------------------------------------------------
-def log_weekly_candlestick_predictions(pred_df: pd.DataFrame, asset_name: str = "Bitcoin", method: str = "candlestick"):
-    """
-    For each predicted day in pred_df (with 'timestamp' and 'close'), append an entry to ai_predictions_log.csv.
-    Each row will contain: timestamp (ISO), asset, predicted_price (close), method
-    Dedupe will keep last per (timestamp, asset, method).
-    """
-    if pred_df is None or pred_df.empty:
-        return
-    for _, row in pred_df.iterrows():
-        ts = row["timestamp"]
-        if isinstance(ts, pd.Timestamp):
-            ts_iso = ts.isoformat()
-        elif isinstance(ts, datetime):
-            ts_iso = ts.isoformat()
-        else:
-            ts_iso = str(ts)
-        r = {"timestamp": ts_iso, "asset": asset_name, "predicted_price": float(row["close"]), "method": method}
-        append_prediction_to_log(AI_PRED_FILE, r, dedupe_on=["timestamp", "asset", "method"])
+# All candlestick pattern detection and synthetic-prediction logic has been moved to
+# candlestick_predictions.py. This file will call render_candlestick_dashboard(...) when
+# the user chooses the "Candlestick Predictions" menu. This keeps app.py stable and short
+# of domain-specific candlestick code.
 
 
 # -------------------------------------------------------------------
@@ -736,10 +554,10 @@ if menu == "Gold & Bitcoin":
 
 
 # -------------------------------------------------------------------
-# AI FORECAST DASHBOARD (unchanged semantics)
+# AI FORECAST DASHBOARD (candlestick detection moved out)
 # -------------------------------------------------------------------
 elif menu == "AI Forecast":
-    render_header("🤖 AI Forecast Dashboard", "AI-predicted prices and candlestick-based pattern predictions (Bitcoin)")
+    render_header("🤖 AI Forecast Dashboard", "AI-predicted prices and historical comparisons")
 
     n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
     col_left, col_right = st.columns(2)
@@ -782,258 +600,59 @@ elif menu == "AI Forecast":
         else:
             st.info(f"No AI forecast available for {asset}.")
 
-    # BITCOIN (right)
+    # BITCOIN (right) - Note: candlestick-based predictions & detection have been removed from this menu.
     with col_right:
         asset = "Bitcoin"
         st.subheader(asset)
 
-        # Prepare OHLC
-        ohlc_cols_present = all(c in df_actual.columns for c in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
-        if ohlc_cols_present:
-            df_ohlc = df_actual[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]].dropna().copy()
-            df_ohlc = df_ohlc.rename(columns={"bitcoin_open": "open", "bitcoin_high": "high", "bitcoin_low": "low", "bitcoin_close": "close"})
-            try:
-                df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], infer_datetime_format=True)
-            except Exception:
-                pass
-            df_ohlc = df_ohlc.sort_values("timestamp")
-        else:
-            if "bitcoin_actual" in df_actual.columns:
-                d = df_actual[["timestamp", "bitcoin_actual"]].dropna().copy().sort_values("timestamp")
-                d["open"] = d["bitcoin_actual"].shift(1).fillna(d["bitcoin_actual"])
-                d["close"] = d["bitcoin_actual"]
-                d["high"] = d[["open", "close"]].max(axis=1) * 1.002
-                d["low"] = d[["open", "close"]].min(axis=1) * 0.998
-                df_ohlc = d.rename(columns={"timestamp": "timestamp"})
-            else:
-                df_ohlc = pd.DataFrame()
-
-        st.markdown("**Candlestick Chart (Bitcoin Real-Time Index)**")
-        if not df_ohlc.empty:
-            fig_candle = go.Figure(data=[go.Candlestick(x=df_ohlc["timestamp"], open=df_ohlc["open"], high=df_ohlc["high"], low=df_ohlc["low"], close=df_ohlc["close"], name="BTC")])
-            fig_candle.update_layout(title="Bitcoin Candlesticks", xaxis_rangeslider_visible=False, plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=420)
-            st.plotly_chart(fig_candle, use_container_width=True)
-        else:
-            st.info("OHLC data not available for Bitcoin; cannot render candlestick chart.")
-
-        st.markdown("**Candlestick Pattern Detection & Rule-based Prediction**")
-        patterns = detect_patterns_in_3_candles(df_ohlc.tail(3)) if not df_ohlc.empty and df_ohlc.shape[0] >= 3 else []
-        if patterns:
-            st.markdown(f"**Detected patterns (latest):** {', '.join(patterns)}")
-            signal = "Bullish" if any("bull" in p.lower() or "hammer" in p.lower() for p in patterns) else ("Bearish" if any("bear" in p.lower() or "shooting" in p.lower() for p in patterns) else "Neutral")
-            if signal == "Bullish":
-                st.success("Pattern-based prediction: **Bullish** — short-term upward bias 🚀")
-            elif signal == "Bearish":
-                st.error("Pattern-based prediction: **Bearish** — short-term downward bias 📉")
-            else:
-                st.info("Pattern-based prediction: **Neutral** — no clear short-term signal ⚖️")
-        else:
-            st.info("No clear candlestick pattern detected (insufficient data or none matched).")
-
-        st.markdown("**Historical AI Predictions vs Actual**")
-        df_hist_actual_close = pd.DataFrame()
+        # Prepare close time-series for Bitcoin
+        df_close = pd.DataFrame()
         if "bitcoin_close" in df_actual.columns:
-            df_hist_actual_close = df_actual[["timestamp", "bitcoin_close"]].rename(columns={"bitcoin_close": "actual"}).dropna()
+            df_close = df_actual[["timestamp", "bitcoin_close"]].rename(columns={"bitcoin_close": "actual"}).dropna()
         elif "bitcoin_actual" in df_actual.columns:
-            df_hist_actual_close = df_actual[["timestamp", "bitcoin_actual"]].rename(columns={"bitcoin_actual": "actual"}).dropna()
+            df_close = df_actual[["timestamp", "bitcoin_actual"]].rename(columns={"bitcoin_actual": "actual"}).dropna()
+
+        st.markdown("**Price Series (Bitcoin Close) & AI Forecast**")
         df_hist_pred = df_ai_pred_log[df_ai_pred_log["asset"] == "Bitcoin"][["timestamp", "predicted_price"]].dropna() if "asset" in df_ai_pred_log.columns else pd.DataFrame()
 
-        if not df_hist_actual_close.empty and not df_hist_pred.empty:
-            fig_cmp = go.Figure()
-            fig_cmp.add_trace(go.Scatter(x=df_hist_actual_close["timestamp"], y=df_hist_actual_close["actual"], mode="lines+markers", name="Actual Price", line=dict(width=2)))
-            fig_cmp.add_trace(go.Scatter(x=df_hist_pred["timestamp"], y=df_hist_pred["predicted_price"], mode="lines+markers", name="Predicted Price", line=dict(dash="dot")))
-            fig_cmp.update_layout(title="Bitcoin – Historical AI Predictions vs Actual", xaxis_title="Date", yaxis_title="Price", template="plotly_white", height=350)
-            st.plotly_chart(fig_cmp, use_container_width=True)
+        # Show combined line chart of actual closes and AI predicted points
+        if not df_close.empty or not df_hist_pred.empty:
+            fig_btc = go.Figure()
+            if not df_close.empty:
+                fig_btc.add_trace(go.Scatter(x=df_close["timestamp"], y=df_close["actual"], mode="lines+markers", name="Actual Close", line=dict(width=2)))
+            if not df_hist_pred.empty:
+                fig_btc.add_trace(go.Scatter(x=df_hist_pred["timestamp"], y=df_hist_pred["predicted_price"], mode="lines+markers", name="AI Predictions", line=dict(dash="dot")))
+            try:
+                df_ai_future = predict_next_n(asset_name="Bitcoin", n_steps=n_steps)
+            except Exception:
+                df_ai_future = pd.DataFrame()
+            if not df_ai_future.empty and "timestamp" in df_ai_future.columns and "predicted_price" in df_ai_future.columns:
+                fig_btc.add_trace(go.Scatter(x=df_ai_future["timestamp"], y=df_ai_future["predicted_price"], mode="lines+markers", name="AI Forecast (future)", line=dict(dash="dash")))
+            fig_btc.update_layout(title="Bitcoin – Close Price & AI Forecast", xaxis_title="Date", yaxis_title="Price", plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=480)
+            st.plotly_chart(fig_btc, use_container_width=True)
         else:
-            st.info("No historical comparison available (missing actual OHLC/close or AI predictions).")
+            st.info("No Bitcoin close-series or AI predictions available for plotting.")
 
-        st.markdown("**Future AI Forecast (overlay)**")
-        try:
-            df_ai_future = predict_next_n(asset_name="Bitcoin", n_steps=n_steps)
-        except Exception:
-            df_ai_future = pd.DataFrame()
-
-        if not df_ai_future.empty:
-            fig_overlay = go.Figure()
-            if not df_ohlc.empty:
-                fig_overlay.add_trace(go.Candlestick(x=df_ohlc["timestamp"], open=df_ohlc["open"], high=df_ohlc["high"], low=df_ohlc["low"], close=df_ohlc["close"], name="BTC"))
-                last_date = df_ohlc["timestamp"].max()
-                try:
-                    last_close = float(df_ohlc.loc[df_ohlc["timestamp"] == last_date, "close"].iloc[0])
-                except Exception:
-                    last_close = float(df_ai_future["predicted_price"].iloc[0])
-            else:
-                if not df_hist_actual_close.empty:
-                    fig_overlay.add_trace(go.Scatter(x=df_hist_actual_close["timestamp"], y=df_hist_actual_close["actual"], mode="lines+markers", name="Actual", line=dict(width=2)))
-                    last_date = df_hist_actual_close["timestamp"].max()
-                    last_close = float(df_hist_actual_close["actual"].iloc[-1])
-                else:
-                    last_date = pd.Timestamp.now()
-                    last_close = float(df_ai_future["predicted_price"].iloc[0])
-
-            x_join = [last_date] + list(pd.to_datetime(df_ai_future["timestamp"]))
-            y_join = [last_close] + list(df_ai_future["predicted_price"])
-            fig_overlay.add_trace(go.Scatter(x=x_join, y=y_join, mode="lines+markers", name="AI Forecast", line=dict(color=ASSET_THEMES["Bitcoin"]["chart_ai"], dash="dot")))
-            fig_overlay.update_layout(title="Bitcoin Candlesticks + AI Forecast Overlay", xaxis_rangeslider_visible=False, plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=500)
-            st.plotly_chart(fig_overlay, use_container_width=True)
+        # Historical comparison small table
+        st.markdown("**Historical AI Predictions vs Actual (table)**")
+        if not df_close.empty and not df_hist_pred.empty:
+            try:
+                joined = pd.merge_asof(df_hist_pred.sort_values("timestamp"), df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}), on="timestamp", direction="backward", tolerance=pd.Timedelta("1D"))
+            except Exception:
+                joined = pd.merge(df_hist_pred.sort_values("timestamp"), df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}), how="left", left_on="timestamp", right_on="timestamp")
+            st.dataframe(joined.head(50))
         else:
-            st.info("No AI forecast available for Bitcoin.")
+            st.info("Insufficient data to show historical table for Bitcoin.")
 
 
 # -------------------------------------------------------------------
-# CANDLESTICK PREDICTIONS MENU (NEW)
+# CANDLESTICK PREDICTIONS MENU (delegates to candlestick_predictions.py)
 # -------------------------------------------------------------------
 elif menu == "Candlestick Predictions":
-    render_header("🕯️ Candlestick Predictions (Bitcoin)", "Analyze last 7 days of candles → predict the next 7 days as synthetic candlesticks")
-
-    # Step 1: Prepare OHLC for Bitcoin (prefer explicit ohlc columns)
-    ohlc_cols_present = all(c in df_actual.columns for c in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
-    if ohlc_cols_present:
-        df_ohlc_all = df_actual[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]].dropna().copy()
-        df_ohlc_all = df_ohlc_all.rename(columns={
-            "bitcoin_open": "open", "bitcoin_high": "high", "bitcoin_low": "low", "bitcoin_close": "close"
-        })
-    else:
-        # fallback to synthetic ohlc from bitcoin_actual if available
-        if "bitcoin_actual" in df_actual.columns:
-            tmp = df_actual[["timestamp", "bitcoin_actual"]].dropna().copy().sort_values("timestamp")
-            tmp["open"] = tmp["bitcoin_actual"].shift(1).fillna(tmp["bitcoin_actual"])
-            tmp["close"] = tmp["bitcoin_actual"]
-            tmp["high"] = tmp[["open", "close"]].max(axis=1) * 1.002
-            tmp["low"] = tmp[["open", "close"]].min(axis=1) * 0.998
-            df_ohlc_all = tmp.rename(columns={"timestamp": "timestamp"})
-        else:
-            df_ohlc_all = pd.DataFrame()
-
-    # Ensure timestamps are datetimes
-    if not df_ohlc_all.empty:
-        try:
-            df_ohlc_all["timestamp"] = pd.to_datetime(df_ohlc_all["timestamp"], infer_datetime_format=True)
-        except Exception:
-            pass
-        df_ohlc_all = df_ohlc_all.sort_values("timestamp").reset_index(drop=True)
-
-    # UI: parameters
-    st.markdown("#### Parameters")
-    lookback_days = st.number_input("Lookback (days) for pattern detection (week length)", min_value=3, max_value=30, value=7, step=1)
-    n_forecast_days = st.number_input("Forecast horizon (days)", min_value=1, max_value=14, value=7, step=1)
-    bull_drift_pct = st.number_input("Daily bullish drift (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100.0
-    bear_drift_pct = st.number_input("Daily bearish drift (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100.0
-    method_name = st.text_input("Logging method name (for ai_predictions_log)", value="candlestick")
-
-    # Step 2: Extract last lookback_days candles
-    if df_ohlc_all.empty:
-        st.info("No OHLC data available for Bitcoin; cannot run candlestick predictions.")
-    else:
-        # define lookback period by time or by rows; prefer last lookback_days by timestamp
-        try:
-            cutoff = pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
-            df_recent = df_ohlc_all[df_ohlc_all["timestamp"] >= cutoff].copy()
-            if df_recent.shape[0] < 3:
-                # fallback: last N rows
-                df_recent = df_ohlc_all.tail(lookback_days).copy()
-        except Exception:
-            df_recent = df_ohlc_all.tail(lookback_days).copy()
-
-        st.markdown(f"**Using {len(df_recent)} candles for pattern detection (last {lookback_days} days/rows)**")
-
-        if df_recent.empty or df_recent.shape[0] < 3:
-            st.info("Not enough recent candles to detect patterns (need at least 3).")
-        else:
-            # show recent candlesticks
-            fig_recent = go.Figure(data=[go.Candlestick(
-                x=df_recent["timestamp"],
-                open=df_recent["open"],
-                high=df_recent["high"],
-                low=df_recent["low"],
-                close=df_recent["close"],
-                name="Recent BTC"
-            )])
-            fig_recent.update_layout(title=f"Bitcoin: Last {len(df_recent)} Candles (for pattern detection)", xaxis_rangeslider_visible=False, height=400)
-            st.plotly_chart(fig_recent, use_container_width=True)
-
-            # Step 3: detect weekly patterns (aggregate)
-            agg = aggregate_weekly_patterns(df_recent, lookback_days=lookback_days)
-            st.markdown("#### Aggregated pattern counts (last period)")
-            st.write({
-                "bullish_patterns": agg.get("bullish", 0),
-                "bearish_patterns": agg.get("bearish", 0),
-                "neutral_patterns": agg.get("neutral", 0),
-                "patterns_found": agg.get("patterns", [])
-            })
-
-            final_signal = decide_weekly_signal(agg)
-            if final_signal == "Bullish":
-                st.success("Aggregated weekly signal: **Bullish** — projecting upward bias for next week 🚀")
-            elif final_signal == "Bearish":
-                st.error("Aggregated weekly signal: **Bearish** — projecting downward bias for next week 📉")
-            else:
-                st.info("Aggregated weekly signal: **Neutral** — projecting flat bias for next week ⚖️")
-
-            # Step 4: Compute drift per day based on final_signal
-            if final_signal == "Bullish":
-                drift = bull_drift_pct
-            elif final_signal == "Bearish":
-                drift = -abs(bear_drift_pct)
-            else:
-                drift = 0.0
-
-            # Step 5: Generate synthetic predicted candles for next n days
-            last_row = df_recent.iloc[-1]
-            last_close = float(last_row["close"])
-            last_timestamp = last_row["timestamp"]
-            st.markdown(f"**Last observed close:** {last_close:.8f} at {pretty_datetime(last_timestamp)}")
-            pred_candles = synthesize_predicted_candles(start_date=last_timestamp, start_open=last_close, drift_per_day=drift, n_days=n_forecast_days)
-
-            # show predicted candles as candlestick traces
-            # For clarity, create predicted candles as separate trace with slightly different color/opacity
-            fig_both = go.Figure()
-            # actual last week candlesticks
-            fig_both.add_trace(go.Candlestick(
-                x=df_recent["timestamp"],
-                open=df_recent["open"], high=df_recent["high"], low=df_recent["low"], close=df_recent["close"],
-                name="Actual (last week)"
-            ))
-            # predicted candlesticks (synthetic) - add as another candlestick trace
-            # We will set increasing/decreasing line colors to indicate direction
-            fig_both.add_trace(go.Candlestick(
-                x=pred_candles["timestamp"],
-                open=pred_candles["open"],
-                high=pred_candles["high"],
-                low=pred_candles["low"],
-                close=pred_candles["close"],
-                name="Predicted (next week)",
-                increasing_line_color='cyan',
-                decreasing_line_color='orange',
-                increasing_fillcolor='rgba(0,255,255,0.1)',
-                decreasing_fillcolor='rgba(255,165,0,0.1)'
-            ))
-            fig_both.update_layout(title="Actual (last week) + Predicted (next week) Candlesticks", xaxis_rangeslider_visible=False, height=600)
-            st.plotly_chart(fig_both, use_container_width=True)
-
-            # Step 6: Logging: write each predicted day's close to ai_predictions_log.csv
-            st.markdown("#### Logging predicted daily closes to ai_predictions_log.csv")
-            if st.button("Log predicted next-week closes", key="log_candles_button"):
-                try:
-                    log_weekly_candlestick_predictions(pred_candles, asset_name="Bitcoin", method=method_name)
-                    st.success(f"Logged {len(pred_candles)} predicted days to {AI_PRED_FILE} with method='{method_name}' and asset='Bitcoin'.")
-                    # Refresh in-memory df_ai_pred_log
-                    try:
-                        refreshed = load_csv_safe(AI_PRED_FILE, ["timestamp", "asset", "predicted_price", "method"])
-                        ensure_timestamp(refreshed)
-                        df_ai_pred_log = refreshed
-                    except Exception:
-                        pass
-                except Exception as e:
-                    st.error(f"Failed to log predictions: {e}")
-
-            # show predicted table for inspection
-            st.markdown("#### Predicted candles (table)")
-            st.dataframe(pred_candles.assign(timestamp=lambda d: d["timestamp"].dt.strftime("%Y-%m-%d")))
-
-            # Optionally offer download of predicted candles
-            csv_bytes = pred_candles.to_csv(index=False).encode("utf-8")
-            st.download_button("Download predicted candles CSV", data=csv_bytes, file_name="predicted_candles_next_week.csv", mime="text/csv")
+    # This function is implemented in candlestick_predictions.py
+    # It contains all candlestick pattern detection, weekly aggregation,
+    # synthetic candle generation, plotting and logging features.
+    render_candlestick_dashboard(df_actual, df_ai_pred_log)
 
 
 # -------------------------------------------------------------------
@@ -1108,7 +727,7 @@ st.markdown("""
 ---
 **Notes & Disclaimers**
 - Candlestick-based predictions are rule-based heuristics for demonstration and educational purposes only. They are **not** financial advice.
-- Synthetic predicted candles are simplistic: open = prior close, close = open * (1 + drift), high/low are small offsets. You can replace with any model.
+- Synthetic predicted candles are simplistic: open = prior close, close = open * (1 + drift), high/low are small offsets. You can replace with any model in candlestick_predictions.py.
 - Logging writes to `data/ai_predictions_log.csv`. Ensure the Streamlit process can write to `data/`.
-- If external modules (`jobs_app`, `ai_predictor`, `real_estate_bot`) are missing, the app will show placeholders but the rest of the UI will function.
+- If external modules (`jobs_app`, `ai_predictor`, `real_estate_bot`, `candlestick_predictions`) are missing, the app will show placeholders but the rest of the UI will function.
 """)
