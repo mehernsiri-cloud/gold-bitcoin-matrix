@@ -638,17 +638,16 @@ elif menu == "AI Forecast":
         if not df_close.empty and not df_hist_pred.empty:
             try:
                 joined = pd.merge_asof(df_hist_pred.sort_values("timestamp"), df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}), on="timestamp", direction="backward", tolerance=pd.Timedelta("1D"))
-            except Exception:
-                # Ensure timestamp is datetime in both dataframes
-df_hist_pred["timestamp"] = pd.to_datetime(df_hist_pred["timestamp"], errors="coerce")
-df_close["timestamp"] = pd.to_datetime(df_close["timestamp"], errors="coerce")
-
-joined = pd.merge(
-    df_hist_pred.sort_values("timestamp"),
-    df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}),
-    how="left",
-    on="timestamp"
-)
+          except Exception as e:
+    # Force timestamps to datetime and retry
+    df_hist_pred["timestamp"] = pd.to_datetime(df_hist_pred["timestamp"], errors="coerce")
+    df_close["timestamp"] = pd.to_datetime(df_close["timestamp"], errors="coerce")
+    joined = pd.merge(
+        df_hist_pred.sort_values("timestamp"),
+        df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}),
+        how="left",
+        on="timestamp"
+    )
             st.dataframe(joined.head(50))
         else:
             st.info("Insufficient data to show historical table for Bitcoin.")
