@@ -48,12 +48,12 @@ except Exception:
 # -------------------------------------------------------------------
 # NEW: candlestick module import (all candlestick-specific logic moved there)
 # -------------------------------------------------------------------
-try:
-    from candlestick_predictions import render_candlestick_dashboard
-except Exception as e:
-    def render_candlestick_dashboard(df_actual):
-        st.error(f"Candlestick module not found: {e}\nPlease ensure candlestick_predictions.py exists.")
-
+#try:
+#    from candlestick_predictions import render_candlestick_dashboard
+#except Exception as e:
+#    def render_candlestick_dashboard(df_actual):
+#        st.error(f"Candlestick module not found: {e}\nPlease ensure candlestick_predictions.py exists.")
+from candlestick_predictions import render_candlestick_dashboard
 
 # -------------------------------------------------------------------
 # APP CONFIGURATION
