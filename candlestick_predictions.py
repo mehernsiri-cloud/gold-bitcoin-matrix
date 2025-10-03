@@ -177,6 +177,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     # --- Classical patterns: last month
     one_month_ago = df_ohlc["timestamp"].max() - timedelta(days=30)
     df_last_month = df_ohlc[df_ohlc["timestamp"] >= one_month_ago]
+    df_last_month = df_ohlc[df_ohlc["timestamp"] >= (df_ohlc["timestamp"].max() - pd.Timedelta(days=30))]
     classical_patterns = detect_classical_patterns(df_last_month)
 
     all_patterns = short_patterns + classical_patterns
