@@ -60,7 +60,7 @@ def detect_patterns_in_3_candles(window: pd.DataFrame) -> List[str]:
     return patterns
 
 
-def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Timestamp, List[str]]]:
+def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     results = []
     if df_ohlc is None or df_ohlc.shape[0] < 3:
         return results
@@ -69,7 +69,8 @@ def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Tim
         window = df_sorted.iloc[i-2:i+1].copy()
         ts = window.iloc[2].timestamp
         patterns = detect_patterns_in_3_candles(window)
-        results.append((ts, patterns))
+        for p in patterns:
+            results.append((ts, p))
     return results
 
 # -------------------------------------------------------------------
@@ -83,7 +84,6 @@ def detect_head_shoulders(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
         left = prices[i-3:i]
         middle = prices[i-1:i+2]
         right = prices[i+1:i+4]
-        # Simplified: middle higher than left and right
         if max(middle) > max(left) and max(middle) > max(right):
             patterns.append((ts_list[i], "Head & Shoulders (bearish)"))
     return patterns
@@ -115,7 +115,6 @@ def detect_triangle_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]
     ts_list = df["timestamp"].values
     for i in range(3, len(prices)-2):
         window = prices[i-3:i+2]
-        # Simplified check for ascending, descending, symmetrical triangle
         if all(x <= y for x, y in zip(window, window[1:])):
             patterns.append((ts_list[i], "Ascending Triangle (bullish)"))
         elif all(x >= y for x, y in zip(window, window[1:])):
@@ -143,7 +142,7 @@ def detect_flags_pennants(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     ts_list = df["timestamp"].values
     for i in range(3, len(prices)-2):
         window = prices[i-3:i+2]
-        if max(window) - min(window) < 0.02 * prices[i]:  # small consolidation
+        if max(window) - min(window) < 0.02 * prices[i]:
             patterns.append((ts_list[i], "Flag/Pennant (neutral)"))
     return patterns
 
@@ -219,7 +218,7 @@ def synthesize_predicted_candles(last_week: pd.DataFrame, signal: str) -> pd.Dat
     base_date = last_week.iloc[-1].timestamp
     drift = 0.01 if "Bullish" in signal else -0.01 if "Bearish" in signal else 0.0
 
-    for i in range(1, 6):  # 5 days
+    for i in range(1, 6):
         date = base_date + timedelta(days=i)
         open_p = last_close * (1 + drift * 0.2)
         close_p = open_p * (1 + drift * 0.5)
@@ -261,8 +260,14 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame, df_ai_pred_log: pd.Dat
         st.error("No actual Bitcoin OHLC data available.")
         return
 
+    # Check required columns
+    required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close", "timestamp"]
+    missing = [c for c in required_cols if c not in df_actual.columns]
+    if missing:
+        st.error(f"Missing columns in actual data: {missing}")
+        return
+
     df_ohlc = df_actual.rename(columns={
-        "timestamp": "timestamp",
         "bitcoin_open": "open",
         "bitcoin_high": "high",
         "bitcoin_low": "low",
