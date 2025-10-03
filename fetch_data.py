@@ -45,7 +45,7 @@ def fetch_bitcoin_ohlc(period="7d", interval="1h"):
         btc = yf.Ticker("BTC-USD")
         hist = btc.history(period=period, interval=interval)
         if hist.empty:
-            return None
+            return pd.DataFrame()
         df = hist.reset_index()
         df = df.rename(columns={
             "Open": "bitcoin_open",
@@ -55,17 +55,32 @@ def fetch_bitcoin_ohlc(period="7d", interval="1h"):
             "Datetime": "timestamp"
         })
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-        # Use only the latest OHLC row
-        latest = df.iloc[-1]
-        return {
-            "bitcoin_open": float(latest["bitcoin_open"]),
-            "bitcoin_high": float(latest["bitcoin_high"]),
-            "bitcoin_low": float(latest["bitcoin_low"]),
-            "bitcoin_close": float(latest["bitcoin_close"]),
-        }
+        return df[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]]
     except Exception as e:
         print("⚠️ Error fetching Bitcoin OHLC:", e)
-        return {"bitcoin_open": "N/A", "bitcoin_high": "N/A", "bitcoin_low": "N/A", "bitcoin_close": "N/A"}
+        return pd.DataFrame()
+
+
+def fill_missing_ohlc(df_actual: pd.DataFrame, df_ohlc: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fill missing OHLC values in historical actual_data.csv using the closest OHLC row.
+    """
+    if df_ohlc.empty:
+        return df_actual
+
+    df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"])
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
+
+    for idx, row in df_actual.iterrows():
+        if pd.isna(row["bitcoin_open"]) or pd.isna(row["bitcoin_high"]) or pd.isna(row["bitcoin_low"]) or pd.isna(row["bitcoin_close"]):
+            # Find the closest OHLC timestamp
+            closest_idx = (df_ohlc["timestamp"] - row["timestamp"]).abs().idxmin()
+            df_actual.at[idx, "bitcoin_open"] = df_ohlc.at[closest_idx, "bitcoin_open"]
+            df_actual.at[idx, "bitcoin_high"] = df_ohlc.at[closest_idx, "bitcoin_high"]
+            df_actual.at[idx, "bitcoin_low"] = df_ohlc.at[closest_idx, "bitcoin_low"]
+            df_actual.at[idx, "bitcoin_close"] = df_ohlc.at[closest_idx, "bitcoin_close"]
+
+    return df_actual
 
 
 def save_actual_data():
@@ -74,27 +89,32 @@ def save_actual_data():
 
     gold = fetch_gold_price()
     btc_price = fetch_bitcoin_price()
-    btc_ohlc = fetch_bitcoin_ohlc()
+    btc_ohlc = fetch_bitcoin_ohlc(period="90d", interval="1h")  # fetch enough history to fill missing
 
+    if os.path.exists(ACTUAL_FILE):
+        df_actual = pd.read_csv(ACTUAL_FILE)
+        # Fill missing historical OHLC values
+        df_actual = fill_missing_ohlc(df_actual, btc_ohlc)
+    else:
+        df_actual = pd.DataFrame(columns=[
+            "timestamp", "gold_actual", "bitcoin_actual", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"
+        ])
+
+    # Append new row
+    latest_ohlc = btc_ohlc.iloc[-1] if not btc_ohlc.empty else {}
     row = {
         "timestamp": ts,
         "gold_actual": gold if gold is not None else "N/A",
         "bitcoin_actual": btc_price if btc_price is not None else "N/A",
-        "bitcoin_open": btc_ohlc.get("bitcoin_open", "N/A"),
-        "bitcoin_high": btc_ohlc.get("bitcoin_high", "N/A"),
-        "bitcoin_low": btc_ohlc.get("bitcoin_low", "N/A"),
-        "bitcoin_close": btc_ohlc.get("bitcoin_close", "N/A"),
+        "bitcoin_open": latest_ohlc.get("bitcoin_open", "N/A"),
+        "bitcoin_high": latest_ohlc.get("bitcoin_high", "N/A"),
+        "bitcoin_low": latest_ohlc.get("bitcoin_low", "N/A"),
+        "bitcoin_close": latest_ohlc.get("bitcoin_close", "N/A"),
     }
+    df_actual = pd.concat([df_actual, pd.DataFrame([row])], ignore_index=True)
+    df_actual.to_csv(ACTUAL_FILE, index=False)
 
-    if os.path.exists(ACTUAL_FILE):
-        df = pd.read_csv(ACTUAL_FILE)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
-
-    df.to_csv(ACTUAL_FILE, index=False)
-    print(f"✅ [{ts}] Saved actual prices: Gold={row['gold_actual']}, Bitcoin={row['bitcoin_actual']}, "
-          f"OHLC=({row['bitcoin_open']}, {row['bitcoin_high']}, {row['bitcoin_low']}, {row['bitcoin_close']})")
+    print(f"✅ [{ts}] Saved actual prices and updated historical OHLC values.")
 
 
 if __name__ == "__main__":
