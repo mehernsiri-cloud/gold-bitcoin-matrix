@@ -267,14 +267,18 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     neutral = {k:v for k,v in weekly_patterns.items() if "neutral" in k or "Doji" in k or "Flag/Pennant" in k}
 
     def color_top_3(d):
-        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
-        colors = {}
-        for i, (k, _) in enumerate(sorted_items):
-            if i < 3:
-                colors[k] = "gold" if i == 0 else "orange" if i == 1 else "darkorange"
-            else:
-                colors[k] = "lightgray"
-        return colors
+    sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
+    colors = {}
+    for i, (k, _) in enumerate(sorted_items):
+        if i == 0:
+            colors[k] = "#a8e6cf"  # pastel green
+        elif i == 1:
+            colors[k] = "#dcedff"  # pastel blue
+        elif i == 2:
+            colors[k] = "#ffd3e0"  # pastel pink
+        else:
+            colors[k] = "#f0f0f0"  # light pastel gray
+    return colors
 
     fig2 = go.Figure()
     bull_colors = color_top_3(bull)
