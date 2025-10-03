@@ -249,8 +249,8 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     # Predicted candles
     df_predicted = synthesize_predicted_candles(df_last_week.tail(5), signal)
-    if not df_predicted.empty:
-        log_weekly_candlestick_predictions(df_predicted)
+    #if not df_predicted.empty:
+    #    log_weekly_candlestick_predictions(df_predicted)
 
     # --- Candlestick chart ---
     fig = go.Figure()
