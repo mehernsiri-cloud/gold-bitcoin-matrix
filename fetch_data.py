@@ -39,7 +39,7 @@ def fetch_gold_price():
     return None
 
 
-def fetch_bitcoin_ohlc(period="7d", interval="1h"):
+def fetch_bitcoin_ohlc(period="90d", interval="1h"):
     """Fetch Bitcoin OHLC data from Yahoo Finance"""
     try:
         btc = yf.Ticker("BTC-USD")
@@ -54,7 +54,8 @@ def fetch_bitcoin_ohlc(period="7d", interval="1h"):
             "Close": "bitcoin_close",
             "Datetime": "timestamp"
         })
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        # Remove timezone info to match CSV tz-naive timestamps
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
         return df[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]]
     except Exception as e:
         print("⚠️ Error fetching Bitcoin OHLC:", e)
