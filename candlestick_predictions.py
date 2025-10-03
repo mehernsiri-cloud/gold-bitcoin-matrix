@@ -244,14 +244,55 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     if not df_predicted.empty:
         log_weekly_candlestick_predictions(df_predicted)
 
+    # --- Candlestick chart ---
     fig = go.Figure()
-    fig.add_trace(go.Candlestick(x=df_ohlc["timestamp"], open=df_ohlc["open"], high=df_ohlc["high"],
-                                 low=df_ohlc["low"], close=df_ohlc["close"], name="Actual"))
+    fig.add_trace(go.Candlestick(
+        x=df_ohlc["timestamp"], open=df_ohlc["open"], high=df_ohlc["high"],
+        low=df_ohlc["low"], close=df_ohlc["close"], name="Actual"
+    ))
     if not df_predicted.empty:
-        fig.add_trace(go.Candlestick(x=df_predicted["timestamp"], open=df_predicted["open"], high=df_predicted["high"],
-                                     low=df_predicted["low"], close=df_predicted["close"], name="Predicted",
-                                     increasing_line_color="blue", decreasing_line_color="red"))
+        fig.add_trace(go.Candlestick(
+            x=df_predicted["timestamp"], open=df_predicted["open"], high=df_predicted["high"],
+            low=df_predicted["low"], close=df_predicted["close"], name="Predicted",
+            increasing_line_color="blue", decreasing_line_color="red"
+        ))
     fig.update_layout(title="Bitcoin Candlestick Predictions", xaxis_title="Date", yaxis_title="Price")
     st.plotly_chart(fig, use_container_width=True)
     st.write("### Weekly Pattern Counts")
     st.json(weekly_patterns)
+
+    # --- Stacked Pattern Contribution Chart ---
+    bull = {k:v for k,v in weekly_patterns.items() if "bullish" in k or "Bottom" in k or "Cup & Handle" in k or "Ascending" in k or "Falling Wedge" in k}
+    bear = {k:v for k,v in weekly_patterns.items() if "bearish" in k or "Top" in k or "Head & Shoulders" in k or "Descending" in k or "Rising Wedge" in k}
+    neutral = {k:v for k,v in weekly_patterns.items() if "neutral" in k or "Doji" in k or "Flag/Pennant" in k}
+
+    def color_top_3(d):
+        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
+        colors = {}
+        for i, (k, _) in enumerate(sorted_items):
+            if i < 3:
+                colors[k] = "gold" if i == 0 else "orange" if i == 1 else "darkorange"
+            else:
+                colors[k] = "lightgray"
+        return colors
+
+    fig2 = go.Figure()
+    bull_colors = color_top_3(bull)
+    for pattern, count in bull.items():
+        fig2.add_trace(go.Bar(y=["Bullish 📈"], x=[count], name=pattern, orientation='h', marker_color=bull_colors[pattern]))
+    bear_colors = color_top_3(bear)
+    for pattern, count in bear.items():
+        fig2.add_trace(go.Bar(y=["Bearish 📉"], x=[count], name=pattern, orientation='h', marker_color=bear_colors[pattern]))
+    neutral_colors = color_top_3(neutral)
+    for pattern, count in neutral.items():
+        fig2.add_trace(go.Bar(y=["Neutral ⚖️"], x=[count], name=pattern, orientation='h', marker_color=neutral_colors[pattern]))
+
+    fig2.update_layout(
+        barmode='stack',
+        title="Weekly Pattern Contributions by Type",
+        xaxis_title="Count",
+        yaxis_title="Signal Type",
+        legend_title="Patterns",
+        height=500
+    )
+    st.plotly_chart(fig2, use_container_width=True)
