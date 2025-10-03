@@ -51,7 +51,7 @@ except Exception:
 try:
     from candlestick_predictions import render_candlestick_dashboard
 except Exception as e:
-    def render_candlestick_dashboard(df_actual, df_ai_pred_log):
+    def render_candlestick_dashboard(df_actual):
         st.error(f"Candlestick module not found: {e}\nPlease ensure candlestick_predictions.py exists.")
 
 
@@ -660,7 +660,7 @@ elif menu == "Candlestick Predictions":
     # This function is implemented in candlestick_predictions.py
     # It contains all candlestick pattern detection, weekly aggregation,
     # synthetic candle generation, plotting and logging features.
-    render_candlestick_dashboard(df_actual, df_ai_pred_log)
+    render_candlestick_dashboard(df_actual)
 
 
 # -------------------------------------------------------------------
