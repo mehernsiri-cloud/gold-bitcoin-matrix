@@ -9,7 +9,7 @@ import os
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from datetime import timedelta, datetime
+from datetime import timedelta
 from typing import List, Tuple, Dict
 
 DATA_DIR = "data"
@@ -65,9 +65,7 @@ def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Tim
 # -------------------------------------------------------------------
 # CLASSICAL MULTI-CANDLE PATTERNS (Last month)
 # -------------------------------------------------------------------
-# (Keep all classical detection functions as before: Head & Shoulders, Double/Triple Top/Bottom, Triangles, Cup & Handle, Flags/Pennants, Rounding, Wedges)
-# You can copy the previous functions here: detect_head_shoulders, detect_double_triple_top_bottom, detect_triangle_patterns, etc.
-# Then use:
+# (Copy all previous functions: detect_head_shoulders, detect_double_triple_top_bottom, detect_triangle_patterns, etc.)
 
 def detect_classical_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     results = []
@@ -169,6 +167,9 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         "bitcoin_close": "close"
     }).dropna(subset=["open", "high", "low", "close"])
 
+    # Ensure timestamp is datetime
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
+
     # --- Short-term patterns: last week only
     one_week_ago = df_ohlc["timestamp"].max() - timedelta(days=7)
     df_last_week = df_ohlc[df_ohlc["timestamp"] >= one_week_ago]
@@ -177,7 +178,6 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     # --- Classical patterns: last month
     one_month_ago = df_ohlc["timestamp"].max() - timedelta(days=30)
     df_last_month = df_ohlc[df_ohlc["timestamp"] >= one_month_ago]
-    df_last_month = df_ohlc[df_ohlc["timestamp"] >= (df_ohlc["timestamp"].max() - pd.Timedelta(days=30))]
     classical_patterns = detect_classical_patterns(df_last_month)
 
     all_patterns = short_patterns + classical_patterns
