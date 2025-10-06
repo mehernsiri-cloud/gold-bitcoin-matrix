@@ -316,31 +316,32 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
     df_ohlc.dropna(inplace=True)
 
-# --- Pattern detection ---
+# --- Pattern detection diagram inside the function ---
 with st.expander("📈 Detected Patterns and Signals", expanded=True):
     short = detect_candle_patterns_on_series(df_ohlc)
     classical = detect_classical_patterns(df_ohlc)
     all_patterns = short + classical
     weekly_patterns = aggregate_weekly_patterns(all_patterns)
-    signal = decide_weekly_signal(weekly_patterns)
+    weekly_signal = decide_weekly_signal(weekly_patterns)
 
-    st.metric("Overall Weekly Signal", signal)
+    st.metric("Overall Weekly Signal", weekly_signal)
 
-    # --- Diagram for pattern counts ---
+    # Diagram for pattern counts
     if weekly_patterns:
         fig_pat = go.Figure()
         patterns_sorted = dict(sorted(weekly_patterns.items(), key=lambda x: x[1], reverse=True))
-        colors = ["#1f77b4" if "Bullish" in k or "Bottom" in k else
-                  "#d62728" if "Bearish" in k or "Top" in k else "#ff7f0e"
-                  for k in patterns_sorted.keys()]
-
+        colors = [
+            "#1f77b4" if any(bp in k for bp in ["Bullish","Bottom","Falling","Ascending","Cup & Handle"]) else
+            "#d62728" if any(bp in k for bp in ["Bearish","Top","Head & Shoulders","Rising","Descending"]) else
+            "#ff7f0e"
+            for k in patterns_sorted.keys()
+        ]
         fig_pat.add_trace(go.Bar(
             x=list(patterns_sorted.values()),
             y=list(patterns_sorted.keys()),
             orientation='h',
             marker_color=colors
         ))
-
         fig_pat.update_layout(
             title="Detected Pattern Counts (Weighted)",
             xaxis_title="Count",
@@ -351,6 +352,7 @@ with st.expander("📈 Detected Patterns and Signals", expanded=True):
         st.plotly_chart(fig_pat, use_container_width=True)
     else:
         st.info("No patterns detected this week.")
+
 
 
     # Prediction
