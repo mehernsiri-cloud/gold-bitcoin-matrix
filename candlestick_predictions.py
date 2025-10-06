@@ -216,59 +216,51 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # UI RENDERING
 # -------------------------------
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
+    import pandas as pd
+    import plotly.graph_objects as go
+    import streamlit as st
+    from datetime import timedelta
+
     st.title("🕯️ Candlestick Predictions")
 
+    # Check required columns
     required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close", "timestamp"]
-    missing = [c for c in required_cols if c not in df_actual.columns]
-    if missing:
-        st.error(f"Missing columns in actual data: {missing}")
+    if any(c not in df_actual.columns for c in required_cols):
+        st.error(f"Missing required columns in actual data.")
         return
 
-    # Rename for convenience
-    df_ohlc = df_actual.rename(columns={
-        "bitcoin_open": "open",
-        "bitcoin_high": "high",
-        "bitcoin_low": "low",
-        "bitcoin_close": "close"
-    }).copy()
+    # Keep only necessary columns
+    df_ohlc = df_actual[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]].copy()
 
-    # Ensure numeric OHLC
-    for col in ["open", "high", "low", "close"]:
+    # Convert OHLC to numeric
+    for col in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
 
     # Convert timestamp
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
 
-    # Keep only valid rows
-    df_ohlc = df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"])
+    # Drop rows with any NaNs
+    df_ohlc = df_ohlc.dropna(subset=["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
 
+    # If empty after cleaning, exit
     if df_ohlc.empty:
         st.error("No valid Bitcoin OHLC data available after cleaning.")
         return
 
-    # Short-term & classical patterns
-    last_ts = df_ohlc["timestamp"].max()
-    df_last_week = df_ohlc[df_ohlc["timestamp"] >= last_ts - timedelta(days=7)]
-    df_last_month = df_ohlc[df_ohlc["timestamp"] >= last_ts - timedelta(days=30)]
+    # Rename columns for convenience
+    df_ohlc = df_ohlc.rename(columns={
+        "bitcoin_open": "open",
+        "bitcoin_high": "high",
+        "bitcoin_low": "low",
+        "bitcoin_close": "close"
+    })
 
-    short_patterns = detect_candle_patterns_on_series(df_last_week)
-    classical_patterns = detect_classical_patterns(df_last_month)
-    weekly_patterns = aggregate_weekly_patterns(short_patterns + classical_patterns)
-    signal = decide_weekly_signal(weekly_patterns)
-    st.subheader(f"Weekly Signal: {signal}")
+    # Reset index to avoid Plotly issues
+    df_ohlc = df_ohlc.reset_index(drop=True)
 
-    # Predicted candles
-    df_predicted = synthesize_predicted_candles(df_last_week.tail(5), signal)
-    if not df_predicted.empty:
-        for col in ["open", "high", "low", "close"]:
-            df_predicted[col] = pd.to_numeric(df_predicted[col], errors="coerce")
-        df_predicted["timestamp"] = pd.to_datetime(df_predicted["timestamp"], errors="coerce")
-        df_predicted = df_predicted.dropna(subset=["timestamp", "open", "high", "low", "close"])
-
-    # --- Candlestick chart ---
+    # --- Candlestick Chart ---
     fig = go.Figure()
 
-    # Add actual candles
     fig.add_trace(go.Candlestick(
         x=df_ohlc["timestamp"],
         open=df_ohlc["open"],
@@ -289,28 +281,6 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         )
     ))
 
-    # Add predicted candles if available
-    if not df_predicted.empty:
-        fig.add_trace(go.Candlestick(
-            x=df_predicted["timestamp"],
-            open=df_predicted["open"],
-            high=df_predicted["high"],
-            low=df_predicted["low"],
-            close=df_predicted["close"],
-            name="Predicted",
-            increasing_line_color="#00BFFF",
-            decreasing_line_color="#FFA500",
-            increasing_fillcolor="rgba(0,191,255,0.4)",
-            decreasing_fillcolor="rgba(255,165,0,0.4)",
-            hovertemplate=(
-                "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
-                "<b>Open:</b> %{open:.2f}<br>"
-                "<b>High:</b> %{high:.2f}<br>"
-                "<b>Low:</b> %{low:.2f}<br>"
-                "<b>Close:</b> %{close:.2f}<br>"
-            )
-        ))
-
     fig.update_layout(
         title="Bitcoin Candlestick Predictions",
         xaxis_title="Date",
@@ -321,6 +291,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
     # --- Weekly Pattern Contributions ---
