@@ -254,7 +254,13 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     # ------------------------------
     # 1. Plot actual candlesticks
     # ------------------------------
+# ------------------------------
+# 5. Plot the candlestick chart (with predictions)
+# ------------------------------
+try:
     fig = go.Figure()
+
+    # Actual candles
     fig.add_trace(go.Candlestick(
         x=df_ohlc["timestamp"],
         open=df_ohlc["open"],
@@ -262,36 +268,34 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         low=df_ohlc["low"],
         close=df_ohlc["close"],
         name="Actual",
-        increasing_line_color="green",
-        decreasing_line_color="red",
-        increasing_fillcolor="rgba(0,255,0,0.3)",
-        decreasing_fillcolor="rgba(255,0,0,0.3)"
+        increasing_line_color='green',
+        decreasing_line_color='red',
+        increasing_fillcolor='rgba(0,255,0,0.3)',
+        decreasing_fillcolor='rgba(255,0,0,0.3)'
     ))
 
-    # ------------------------------
-# 2. Predict 5 future candles
-# ------------------------------
-short_term = detect_candle_patterns_on_series(df_ohlc)
-classical = detect_classical_patterns(df_ohlc)
-all_patterns = short_term + classical
-weekly_patterns = aggregate_weekly_patterns(all_patterns)
-signal = decide_weekly_signal(weekly_patterns)
-df_pred = synthesize_predicted_candles(df_ohlc, signal)
-log_weekly_candlestick_predictions(df_pred)
+    # Predicted candles
+    df_pred = synthesize_predicted_candles(df_ohlc, decide_weekly_signal(aggregate_weekly_patterns(
+        detect_candle_patterns_on_series(df_ohlc) + detect_classical_patterns(df_ohlc)
+    )))
+    if not df_pred.empty:
+        fig.add_trace(go.Candlestick(
+            x=df_pred["timestamp"],
+            open=df_pred["open"],
+            high=df_pred["high"],
+            low=df_pred["low"],
+            close=df_pred["close"],
+            name="Predicted (Next 5 Days)",
+            increasing_line_color="blue",
+            decreasing_line_color="orange",
+            increasing_fillcolor="rgba(0,0,255,0.3)",
+            decreasing_fillcolor="rgba(255,165,0,0.3)"
+        ))
 
-if not df_pred.empty:
-    fig.add_trace(go.Candlestick(
-        x=df_pred["timestamp"],
-        open=df_pred["open"],
-        high=df_pred["high"],
-        low=df_pred["low"],
-        close=df_pred["close"],
-        name="Predicted (Next 5 Days)",
-        increasing_line_color="blue",
-        decreasing_line_color="orange",
-        increasing_fillcolor="rgba(0,0,255,0.3)",
-        decreasing_fillcolor="rgba(255,165,0,0.3)"
-    ))
+    fig.update_layout(title="Bitcoin Candlestick Chart", xaxis_rangeslider_visible=False)
+    st.plotly_chart(fig, use_container_width=True)
+except Exception as e:
+    st.error(f"Error rendering candlestick chart: {e}")
 
 
     fig.update_layout(title="Bitcoin Candlestick Chart (Actual + Predicted)", xaxis_rangeslider_visible=False)
