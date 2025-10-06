@@ -665,6 +665,7 @@ elif menu == "Candlestick Predictions":
     # It contains all candlestick pattern detection, weekly aggregation,
     # synthetic candle generation, plotting and logging features.
     render_candlestick_dashboard(df_actual)
+    render_daily_candlestick_dashboard(df_actual)    
 
 
 # -------------------------------------------------------------------
