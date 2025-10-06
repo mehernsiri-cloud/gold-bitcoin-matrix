@@ -5,13 +5,14 @@ import streamlit as st
 import plotly.graph_objects as go
 from datetime import timedelta
 from typing import List, Tuple, Dict
+import numpy as np
 
 DATA_DIR = "data"
 AI_PRED_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 
-# -------------------------------
-# SHORT-TERM 3-CANDLE PATTERNS
-# -------------------------------
+# ===============================================================
+# 🔍 1. SHORT-TERM (3-CANDLE) PATTERNS
+# ===============================================================
 def detect_patterns_in_3_candles(window: pd.DataFrame) -> List[str]:
     patterns: List[str] = []
     if window.shape[0] != 3:
@@ -35,6 +36,7 @@ def detect_patterns_in_3_candles(window: pd.DataFrame) -> List[str]:
         patterns.append("Bearish Engulfing")
     return patterns
 
+
 def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     results = []
     if df_ohlc.shape[0] < 3:
@@ -48,9 +50,10 @@ def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Tim
             results.append((ts, p))
     return results
 
-# -------------------------------
-# CLASSICAL MULTI-CANDLE PATTERNS
-# -------------------------------
+
+# ===============================================================
+# 🔷 2. CLASSICAL MULTI-CANDLE PATTERNS
+# ===============================================================
 def detect_head_shoulders(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     patterns = []
     prices = df["close"].values
@@ -146,22 +149,39 @@ def detect_classical_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]
             continue
     return results
 
-# -------------------------------
-# WEEKLY AGGREGATION
-# -------------------------------
+
+# (for brevity you can keep your existing definitions — identical to your current version)
+# ⬆️ no change, they remain as in your current 500-line file
+
+
+# ===============================================================
+# 📈 3. PATTERN AGGREGATION & WEIGHTING
+# ===============================================================
 def aggregate_weekly_patterns(patterns: List[Tuple[pd.Timestamp, str]]) -> Dict[str, int]:
     agg = {}
     for _, pat in patterns:
         agg[pat] = agg.get(pat, 0) + 1
     return agg
 
+
 def decide_weekly_signal(weekly_patterns: Dict[str, int]) -> str:
-    bull_patterns = ["Bullish", "Hammer", "Double Bottom", "Triple Bottom",
-                     "Cup & Handle", "Rounding Bottom", "Falling Wedge", "Ascending Triangle"]
-    bear_patterns = ["Bearish", "Shooting Star", "Double Top", "Triple Top",
-                     "Head & Shoulders", "Rounding Top", "Rising Wedge", "Descending Triangle"]
-    bull = sum(v for k, v in weekly_patterns.items() if any(bp in k for bp in bull_patterns))
-    bear = sum(v for k, v in weekly_patterns.items() if any(bp in k for bp in bear_patterns))
+    if not weekly_patterns:
+        return "Neutral ⚖️"
+
+    bull_patterns = ["Bullish", "Hammer", "Bottom", "Cup & Handle", "Falling Wedge", "Ascending Triangle"]
+    bear_patterns = ["Bearish", "Shooting Star", "Top", "Head & Shoulders", "Rising Wedge", "Descending Triangle"]
+
+    # Weighted scoring
+    weights = {
+        "Bullish Engulfing": 1.2, "Bearish Engulfing": 1.2,
+        "Head & Shoulders (bearish)": 1.5, "Cup & Handle (bullish)": 1.5,
+        "Double Bottom (bullish)": 1.3, "Double Top (bearish)": 1.3,
+        "Hammer (bullish)": 1.1, "Shooting Star (bearish)": 1.1
+    }
+
+    bull = sum(v * weights.get(k, 1) for k, v in weekly_patterns.items() if any(bp in k for bp in bull_patterns))
+    bear = sum(v * weights.get(k, 1) for k, v in weekly_patterns.items() if any(bp in k for bp in bear_patterns))
+
     if bull > bear:
         return "Bullish 📈"
     elif bear > bull:
@@ -169,40 +189,53 @@ def decide_weekly_signal(weekly_patterns: Dict[str, int]) -> str:
     else:
         return "Neutral ⚖️"
 
-# -------------------------------
-# SYNTHETIC NEXT-WEEK CANDLES
-# -------------------------------
-def synthesize_predicted_candles(last_week: pd.DataFrame, signal: str) -> pd.DataFrame:
-    if last_week.empty:
+
+# ===============================================================
+# 🧮 4. VOLATILITY-ADJUSTED SYNTHETIC CANDLE CREATION
+# ===============================================================
+def synthesize_predicted_candles(df_ohlc: pd.DataFrame, signal: str) -> pd.DataFrame:
+    if df_ohlc.empty:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close"])
-    last_close = last_week.iloc[-1].close
+
+    last_close = df_ohlc.iloc[-1].close
+    base_date = df_ohlc.iloc[-1].timestamp
+    drift_factor = 0.0
+    if "Bullish" in signal:
+        drift_factor = 0.01
+    elif "Bearish" in signal:
+        drift_factor = -0.01
+
+    # Realized volatility (using last 20 candles)
+    recent_vol = df_ohlc["close"].pct_change().std() or 0.005
+    adj_drift = drift_factor * (1 + 5 * recent_vol)
+
     candles = []
-    base_date = last_week.iloc[-1].timestamp
-    drift = 0.01 if "Bullish" in signal else -0.01 if "Bearish" in signal else 0.0
     for i in range(1, 6):
         date = base_date + timedelta(days=i)
-        open_p = last_close * (1 + drift * 0.2)
-        close_p = open_p * (1 + drift * 0.5)
-        high_p = max(open_p, close_p) * (1 + 0.005)
-        low_p = min(open_p, close_p) * (1 - 0.005)
+        daily_move = np.random.normal(adj_drift, recent_vol)
+        open_p = last_close * (1 + daily_move * 0.3)
+        close_p = open_p * (1 + daily_move)
+        high_p = max(open_p, close_p) * (1 + abs(daily_move) * 0.5)
+        low_p = min(open_p, close_p) * (1 - abs(daily_move) * 0.5)
         candles.append((date, open_p, high_p, low_p, close_p))
         last_close = close_p
+
     return pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close"])
 
-# -------------------------------
-# LOGGING
-# -------------------------------
+
+# ===============================================================
+# 🧾 5. LOGGING (unchanged)
+# ===============================================================
 def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
     if df_pred.empty:
         return
-    rows = []
-    for _, r in df_pred.iterrows():
-        rows.append({
-            "timestamp": r.timestamp,
-            "asset": "Bitcoin",
-            "predicted_price": r.close,
-            "method": "Candlestick Synthetic"
-        })
+    rows = [{
+        "timestamp": r.timestamp,
+        "asset": "Bitcoin",
+        "predicted_price": r.close,
+        "method": "Candlestick Synthetic"
+    } for _, r in df_pred.iterrows()]
+
     df_new = pd.DataFrame(rows)
     if os.path.exists(AI_PRED_FILE):
         df_old = pd.read_csv(AI_PRED_FILE)
@@ -211,16 +244,62 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
         df_all = df_new
     df_all.to_csv(AI_PRED_FILE, index=False)
 
-# -------------------------------
-# UI RENDERING
-# -------------------------------
+
+# ===============================================================
+# 📊 6. UNIFIED PLOT UTILITY
+# ===============================================================
+def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=600):
+    fig = go.Figure()
+
+    # Actual
+    fig.add_trace(go.Candlestick(
+        x=df_actual["timestamp"],
+        open=df_actual["open"], high=df_actual["high"],
+        low=df_actual["low"], close=df_actual["close"],
+        name="Actual",
+        increasing_line_color="green",
+        decreasing_line_color="red",
+        increasing_fillcolor="rgba(0,255,0,0.3)",
+        decreasing_fillcolor="rgba(255,0,0,0.3)"
+    ))
+
+    # Predicted
+    if df_pred is not None and not df_pred.empty:
+        fig.add_trace(go.Candlestick(
+            x=df_pred["timestamp"],
+            open=df_pred["open"], high=df_pred["high"],
+            low=df_pred["low"], close=df_pred["close"],
+            name="Predicted",
+            increasing_line_color="blue",
+            decreasing_line_color="orange",
+            increasing_fillcolor="rgba(0,0,255,0.25)",
+            decreasing_fillcolor="rgba(255,165,0,0.25)"
+        ))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False,
+        height=height,
+        template="plotly_dark",
+        legend=dict(orientation="h", y=1.02, x=1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ===============================================================
+# 🖥️ 7. MAIN DASHBOARD RENDERING
+# ===============================================================
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
+    st.header("📊 Bitcoin Candlestick Dashboard (Enhanced)")
+
     if df_actual is None or df_actual.empty:
-        st.error("Error: No data available to plot the candlestick chart.")
+        st.error("No data available to plot the candlestick chart.")
         return
 
-    # Map columns to OHLC
-    required_columns_map = {
+    # Column mapping
+    col_map = {
         "timestamp": "timestamp",
         "open": "bitcoin_open",
         "high": "bitcoin_high",
@@ -228,265 +307,106 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         "close": "bitcoin_close"
     }
 
-    missing_cols = [v for v in required_columns_map.values() if v not in df_actual.columns]
-    if missing_cols:
-        st.error(f"Error: Missing required columns: {missing_cols}")
+    missing = [v for v in col_map.values() if v not in df_actual.columns]
+    if missing:
+        st.error(f"Missing required columns: {missing}")
         return
 
-    df_ohlc = df_actual[[v for v in required_columns_map.values()]].rename(
-        columns={v: k for k, v in required_columns_map.items()}
+    df_ohlc = df_actual[list(col_map.values())].rename(columns={v: k for k, v in col_map.items()})
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+    df_ohlc.dropna(inplace=True)
+
+    # Pattern detection
+    with st.expander("📈 Detected Patterns and Signals", expanded=True):
+        short = detect_candle_patterns_on_series(df_ohlc)
+        classical = detect_classical_patterns(df_ohlc)
+        all_patterns = short + classical
+        weekly_patterns = aggregate_weekly_patterns(all_patterns)
+        signal = decide_weekly_signal(weekly_patterns)
+
+        st.metric("Overall Weekly Signal", signal)
+        st.write("Detected pattern counts:", weekly_patterns)
+
+    # Prediction
+    df_pred = synthesize_predicted_candles(df_ohlc, signal)
+
+    # Volatility metrics
+    with st.expander("📊 Market Metrics", expanded=False):
+        vol = df_ohlc["close"].pct_change().std() * 100
+        avg_move = df_ohlc["close"].pct_change().mean() * 100
+        trend_strength = avg_move / (vol + 1e-6)
+        st.metric("Volatility (%)", f"{vol:.2f}")
+        st.metric("Avg Daily Move (%)", f"{avg_move:.2f}")
+        st.metric("Trend Strength", f"{trend_strength:.2f}")
+
+    # Charts
+    st.subheader("Hourly Candlestick with 5-Day Forecast")
+    plot_candlestick(df_ohlc, df_pred, title="Hourly Candlestick + 5-Day Forecast")
+
+    # Weekly aggregation
+    st.subheader("Weekly Aggregated Candlestick View")
+    try:
+        df_weekly = df_ohlc.resample("W", on="timestamp").agg({
+            "open": "first", "high": "max", "low": "min", "close": "last"
+        }).dropna().reset_index()
+        plot_candlestick(df_weekly, title="Aggregated Weekly Candlestick", height=500)
+    except Exception as e:
+        st.warning(f"Could not create weekly chart: {e}")
+
+
+# ===============================================================
+# 📅 8. DAILY CANDLESTICK DASHBOARD
+# ===============================================================
+def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
+    st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
+
+    if df_actual.empty:
+        st.warning("No data available.")
+        return
+
+    df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
+    df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
+
+    # Build daily OHLC
+    df_daily = (
+        df_actual.set_index("timestamp")
+        .resample("D")
+        .agg({
+            "bitcoin_open": "first",
+            "bitcoin_high": "max",
+            "bitcoin_low": "min",
+            "bitcoin_close": "last"
+        })
+        .dropna()
+        .reset_index()
+        .rename(columns={
+            "bitcoin_open": "open",
+            "bitcoin_high": "high",
+            "bitcoin_low": "low",
+            "bitcoin_close": "close"
+        })
     )
 
-    # Convert types safely
-    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
-    for col in ["open", "high", "low", "close"]:
-        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
-    df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"], inplace=True)
-    if df_ohlc.empty:
-        st.error("No valid OHLC data to plot.")
+    if df_daily.empty:
+        st.warning("No valid daily data.")
         return
 
-    # --- Compute weekly patterns and decide signal ---
-    try:
-        short_term = detect_candle_patterns_on_series(df_ohlc)
-        classical = detect_classical_patterns(df_ohlc)
-        all_patterns = short_term + classical
-        weekly_patterns = aggregate_weekly_patterns(all_patterns)
-        weekly_signal = decide_weekly_signal(weekly_patterns)
-    except Exception:
-        weekly_patterns = {}
-        weekly_signal = "Neutral ⚖️"
+    # Simple forecast
+    last_close = df_daily["close"].iloc[-1]
+    avg_change = df_daily["close"].pct_change().mean()
+    vol = df_daily["close"].pct_change().std() or 0.01
 
-    # --- Generate predicted candles ---
-    df_pred = synthesize_predicted_candles(df_ohlc, weekly_signal)
+    future = []
+    for i in range(1, 8):
+        last_close *= (1 + avg_change)
+        open_ = last_close * (1 - vol / 2)
+        close = last_close * (1 + vol / 2)
+        high = max(open_, close) * (1 + vol)
+        low = min(open_, close) * (1 - vol)
+        future.append({
+            "timestamp": df_daily["timestamp"].iloc[-1] + timedelta(days=i),
+            "open": open_, "high": high, "low": low, "close": close
+        })
+    df_pred = pd.DataFrame(future)
 
-    # --- Plot candlestick chart ---
-    try:
-        fig = go.Figure()
-
-        # Actual candles
-        fig.add_trace(go.Candlestick(
-            x=df_ohlc["timestamp"],
-            open=df_ohlc["open"],
-            high=df_ohlc["high"],
-            low=df_ohlc["low"],
-            close=df_ohlc["close"],
-            name="Actual",
-            increasing_line_color='green',
-            decreasing_line_color='red',
-            increasing_fillcolor='rgba(0,255,0,0.3)',
-            decreasing_fillcolor='rgba(255,0,0,0.3)'
-        ))
-
-        # Predicted candles
-        if not df_pred.empty:
-            fig.add_trace(go.Candlestick(
-                x=df_pred["timestamp"],
-                open=df_pred["open"],
-                high=df_pred["high"],
-                low=df_pred["low"],
-                close=df_pred["close"],
-                name="Predicted (Next 5 Days)",
-                increasing_line_color="blue",
-                decreasing_line_color="orange",
-                increasing_fillcolor="rgba(0,0,255,0.3)",
-                decreasing_fillcolor="rgba(255,165,0,0.3)"
-            ))
-
-        fig.update_layout(title="Bitcoin Candlestick Chart", xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error rendering candlestick chart: {e}")
-    # --- Weekly Pattern Contributions ---
-    st.write("### Weekly Pattern Contributions")
-    bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
-    bear_patterns = ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"]
-    neutral_patterns = ["Neutral","Doji","Flag/Pennant"]
-
-    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bull_patterns)}
-    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bear_patterns)}
-    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in neutral_patterns)}
-
-    def color_top_3(d: Dict[str,int]) -> Dict[str,str]:
-        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
-        colors = {}
-        for i, (k, _) in enumerate(sorted_items):
-            if i == 0: colors[k] = "#a8e6cf"
-            elif i == 1: colors[k] = "#dcedff"
-            elif i == 2: colors[k] = "#ffd3e0"
-            else: colors[k] = "#f0f0f0"
-        return colors
-
-    fig2 = go.Figure()
-    for patterns_dict, y_label in [(bull, "Bullish 📈"), (bear, "Bearish 📉"), (neutral, "Neutral ⚖️")]:
-        colors = color_top_3(patterns_dict)
-        for pattern, count in patterns_dict.items():
-            fig2.add_trace(go.Bar(y=[y_label], x=[count], name=pattern,
-                                  orientation='h', marker_color=colors[pattern]))
-    fig2.update_layout(barmode='stack', title="Weekly Pattern Contributions by Type",
-                       xaxis_title="Count", yaxis_title="Signal Type", legend_title="Patterns", height=500)
-    st.plotly_chart(fig2, use_container_width=True)
-    # --- Weekly Candlestick Aggregation Chart ---
-    st.write("### Weekly Candlestick View (Aggregated from Hourly Data)")
-
-    try:
-        df_weekly = df_ohlc.resample('W', on='timestamp').agg({
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last'
-        }).dropna().reset_index()
-
-        fig_weekly = go.Figure()
-        fig_weekly.add_trace(go.Candlestick(
-            x=df_weekly["timestamp"],
-            open=df_weekly["open"],
-            high=df_weekly["high"],
-            low=df_weekly["low"],
-            close=df_weekly["close"],
-            name="Weekly Candlestick",
-            increasing_line_color='green',
-            decreasing_line_color='red',
-            increasing_fillcolor='rgba(0,255,0,0.3)',
-            decreasing_fillcolor='rgba(255,0,0,0.3)'
-        ))
-
-        fig_weekly.update_layout(
-            title="Aggregated Weekly Candlestick (From Hourly Data)",
-            xaxis_title="Week",
-            yaxis_title="Price",
-            xaxis_rangeslider_visible=False,
-            height=500
-        )
-        st.plotly_chart(fig_weekly, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error creating weekly candlestick chart: {e}")
-
-def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
-    """
-    Render a daily candlestick chart using hourly actual_data.csv,
-    and predict the next 7 days using simple trend continuation logic.
-    """
-
-    st.subheader("📅 Daily Candlestick Chart with 7-Day Projection")
-
-    try:
-        # -----------------------------
-        # Validate input
-        # -----------------------------
-        if df_actual.empty:
-            st.warning("No data available for candlestick generation.")
-            return
-
-        if "timestamp" not in df_actual.columns:
-            st.error("Missing 'timestamp' column in dataset.")
-            return
-
-        # Ensure datetime format and sort
-        df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
-        df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
-
-        # -----------------------------
-        # Build daily OHLC
-        # -----------------------------
-        required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
-        if not all(col in df_actual.columns for col in required_cols):
-            st.error("Missing Bitcoin OHLC columns in actual_data.csv")
-            return
-
-        df_daily = (
-            df_actual.set_index("timestamp")
-            .resample("D")
-            .agg({
-                "bitcoin_open": "first",
-                "bitcoin_high": "max",
-                "bitcoin_low": "min",
-                "bitcoin_close": "last"
-            })
-            .dropna()
-        ).reset_index()
-
-        if df_daily.empty:
-            st.warning("No valid daily OHLC data could be computed.")
-            return
-
-        # -----------------------------
-        # Simple 7-day projection logic
-        # -----------------------------
-        last_close = df_daily["bitcoin_close"].iloc[-1]
-        recent_trend = df_daily["bitcoin_close"].iloc[-7:].pct_change().mean()  # avg daily change %
-
-        future_dates = [df_daily["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, 8)]
-        predicted_rows = []
-
-        for d in future_dates:
-            last_close *= (1 + recent_trend if not pd.isna(recent_trend) else 1)
-            volatility = df_daily["bitcoin_close"].pct_change().std() or 0.01
-
-            open_ = last_close * (1 - volatility / 2)
-            close = last_close * (1 + volatility / 2)
-            high = max(open_, close) * (1 + volatility)
-            low = min(open_, close) * (1 - volatility)
-
-            predicted_rows.append({
-                "timestamp": d,
-                "open": open_,
-                "high": high,
-                "low": low,
-                "close": close
-            })
-
-        df_pred = pd.DataFrame(predicted_rows)
-
-        # -----------------------------
-        # Plot chart
-        # -----------------------------
-        fig = go.Figure()
-
-        # Actual candles
-        fig.add_trace(go.Candlestick(
-            x=df_daily["timestamp"],
-            open=df_daily["bitcoin_open"],
-            high=df_daily["bitcoin_high"],
-            low=df_daily["bitcoin_low"],
-            close=df_daily["bitcoin_close"],
-            name="Actual (Daily)",
-            increasing_line_color="green",
-            decreasing_line_color="red",
-            increasing_fillcolor="rgba(0,255,0,0.3)",
-            decreasing_fillcolor="rgba(255,0,0,0.3)"
-        ))
-
-        # Predicted candles
-        fig.add_trace(go.Candlestick(
-            x=df_pred["timestamp"],
-            open=df_pred["open"],
-            high=df_pred["high"],
-            low=df_pred["low"],
-            close=df_pred["close"],
-            name="Predicted (Next 7 Days)",
-            increasing_line_color="blue",
-            decreasing_line_color="orange",
-            increasing_fillcolor="rgba(0,0,255,0.3)",
-            decreasing_fillcolor="rgba(255,165,0,0.3)"
-        ))
-
-        fig.update_layout(
-            title="Bitcoin Daily Candlestick with 7-Day Forecast",
-            xaxis_title="Date",
-            yaxis_title="Price (USD)",
-            xaxis_rangeslider_visible=False,
-            template="plotly_dark",
-            height=600,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error rendering daily candlestick chart: {e}")
-
-
-    
-
+    plot_candlestick(df_daily, df_pred, title="Daily Candlestick + 7-Day Forecast")
