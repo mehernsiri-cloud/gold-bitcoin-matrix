@@ -297,7 +297,71 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Error rendering candlestick chart: {e}")
+    # --- Weekly Pattern Contributions ---
+    st.write("### Weekly Pattern Contributions")
+    bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
+    bear_patterns = ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"]
+    neutral_patterns = ["Neutral","Doji","Flag/Pennant"]
 
+    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bull_patterns)}
+    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bear_patterns)}
+    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in neutral_patterns)}
+
+    def color_top_3(d: Dict[str,int]) -> Dict[str,str]:
+        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
+        colors = {}
+        for i, (k, _) in enumerate(sorted_items):
+            if i == 0: colors[k] = "#a8e6cf"
+            elif i == 1: colors[k] = "#dcedff"
+            elif i == 2: colors[k] = "#ffd3e0"
+            else: colors[k] = "#f0f0f0"
+        return colors
+
+    fig2 = go.Figure()
+    for patterns_dict, y_label in [(bull, "Bullish 📈"), (bear, "Bearish 📉"), (neutral, "Neutral ⚖️")]:
+        colors = color_top_3(patterns_dict)
+        for pattern, count in patterns_dict.items():
+            fig2.add_trace(go.Bar(y=[y_label], x=[count], name=pattern,
+                                  orientation='h', marker_color=colors[pattern]))
+    fig2.update_layout(barmode='stack', title="Weekly Pattern Contributions by Type",
+                       xaxis_title="Count", yaxis_title="Signal Type", legend_title="Patterns", height=500)
+    st.plotly_chart(fig2, use_container_width=True)
+    # --- Weekly Candlestick Aggregation Chart ---
+    st.write("### Weekly Candlestick View (Aggregated from Hourly Data)")
+
+    try:
+        df_weekly = df_ohlc.resample('W', on='timestamp').agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last'
+        }).dropna().reset_index()
+
+        fig_weekly = go.Figure()
+        fig_weekly.add_trace(go.Candlestick(
+            x=df_weekly["timestamp"],
+            open=df_weekly["open"],
+            high=df_weekly["high"],
+            low=df_weekly["low"],
+            close=df_weekly["close"],
+            name="Weekly Candlestick",
+            increasing_line_color='green',
+            decreasing_line_color='red',
+            increasing_fillcolor='rgba(0,255,0,0.3)',
+            decreasing_fillcolor='rgba(255,0,0,0.3)'
+        ))
+
+        fig_weekly.update_layout(
+            title="Aggregated Weekly Candlestick (From Hourly Data)",
+            xaxis_title="Week",
+            yaxis_title="Price",
+            xaxis_rangeslider_visible=False,
+            height=500
+        )
+        st.plotly_chart(fig_weekly, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error creating weekly candlestick chart: {e}")
 
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     """
@@ -425,68 +489,4 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
 
 
     
-    # --- Weekly Pattern Contributions ---
-    st.write("### Weekly Pattern Contributions")
-    bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
-    bear_patterns = ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"]
-    neutral_patterns = ["Neutral","Doji","Flag/Pennant"]
 
-    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bull_patterns)}
-    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bear_patterns)}
-    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in neutral_patterns)}
-
-    def color_top_3(d: Dict[str,int]) -> Dict[str,str]:
-        sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
-        colors = {}
-        for i, (k, _) in enumerate(sorted_items):
-            if i == 0: colors[k] = "#a8e6cf"
-            elif i == 1: colors[k] = "#dcedff"
-            elif i == 2: colors[k] = "#ffd3e0"
-            else: colors[k] = "#f0f0f0"
-        return colors
-
-    fig2 = go.Figure()
-    for patterns_dict, y_label in [(bull, "Bullish 📈"), (bear, "Bearish 📉"), (neutral, "Neutral ⚖️")]:
-        colors = color_top_3(patterns_dict)
-        for pattern, count in patterns_dict.items():
-            fig2.add_trace(go.Bar(y=[y_label], x=[count], name=pattern,
-                                  orientation='h', marker_color=colors[pattern]))
-    fig2.update_layout(barmode='stack', title="Weekly Pattern Contributions by Type",
-                       xaxis_title="Count", yaxis_title="Signal Type", legend_title="Patterns", height=500)
-    st.plotly_chart(fig2, use_container_width=True)
-    # --- Weekly Candlestick Aggregation Chart ---
-    st.write("### Weekly Candlestick View (Aggregated from Hourly Data)")
-
-    try:
-        df_weekly = df_ohlc.resample('W', on='timestamp').agg({
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last'
-        }).dropna().reset_index()
-
-        fig_weekly = go.Figure()
-        fig_weekly.add_trace(go.Candlestick(
-            x=df_weekly["timestamp"],
-            open=df_weekly["open"],
-            high=df_weekly["high"],
-            low=df_weekly["low"],
-            close=df_weekly["close"],
-            name="Weekly Candlestick",
-            increasing_line_color='green',
-            decreasing_line_color='red',
-            increasing_fillcolor='rgba(0,255,0,0.3)',
-            decreasing_fillcolor='rgba(255,0,0,0.3)'
-        ))
-
-        fig_weekly.update_layout(
-            title="Aggregated Weekly Candlestick (From Hourly Data)",
-            xaxis_title="Week",
-            yaxis_title="Price",
-            xaxis_rangeslider_visible=False,
-            height=500
-        )
-        st.plotly_chart(fig_weekly, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error creating weekly candlestick chart: {e}")
