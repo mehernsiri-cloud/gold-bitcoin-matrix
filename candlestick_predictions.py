@@ -298,11 +298,6 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     except Exception as e:
         st.error(f"Error rendering candlestick chart: {e}")
 
-import pandas as pd
-import plotly.graph_objects as go
-import streamlit as st
-from datetime import timedelta
-
 
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     """
