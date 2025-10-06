@@ -251,6 +251,29 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         return
 
     # Plot candlestick
+        # --- Candlestick chart ---
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
+        x=df_ohlc["timestamp"],
+        open=df_ohlc["open"],
+        high=df_ohlc["high"],
+        low=df_ohlc["low"],
+        close=df_ohlc["close"],
+        name="Actual",
+        increasing_line_color="green",
+        decreasing_line_color="red",
+        increasing_fillcolor="rgba(0,255,0,0.3)",
+        decreasing_fillcolor="rgba(255,0,0,0.3)",
+        hovertemplate=(
+            "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
+            "<b>Open:</b> %{open:.2f}<br>"
+            "<b>High:</b> %{high:.2f}<br>"
+            "<b>Low:</b> %{low:.2f}<br>"
+            "<b>Close:</b> %{close:.2f}<br>"
+    # ------------------------------
+    # 5. Plot the candlestick chart
+    # ------------------------------
     try:
         fig = go.Figure(data=[go.Candlestick(
             x=df_ohlc["timestamp"],
