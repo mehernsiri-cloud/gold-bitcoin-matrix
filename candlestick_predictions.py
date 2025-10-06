@@ -326,7 +326,9 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
         st.metric("Overall Weekly Signal", signal)
         st.write("Detected pattern counts:", weekly_patterns)
-l = detect_classical_patterns(df_ohlc)
+with st.expander("📈 Detected Patterns and Signals", expanded=True):
+    short = detect_candle_patterns_on_series(df_ohlc)
+    classical = detect_classical_patterns(df_ohlc)
     all_patterns = short + classical
     weekly_patterns = aggregate_weekly_patterns(all_patterns)
     signal = decide_weekly_signal(weekly_patterns)
@@ -356,7 +358,6 @@ l = detect_classical_patterns(df_ohlc)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No patterns detected for this period.")
-
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
 
