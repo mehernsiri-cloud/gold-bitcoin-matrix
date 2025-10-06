@@ -215,17 +215,14 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # -------------------------------
 # UI RENDERING
 # -------------------------------
-# candlestick_predictions.py
-import pandas as pd
-import plotly.graph_objects as go
-import streamlit as st
+# candlestick_predictions.py# candlestick_predictions.py
 
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     """
-    Render the Candlestick dashboard safely.
-    Expects df_actual with at least: ['timestamp', 'open', 'high', 'low', 'close']
+    Render a Bitcoin candlestick dashboard safely in Streamlit.
+    Expects df_actual with columns:
+    ['timestamp', 'bitcoin_open', 'bitcoin_high', 'bitcoin_low', 'bitcoin_close']
     """
-    required_columns = ["timestamp", "open", "high", "low", "close"]
 
     # ------------------------------
     # 1. Check DataFrame existence
@@ -235,14 +232,26 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         return
 
     # ------------------------------
-    # 2. Check required columns
+    # 2. Map columns to OHLC
     # ------------------------------
-    missing_cols = [col for col in required_columns if col not in df_actual.columns]
+    required_columns_map = {
+        "timestamp": "timestamp",
+        "open": "bitcoin_open",
+        "high": "bitcoin_high",
+        "low": "bitcoin_low",
+        "close": "bitcoin_close"
+    }
+
+    # Check that all required columns exist
+    missing_cols = [v for v in required_columns_map.values() if v not in df_actual.columns]
     if missing_cols:
         st.error(f"Error: Missing required columns for candlestick chart: {missing_cols}")
         return
 
-    df_ohlc = df_actual.copy()
+    # Prepare OHLC DataFrame
+    df_ohlc = df_actual[[v for v in required_columns_map.values()]].rename(
+        columns={v: k for k, v in required_columns_map.items()}
+    )
 
     # ------------------------------
     # 3. Ensure correct data types
@@ -254,14 +263,15 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         return
 
     for col in ["open", "high", "low", "close"]:
-        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors='coerce')
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
 
     # ------------------------------
-    # 4. Check for NaNs
+    # 4. Drop rows with missing OHLC or timestamp
     # ------------------------------
-    if df_ohlc[required_columns].isna().any().any():
-        st.warning("Warning: Some OHLC or timestamp values are missing and will be dropped.")
-        df_ohlc.dropna(subset=required_columns, inplace=True)
+    missing_count = df_ohlc[["timestamp", "open", "high", "low", "close"]].isna().sum().sum()
+    if missing_count > 0:
+        st.warning(f"Warning: {missing_count} missing OHLC or timestamp values found. These rows will be skipped.")
+        df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"], inplace=True)
 
     if df_ohlc.empty:
         st.error("Error: All rows contain invalid data. Cannot plot candlestick chart.")
@@ -282,9 +292,9 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         )])
 
         fig.update_layout(
-            title="Candlestick Chart",
+            title="Bitcoin Candlestick Chart",
             xaxis_title="Date",
-            yaxis_title="Price",
+            yaxis_title="Price (USD)",
             xaxis_rangeslider_visible=False
         )
 
@@ -292,6 +302,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     except Exception as e:
         st.error(f"Error rendering candlestick chart: {e}")
+
 
 
 
