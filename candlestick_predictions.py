@@ -215,81 +215,83 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # -------------------------------
 # UI RENDERING
 # -------------------------------
+# candlestick_predictions.py
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
-    import pandas as pd
-    import plotly.graph_objects as go
-    import streamlit as st
-    from datetime import timedelta
+    """
+    Render the Candlestick dashboard safely.
+    Expects df_actual with at least: ['timestamp', 'open', 'high', 'low', 'close']
+    """
+    required_columns = ["timestamp", "open", "high", "low", "close"]
 
-    st.title("🕯️ Candlestick Predictions")
-
-    # Ensure required columns exist
-    required_cols = ["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
-    if any(col not in df_actual.columns for col in required_cols):
-        st.error(f"Missing required columns: {required_cols}")
+    # ------------------------------
+    # 1. Check DataFrame existence
+    # ------------------------------
+    if df_actual is None or df_actual.empty:
+        st.error("Error: No data available to plot the candlestick chart.")
         return
 
-    # Keep only OHLC + timestamp
-    df_ohlc = df_actual[required_cols].copy()
+    # ------------------------------
+    # 2. Check required columns
+    # ------------------------------
+    missing_cols = [col for col in required_columns if col not in df_actual.columns]
+    if missing_cols:
+        st.error(f"Error: Missing required columns for candlestick chart: {missing_cols}")
+        return
 
-    # Convert to numeric (force NaN for invalid)
-    for col in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]:
-        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
+    df_ohlc = df_actual.copy()
 
-    # Convert timestamp to datetime
-    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+    # ------------------------------
+    # 3. Ensure correct data types
+    # ------------------------------
+    try:
+        df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
+    except Exception as e:
+        st.error(f"Error converting 'timestamp' to datetime: {e}")
+        return
 
-    # Drop rows with any NaN
-    df_ohlc = df_ohlc.dropna(subset=["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
+    for col in ["open", "high", "low", "close"]:
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors='coerce')
 
-    # Reset index to avoid Plotly issues
-    df_ohlc = df_ohlc.reset_index(drop=True)
+    # ------------------------------
+    # 4. Check for NaNs
+    # ------------------------------
+    if df_ohlc[required_columns].isna().any().any():
+        st.warning("Warning: Some OHLC or timestamp values are missing and will be dropped.")
+        df_ohlc.dropna(subset=required_columns, inplace=True)
 
     if df_ohlc.empty:
-        st.error("No valid OHLC data to plot after cleaning.")
+        st.error("Error: All rows contain invalid data. Cannot plot candlestick chart.")
         return
 
-    # Rename columns for Plotly
-    df_ohlc = df_ohlc.rename(columns={
-        "bitcoin_open": "open",
-        "bitcoin_high": "high",
-        "bitcoin_low": "low",
-        "bitcoin_close": "close"
-    })
+    # ------------------------------
+    # 5. Plot the candlestick chart
+    # ------------------------------
+    try:
+        fig = go.Figure(data=[go.Candlestick(
+            x=df_ohlc["timestamp"],
+            open=df_ohlc["open"],
+            high=df_ohlc["high"],
+            low=df_ohlc["low"],
+            close=df_ohlc["close"],
+            increasing_line_color='green',
+            decreasing_line_color='red'
+        )])
 
-    # --- Candlestick chart ---
-    fig = go.Figure()
-
-    fig.add_trace(go.Candlestick(
-        x=df_ohlc["timestamp"],
-        open=df_ohlc["open"],
-        high=df_ohlc["high"],
-        low=df_ohlc["low"],
-        close=df_ohlc["close"],
-        name="Actual",
-        increasing_line_color="green",
-        decreasing_line_color="red",
-        increasing_fillcolor="rgba(0,255,0,0.3)",
-        decreasing_fillcolor="rgba(255,0,0,0.3)",
-        hovertemplate=(
-            "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
-            "<b>Open:</b> %{open:.2f}<br>"
-            "<b>High:</b> %{high:.2f}<br>"
-            "<b>Low:</b> %{low:.2f}<br>"
-            "<b>Close:</b> %{close:.2f}<br>"
+        fig.update_layout(
+            title="Candlestick Chart",
+            xaxis_title="Date",
+            yaxis_title="Price",
+            xaxis_rangeslider_visible=False
         )
-    ))
 
-    fig.update_layout(
-        title="Bitcoin Candlestick Predictions",
-        xaxis_title="Date",
-        yaxis_title="Price",
-        xaxis_rangeslider_visible=False,
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
-    )
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error rendering candlestick chart: {e}")
 
 
 
