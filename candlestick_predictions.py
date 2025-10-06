@@ -223,31 +223,33 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     st.title("🕯️ Candlestick Predictions")
 
-    # Check required columns
-    required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close", "timestamp"]
-    if any(c not in df_actual.columns for c in required_cols):
-        st.error(f"Missing required columns in actual data.")
+    # Ensure required columns exist
+    required_cols = ["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
+    if any(col not in df_actual.columns for col in required_cols):
+        st.error(f"Missing required columns: {required_cols}")
         return
 
-    # Keep only necessary columns
-    df_ohlc = df_actual[["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]].copy()
+    # Keep only OHLC + timestamp
+    df_ohlc = df_actual[required_cols].copy()
 
-    # Convert OHLC to numeric
+    # Convert to numeric (force NaN for invalid)
     for col in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
 
-    # Convert timestamp
+    # Convert timestamp to datetime
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
 
-    # Drop rows with any NaNs
+    # Drop rows with any NaN
     df_ohlc = df_ohlc.dropna(subset=["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
 
-    # If empty after cleaning, exit
+    # Reset index to avoid Plotly issues
+    df_ohlc = df_ohlc.reset_index(drop=True)
+
     if df_ohlc.empty:
-        st.error("No valid Bitcoin OHLC data available after cleaning.")
+        st.error("No valid OHLC data to plot after cleaning.")
         return
 
-    # Rename columns for convenience
+    # Rename columns for Plotly
     df_ohlc = df_ohlc.rename(columns={
         "bitcoin_open": "open",
         "bitcoin_high": "high",
@@ -255,10 +257,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         "bitcoin_close": "close"
     })
 
-    # Reset index to avoid Plotly issues
-    df_ohlc = df_ohlc.reset_index(drop=True)
-
-    # --- Candlestick Chart ---
+    # --- Candlestick chart ---
     fig = go.Figure()
 
     fig.add_trace(go.Candlestick(
@@ -291,6 +290,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
