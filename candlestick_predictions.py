@@ -253,9 +253,18 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     #    log_weekly_candlestick_predictions(df_predicted)
 
     # --- Candlestick chart ---
-# --- Candlestick chart with hover info ---
-    # --- Candlestick chart with hover info ---
+    # --- Safe and Enhanced Candlestick Chart ---
     fig = go.Figure()
+
+    # Clean data before plotting
+    df_ohlc = df_ohlc.dropna(subset=["open", "high", "low", "close"])
+    df_predicted = df_predicted.dropna(subset=["open", "high", "low", "close"]) if not df_predicted.empty else df_predicted
+
+    # Convert to float explicitly to avoid ValueError
+    for col in ["open", "high", "low", "close"]:
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
+        if not df_predicted.empty:
+            df_predicted[col] = pd.to_numeric(df_predicted[col], errors="coerce")
 
     # Actual candles
     fig.add_trace(go.Candlestick(
@@ -265,29 +274,33 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         name="Actual",
         increasing_line_color="green",
         decreasing_line_color="red",
+        increasing_fillcolor="rgba(0,255,0,0.3)",
+        decreasing_fillcolor="rgba(255,0,0,0.3)",
         hovertemplate=(
-            "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
-            "<b>Open:</b> %{open:.2f}<br>" +
-            "<b>High:</b> %{high:.2f}<br>" +
-            "<b>Low:</b> %{low:.2f}<br>" +
+            "<b>Date:</b> %{x|%Y-%m-%d}<br>"
+            "<b>Open:</b> %{open:.2f}<br>"
+            "<b>High:</b> %{high:.2f}<br>"
+            "<b>Low:</b> %{low:.2f}<br>"
             "<b>Close:</b> %{close:.2f}<br>"
         )
     ))
 
-    # Predicted candles with different colors
+    # Predicted candles — distinct pastel blue/orange + opacity
     if not df_predicted.empty:
         fig.add_trace(go.Candlestick(
             x=df_predicted["timestamp"],
             open=df_predicted["open"], high=df_predicted["high"],
             low=df_predicted["low"], close=df_predicted["close"],
             name="Predicted",
-            increasing_line_color="#87CEEB",  # pastel blue
-            decreasing_line_color="#FFB347",  # pastel orange
+            increasing_line_color="#00BFFF",  # bright sky blue
+            decreasing_line_color="#FFA500",  # vivid orange
+            increasing_fillcolor="rgba(0,191,255,0.4)",
+            decreasing_fillcolor="rgba(255,165,0,0.4)",
             hovertemplate=(
-                "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
-                "<b>Open:</b> %{open:.2f}<br>" +
-                "<b>High:</b> %{high:.2f}<br>" +
-                "<b>Low:</b> %{low:.2f}<br>" +
+                "<b>Date:</b> %{x|%Y-%m-%d}<br>"
+                "<b>Open:</b> %{open:.2f}<br>"
+                "<b>High:</b> %{high:.2f}<br>"
+                "<b>Low:</b> %{low:.2f}<br>"
                 "<b>Close:</b> %{close:.2f}<br>"
             )
         ))
@@ -296,10 +309,13 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         title="Bitcoin Candlestick Predictions",
         xaxis_title="Date",
         yaxis_title="Price",
-        xaxis_rangeslider_visible=False
+        xaxis_rangeslider_visible=False,
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
