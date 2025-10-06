@@ -218,10 +218,6 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     st.title("🕯️ Candlestick Predictions")
 
-    if df_actual.empty:
-        st.error("No actual Bitcoin OHLC data available.")
-        return
-
     required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close", "timestamp"]
     missing = [c for c in required_cols if c not in df_actual.columns]
     if missing:
@@ -236,19 +232,19 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         "bitcoin_close": "close"
     }).copy()
 
-    # Convert Bitcoin OHLC to numeric (force errors to NaN)
+    # Ensure numeric OHLC
     for col in ["open", "high", "low", "close"]:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
 
-    # Drop any rows with invalid OHLC
-    df_ohlc = df_ohlc.dropna(subset=["open", "high", "low", "close"])
+    # Convert timestamp
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+
+    # Keep only valid rows
+    df_ohlc = df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"])
+
     if df_ohlc.empty:
         st.error("No valid Bitcoin OHLC data available after cleaning.")
         return
-
-    # Ensure timestamp is datetime
-    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
-    df_ohlc = df_ohlc.dropna(subset=["timestamp"])
 
     # Short-term & classical patterns
     last_ts = df_ohlc["timestamp"].max()
@@ -257,9 +253,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     short_patterns = detect_candle_patterns_on_series(df_last_week)
     classical_patterns = detect_classical_patterns(df_last_month)
-    all_patterns = short_patterns + classical_patterns
-
-    weekly_patterns = aggregate_weekly_patterns(all_patterns)
+    weekly_patterns = aggregate_weekly_patterns(short_patterns + classical_patterns)
     signal = decide_weekly_signal(weekly_patterns)
     st.subheader(f"Weekly Signal: {signal}")
 
@@ -268,11 +262,13 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     if not df_predicted.empty:
         for col in ["open", "high", "low", "close"]:
             df_predicted[col] = pd.to_numeric(df_predicted[col], errors="coerce")
-        df_predicted = df_predicted.dropna(subset=["open", "high", "low", "close"])
+        df_predicted["timestamp"] = pd.to_datetime(df_predicted["timestamp"], errors="coerce")
+        df_predicted = df_predicted.dropna(subset=["timestamp", "open", "high", "low", "close"])
 
-    # --- Candlestick Chart ---
+    # --- Candlestick chart ---
     fig = go.Figure()
 
+    # Add actual candles
     fig.add_trace(go.Candlestick(
         x=df_ohlc["timestamp"],
         open=df_ohlc["open"],
@@ -293,6 +289,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         )
     ))
 
+    # Add predicted candles if available
     if not df_predicted.empty:
         fig.add_trace(go.Candlestick(
             x=df_predicted["timestamp"],
@@ -324,6 +321,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
     # --- Weekly Pattern Contributions ---
     st.write("### Weekly Pattern Contributions")
