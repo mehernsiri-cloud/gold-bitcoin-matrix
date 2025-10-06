@@ -51,16 +51,100 @@ def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Tim
 # -------------------------------
 # CLASSICAL MULTI-CANDLE PATTERNS
 # -------------------------------
-# ... (keep all your existing classical pattern functions here: head_shoulders, double/triple tops/bottoms, triangles, cup_handle, flags_pennants, rounding, wedges)
-# -------------------------------
+def detect_head_shoulders(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-3):
+        left = prices[i-3:i]
+        middle = prices[i-1:i+2]
+        right = prices[i+1:i+4]
+        if max(middle) > max(left) and max(middle) > max(right):
+            patterns.append((ts_list[i], "Head & Shoulders (bearish)"))
+    return patterns
+
+def detect_double_triple_top_bottom(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(2, len(prices)-2):
+        if prices[i-1] < prices[i] > prices[i+1] and abs(prices[i] - prices[i-2])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Double Top (bearish)"))
+        if prices[i-1] > prices[i] < prices[i+1] and abs(prices[i] - prices[i-2])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Double Bottom (bullish)"))
+        if i >= 3 and prices[i-2] < prices[i-1] > prices[i] and abs(prices[i-2]-prices[i])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Triple Top (bearish)"))
+        if i >= 3 and prices[i-2] > prices[i-1] < prices[i] and abs(prices[i-2]-prices[i])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Triple Bottom (bullish)"))
+    return patterns
+
+def detect_triangle_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if all(x <= y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Ascending Triangle (bullish)"))
+        elif all(x >= y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Descending Triangle (bearish)"))
+        else:
+            patterns.append((ts_list[i], "Symmetrical Triangle (neutral)"))
+    return patterns
+
+def detect_cup_handle(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(5, len(prices)-5):
+        left = prices[i-5:i]
+        right = prices[i+1:i+6]
+        if min(left) < prices[i] and min(right) < prices[i]:
+            patterns.append((ts_list[i], "Cup & Handle (bullish)"))
+    return patterns
+
+def detect_flags_pennants(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if max(window) - min(window) < 0.02 * prices[i]:
+            patterns.append((ts_list[i], "Flag/Pennant (neutral)"))
+    return patterns
+
+def detect_rounding_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(2, len(prices)-2):
+        if prices[i-1] > prices[i] < prices[i+1]:
+            patterns.append((ts_list[i], "Rounding Bottom (bullish)"))
+        if prices[i-1] < prices[i] > prices[i+1]:
+            patterns.append((ts_list[i], "Rounding Top (bearish)"))
+    return patterns
+
+def detect_wedges(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if all(x < y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Rising Wedge (bearish)"))
+        if all(x > y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Falling Wedge (bullish)"))
+    return patterns
+
 def detect_classical_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     results = []
-    for f in [detect_head_shoulders, detect_double_triple_top_bottom, detect_triangle_patterns,
-              detect_cup_handle, detect_flags_pennants, detect_rounding_patterns, detect_wedges]:
-        try:
-            results += f(df)
-        except Exception:
-            continue
+    results += detect_head_shoulders(df)
+    results += detect_double_triple_top_bottom(df)
+    results += detect_triangle_patterns(df)
+    results += detect_cup_handle(df)
+    results += detect_flags_pennants(df)
+    results += detect_rounding_patterns(df)
+    results += detect_wedges(df)
     return results
 
 # -------------------------------
@@ -132,42 +216,111 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # UI RENDERING
 # -------------------------------
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
+    import pandas as pd
+    import plotly.graph_objects as go
+    import streamlit as st
+    from datetime import timedelta
+
+    st.title("🕯️ Candlestick Predictions")
+# candlestick_predictions.py
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+    # Ensure required columns exist
+    required_cols = ["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
+    if any(col not in df_actual.columns for col in required_cols):
+        st.error(f"Missing required columns: {required_cols}")
+def render_candlestick_dashboard(df_actual: pd.DataFrame):
     """
-    Fully Streamlit-proof dashboard for Bitcoin candlesticks and weekly patterns.
+    Render the Candlestick dashboard safely.
+    Expects df_actual with at least: ['timestamp', 'open', 'high', 'low', 'close']
     """
+    required_columns = ["timestamp", "open", "high", "low", "close"]
+
+    # ------------------------------
+    # 1. Check DataFrame existence
+    # ------------------------------
     if df_actual is None or df_actual.empty:
         st.error("Error: No data available to plot the candlestick chart.")
         return
 
-    # Map columns to OHLC
-    required_columns_map = {
-        "timestamp": "timestamp",
-        "open": "bitcoin_open",
-        "high": "bitcoin_high",
-        "low": "bitcoin_low",
-        "close": "bitcoin_close"
-    }
-
-    missing_cols = [v for v in required_columns_map.values() if v not in df_actual.columns]
+    # Keep only OHLC + timestamp
+    df_ohlc = df_actual[required_cols].copy()
+    # ------------------------------
+    # 2. Check required columns
+    # ------------------------------
+    missing_cols = [col for col in required_columns if col not in df_actual.columns]
     if missing_cols:
-        st.error(f"Error: Missing required columns: {missing_cols}")
+        st.error(f"Error: Missing required columns for candlestick chart: {missing_cols}")
         return
 
-    df_ohlc = df_actual[[v for v in required_columns_map.values()]].rename(
-        columns={v: k for k, v in required_columns_map.items()}
-    )
-
-    # Convert types safely
-    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
-    for col in ["open", "high", "low", "close"]:
+    # Convert to numeric (force NaN for invalid)
+    for col in ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
+    df_ohlc = df_actual.copy()
 
-    df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"], inplace=True)
-    if df_ohlc.empty:
-        st.error("No valid OHLC data to plot.")
+    # Convert timestamp to datetime
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+    # ------------------------------
+    # 3. Ensure correct data types
+    # ------------------------------
+    try:
+        df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
+    except Exception as e:
+        st.error(f"Error converting 'timestamp' to datetime: {e}")
         return
 
-    # Plot candlestick
+    # Drop rows with any NaN
+    df_ohlc = df_ohlc.dropna(subset=["timestamp", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
+    for col in ["open", "high", "low", "close"]:
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors='coerce')
+
+    # Reset index to avoid Plotly issues
+    df_ohlc = df_ohlc.reset_index(drop=True)
+    # ------------------------------
+    # 4. Check for NaNs
+    # ------------------------------
+    if df_ohlc[required_columns].isna().any().any():
+        st.warning("Warning: Some OHLC or timestamp values are missing and will be dropped.")
+        df_ohlc.dropna(subset=required_columns, inplace=True)
+
+    if df_ohlc.empty:
+        st.error("No valid OHLC data to plot after cleaning.")
+        st.error("Error: All rows contain invalid data. Cannot plot candlestick chart.")
+        return
+
+    # Rename columns for Plotly
+    df_ohlc = df_ohlc.rename(columns={
+        "bitcoin_open": "open",
+        "bitcoin_high": "high",
+        "bitcoin_low": "low",
+        "bitcoin_close": "close"
+    })
+
+    # --- Candlestick chart ---
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
+        x=df_ohlc["timestamp"],
+        open=df_ohlc["open"],
+        high=df_ohlc["high"],
+        low=df_ohlc["low"],
+        close=df_ohlc["close"],
+        name="Actual",
+        increasing_line_color="green",
+        decreasing_line_color="red",
+        increasing_fillcolor="rgba(0,255,0,0.3)",
+        decreasing_fillcolor="rgba(255,0,0,0.3)",
+        hovertemplate=(
+            "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
+            "<b>Open:</b> %{open:.2f}<br>"
+            "<b>High:</b> %{high:.2f}<br>"
+            "<b>Low:</b> %{low:.2f}<br>"
+            "<b>Close:</b> %{close:.2f}<br>"
+    # ------------------------------
+    # 5. Plot the candlestick chart
+    # ------------------------------
     try:
         fig = go.Figure(data=[go.Candlestick(
             x=df_ohlc["timestamp"],
@@ -178,48 +331,71 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
             increasing_line_color='green',
             decreasing_line_color='red'
         )])
-        fig.update_layout(title="Bitcoin Candlestick Chart", xaxis_rangeslider_visible=False)
+
+        fig.update_layout(
+            title="Candlestick Chart",
+            xaxis_title="Date",
+            yaxis_title="Price",
+            xaxis_rangeslider_visible=False
+        )
+    ))
+
+    fig.update_layout(
+        title="Bitcoin Candlestick Predictions",
+        xaxis_title="Date",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False,
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
         st.plotly_chart(fig, use_container_width=True)
+
     except Exception as e:
         st.error(f"Error rendering candlestick chart: {e}")
 
-    # --- Weekly Patterns ---
+
+
+
+    # --- Weekly Pattern Contributions ---
     st.write("### Weekly Pattern Contributions")
-    try:
-        # Compute patterns safely
-        short_term = detect_candle_patterns_on_series(df_ohlc)
-        classical = detect_classical_patterns(df_ohlc)
-        all_patterns = short_term + classical
-        weekly_patterns = aggregate_weekly_patterns(all_patterns)
-    except Exception:
-        weekly_patterns = {}
 
-    # Safe defaults
-    bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
-    bear_patterns = ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"]
-    neutral_patterns = ["Neutral","Doji","Flag/Pennant"]
+    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"])}
+    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"])}
+    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Neutral","Doji","Flag/Pennant"])}
 
-    bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bull_patterns)}
-    bear = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in bear_patterns)}
-    neutral = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in neutral_patterns)}
-
-    # Color top 3
     def color_top_3(d: Dict[str,int]) -> Dict[str,str]:
         sorted_items = sorted(d.items(), key=lambda x: x[1], reverse=True)
         colors = {}
         for i, (k, _) in enumerate(sorted_items):
-            if i == 0: colors[k] = "#a8e6cf"
-            elif i == 1: colors[k] = "#dcedff"
-            elif i == 2: colors[k] = "#ffd3e0"
-            else: colors[k] = "#f0f0f0"
+            if i == 0:
+                colors[k] = "#a8e6cf"
+            elif i == 1:
+                colors[k] = "#dcedff"
+            elif i == 2:
+                colors[k] = "#ffd3e0"
+            else:
+                colors[k] = "#f0f0f0"
         return colors
 
     fig2 = go.Figure()
-    for patterns_dict, y_label in [(bull, "Bullish 📈"), (bear, "Bearish 📉"), (neutral, "Neutral ⚖️")]:
-        colors = color_top_3(patterns_dict)
-        for pattern, count in patterns_dict.items():
-            fig2.add_trace(go.Bar(y=[y_label], x=[count], name=pattern,
-                                  orientation='h', marker_color=colors[pattern]))
-    fig2.update_layout(barmode='stack', title="Weekly Pattern Contributions by Type",
-                       xaxis_title="Count", yaxis_title="Signal Type", legend_title="Patterns", height=500)
+    bull_colors = color_top_3(bull)
+    for pattern, count in bull.items():
+        fig2.add_trace(go.Bar(y=["Bullish 📈"], x=[count], name=pattern, orientation='h', marker_color=bull_colors[pattern]))
+    bear_colors = color_top_3(bear)
+    for pattern, count in bear.items():
+        fig2.add_trace(go.Bar(y=["Bearish 📉"], x=[count], name=pattern, orientation='h', marker_color=bear_colors[pattern]))
+    neutral_colors = color_top_3(neutral)
+    for pattern, count in neutral.items():
+        fig2.add_trace(go.Bar(y=["Neutral ⚖️"], x=[count], name=pattern, orientation='h', marker_color=neutral_colors[pattern]))
+
+    fig2.update_layout(
+        barmode='stack',
+        title="Weekly Pattern Contributions by Type",
+        xaxis_title="Count",
+        yaxis_title="Signal Type",
+        legend_title="Patterns",
+        height=500
+    )
     st.plotly_chart(fig2, use_container_width=True)
