@@ -316,16 +316,38 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
     df_ohlc.dropna(inplace=True)
 
-    # Pattern detection
-    with st.expander("📈 Detected Patterns and Signals", expanded=True):
-        short = detect_candle_patterns_on_series(df_ohlc)
-        classical = detect_classical_patterns(df_ohlc)
-        all_patterns = short + classical
-        weekly_patterns = aggregate_weekly_patterns(all_patterns)
-        signal = decide_weekly_signal(weekly_patterns)
+with st.expander("📈 Detected Patterns and Signals", expanded=True):
+    short = detect_candle_patterns_on_series(df_ohlc)
+    classical = detect_classical_patterns(df_ohlc)
+    all_patterns = short + classical
+    weekly_patterns = aggregate_weekly_patterns(all_patterns)
+    signal = decide_weekly_signal(weekly_patterns)
 
-        st.metric("Overall Weekly Signal", signal)
-        st.write("Detected pattern counts:", weekly_patterns)
+    st.metric("Overall Weekly Signal", signal)
+
+    if weekly_patterns:
+        import plotly.graph_objects as go
+
+        fig_patterns = go.Figure()
+        fig_patterns.add_trace(go.Bar(
+            x=list(weekly_patterns.keys()),
+            y=list(weekly_patterns.values()),
+            text=list(weekly_patterns.values()),
+            textposition='auto',
+            marker_color='lightskyblue'
+        ))
+
+        fig_patterns.update_layout(
+            title="Detected Pattern Counts",
+            xaxis_title="Pattern",
+            yaxis_title="Count",
+            template="plotly_white",
+            height=400
+        )
+
+        st.plotly_chart(fig_patterns, use_container_width=True)
+    else:
+        st.info("No patterns detected for this week.")
 
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
