@@ -56,6 +56,7 @@ except Exception:
 # -------------------------------------------------------------------
 # Candlestick Predictions import
 # -------------------------------------------------------------------
+
 from candlestick_predictions import render_candlestick_dashboard
 
 # -------------------------------------------------------------------
