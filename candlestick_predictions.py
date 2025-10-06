@@ -254,34 +254,17 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     # --- Candlestick chart ---
 # --- Candlestick chart with hover info ---
-fig = go.Figure()
+    # --- Candlestick chart with hover info ---
+    fig = go.Figure()
 
-# Actual candles
-fig.add_trace(go.Candlestick(
-    x=df_ohlc["timestamp"],
-    open=df_ohlc["open"], high=df_ohlc["high"],
-    low=df_ohlc["low"], close=df_ohlc["close"],
-    name="Actual",
-    increasing_line_color="green",
-    decreasing_line_color="red",
-    hovertemplate=(
-        "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
-        "<b>Open:</b> %{open:.2f}<br>" +
-        "<b>High:</b> %{high:.2f}<br>" +
-        "<b>Low:</b> %{low:.2f}<br>" +
-        "<b>Close:</b> %{close:.2f}<br>"
-    )
-))
-
-# Predicted candles with different colors
-if not df_predicted.empty:
+    # Actual candles
     fig.add_trace(go.Candlestick(
-        x=df_predicted["timestamp"],
-        open=df_predicted["open"], high=df_predicted["high"],
-        low=df_predicted["low"], close=df_predicted["close"],
-        name="Predicted",
-        increasing_line_color="#87CEEB",  # pastel blue
-        decreasing_line_color="#FFB347",  # pastel orange
+        x=df_ohlc["timestamp"],
+        open=df_ohlc["open"], high=df_ohlc["high"],
+        low=df_ohlc["low"], close=df_ohlc["close"],
+        name="Actual",
+        increasing_line_color="green",
+        decreasing_line_color="red",
         hovertemplate=(
             "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
             "<b>Open:</b> %{open:.2f}<br>" +
@@ -291,14 +274,33 @@ if not df_predicted.empty:
         )
     ))
 
-fig.update_layout(
-    title="Bitcoin Candlestick Predictions",
-    xaxis_title="Date",
-    yaxis_title="Price",
-    xaxis_rangeslider_visible=False
-)
+    # Predicted candles with different colors
+    if not df_predicted.empty:
+        fig.add_trace(go.Candlestick(
+            x=df_predicted["timestamp"],
+            open=df_predicted["open"], high=df_predicted["high"],
+            low=df_predicted["low"], close=df_predicted["close"],
+            name="Predicted",
+            increasing_line_color="#87CEEB",  # pastel blue
+            decreasing_line_color="#FFB347",  # pastel orange
+            hovertemplate=(
+                "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
+                "<b>Open:</b> %{open:.2f}<br>" +
+                "<b>High:</b> %{high:.2f}<br>" +
+                "<b>Low:</b> %{low:.2f}<br>" +
+                "<b>Close:</b> %{close:.2f}<br>"
+            )
+        ))
 
-st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        title="Bitcoin Candlestick Predictions",
+        xaxis_title="Date",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
 
 
     # --- Stacked Pattern Contribution Chart ---
