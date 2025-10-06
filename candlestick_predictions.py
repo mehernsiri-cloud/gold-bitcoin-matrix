@@ -269,29 +269,30 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     ))
 
     # ------------------------------
-    # 2. Predict 5 future candles
-    # ------------------------------
-    short_term = detect_candle_patterns_on_series(df_ohlc)
-    classical = detect_classical_patterns(df_ohlc)
-    all_patterns = short_term + classical
-    weekly_patterns = aggregate_weekly_patterns(all_patterns)
-    signal = decide_weekly_signal(weekly_patterns)
-    df_pred = synthesize_predicted_candles(df_ohlc, signal)
-    log_weekly_candlestick_predictions(df_pred)
+# 2. Predict 5 future candles
+# ------------------------------
+short_term = detect_candle_patterns_on_series(df_ohlc)
+classical = detect_classical_patterns(df_ohlc)
+all_patterns = short_term + classical
+weekly_patterns = aggregate_weekly_patterns(all_patterns)
+signal = decide_weekly_signal(weekly_patterns)
+df_pred = synthesize_predicted_candles(df_ohlc, signal)
+log_weekly_candlestick_predictions(df_pred)
 
-    if not df_pred.empty:
-        fig.add_trace(go.Candlestick(
-            x=df_pred["timestamp"],
-            open=df_pred["open"],
-            high=df_pred["high"],
-            low=df_pred["low"],
-            close=df_pred["close"],
-            name="Predicted (Next 5 Days)",
-            increasing_line_color="lightgreen",
-            decreasing_line_color="lightcoral",
-            increasing_fillcolor="rgba(0,255,0,0.2)",
-            decreasing_fillcolor="rgba(255,0,0,0.2)"
-        ))
+if not df_pred.empty:
+    fig.add_trace(go.Candlestick(
+        x=df_pred["timestamp"],
+        open=df_pred["open"],
+        high=df_pred["high"],
+        low=df_pred["low"],
+        close=df_pred["close"],
+        name="Predicted (Next 5 Days)",
+        increasing_line_color="blue",
+        decreasing_line_color="orange",
+        increasing_fillcolor="rgba(0,0,255,0.3)",
+        decreasing_fillcolor="rgba(255,165,0,0.3)"
+    ))
+
 
     fig.update_layout(title="Bitcoin Candlestick Chart (Actual + Predicted)", xaxis_rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
