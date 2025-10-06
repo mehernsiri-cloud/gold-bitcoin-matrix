@@ -58,7 +58,7 @@ except Exception:
 # -------------------------------------------------------------------
 
 from candlestick_predictions import render_candlestick_dashboard
-
+from candlestick_predictions import render_daily_candlestick_dashboard
 # -------------------------------------------------------------------
 # APP CONFIGURATION
 # -------------------------------------------------------------------
