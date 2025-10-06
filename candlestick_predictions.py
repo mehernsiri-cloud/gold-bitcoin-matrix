@@ -51,8 +51,91 @@ def detect_candle_patterns_on_series(df_ohlc: pd.DataFrame) -> List[Tuple[pd.Tim
 # -------------------------------
 # CLASSICAL MULTI-CANDLE PATTERNS
 # -------------------------------
-# ... (keep all your existing classical pattern functions here: head_shoulders, double/triple tops/bottoms, triangles, cup_handle, flags_pennants, rounding, wedges)
-# -------------------------------
+def detect_head_shoulders(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-3):
+        left = prices[i-3:i]
+        middle = prices[i-1:i+2]
+        right = prices[i+1:i+4]
+        if max(middle) > max(left) and max(middle) > max(right):
+            patterns.append((ts_list[i], "Head & Shoulders (bearish)"))
+    return patterns
+
+def detect_double_triple_top_bottom(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(2, len(prices)-2):
+        if prices[i-1] < prices[i] > prices[i+1] and abs(prices[i] - prices[i-2])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Double Top (bearish)"))
+        if prices[i-1] > prices[i] < prices[i+1] and abs(prices[i] - prices[i-2])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Double Bottom (bullish)"))
+        if i >= 3 and prices[i-2] < prices[i-1] > prices[i] and abs(prices[i-2]-prices[i])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Triple Top (bearish)"))
+        if i >= 3 and prices[i-2] > prices[i-1] < prices[i] and abs(prices[i-2]-prices[i])/prices[i] < 0.02:
+            patterns.append((ts_list[i], "Triple Bottom (bullish)"))
+    return patterns
+
+def detect_triangle_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if all(x <= y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Ascending Triangle (bullish)"))
+        elif all(x >= y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Descending Triangle (bearish)"))
+        else:
+            patterns.append((ts_list[i], "Symmetrical Triangle (neutral)"))
+    return patterns
+
+def detect_cup_handle(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(5, len(prices)-5):
+        left = prices[i-5:i]
+        right = prices[i+1:i+6]
+        if min(left) < prices[i] and min(right) < prices[i]:
+            patterns.append((ts_list[i], "Cup & Handle (bullish)"))
+    return patterns
+
+def detect_flags_pennants(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if max(window) - min(window) < 0.02 * prices[i]:
+            patterns.append((ts_list[i], "Flag/Pennant (neutral)"))
+    return patterns
+
+def detect_rounding_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(2, len(prices)-2):
+        if prices[i-1] > prices[i] < prices[i+1]:
+            patterns.append((ts_list[i], "Rounding Bottom (bullish)"))
+        if prices[i-1] < prices[i] > prices[i+1]:
+            patterns.append((ts_list[i], "Rounding Top (bearish)"))
+    return patterns
+
+def detect_wedges(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
+    patterns = []
+    prices = df["close"].values
+    ts_list = df["timestamp"].values
+    for i in range(3, len(prices)-2):
+        window = prices[i-3:i+2]
+        if all(x < y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Rising Wedge (bearish)"))
+        if all(x > y for x, y in zip(window, window[1:])):
+            patterns.append((ts_list[i], "Falling Wedge (bullish)"))
+    return patterns
+
 def detect_classical_patterns(df: pd.DataFrame) -> List[Tuple[pd.Timestamp, str]]:
     results = []
     for f in [detect_head_shoulders, detect_double_triple_top_bottom, detect_triangle_patterns,
