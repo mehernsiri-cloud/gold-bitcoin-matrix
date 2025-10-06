@@ -298,6 +298,138 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     except Exception as e:
         st.error(f"Error rendering candlestick chart: {e}")
 
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from datetime import timedelta
+
+
+def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
+    """
+    Render a daily candlestick chart using hourly actual_data.csv,
+    and predict the next 7 days using simple trend continuation logic.
+    """
+
+    st.subheader("📅 Daily Candlestick Chart with 7-Day Projection")
+
+    try:
+        # -----------------------------
+        # Validate input
+        # -----------------------------
+        if df_actual.empty:
+            st.warning("No data available for candlestick generation.")
+            return
+
+        if "timestamp" not in df_actual.columns:
+            st.error("Missing 'timestamp' column in dataset.")
+            return
+
+        # Ensure datetime format and sort
+        df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
+        df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
+
+        # -----------------------------
+        # Build daily OHLC
+        # -----------------------------
+        required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
+        if not all(col in df_actual.columns for col in required_cols):
+            st.error("Missing Bitcoin OHLC columns in actual_data.csv")
+            return
+
+        df_daily = (
+            df_actual.set_index("timestamp")
+            .resample("D")
+            .agg({
+                "bitcoin_open": "first",
+                "bitcoin_high": "max",
+                "bitcoin_low": "min",
+                "bitcoin_close": "last"
+            })
+            .dropna()
+        ).reset_index()
+
+        if df_daily.empty:
+            st.warning("No valid daily OHLC data could be computed.")
+            return
+
+        # -----------------------------
+        # Simple 7-day projection logic
+        # -----------------------------
+        last_close = df_daily["bitcoin_close"].iloc[-1]
+        recent_trend = df_daily["bitcoin_close"].iloc[-7:].pct_change().mean()  # avg daily change %
+
+        future_dates = [df_daily["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, 8)]
+        predicted_rows = []
+
+        for d in future_dates:
+            last_close *= (1 + recent_trend if not pd.isna(recent_trend) else 1)
+            volatility = df_daily["bitcoin_close"].pct_change().std() or 0.01
+
+            open_ = last_close * (1 - volatility / 2)
+            close = last_close * (1 + volatility / 2)
+            high = max(open_, close) * (1 + volatility)
+            low = min(open_, close) * (1 - volatility)
+
+            predicted_rows.append({
+                "timestamp": d,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close
+            })
+
+        df_pred = pd.DataFrame(predicted_rows)
+
+        # -----------------------------
+        # Plot chart
+        # -----------------------------
+        fig = go.Figure()
+
+        # Actual candles
+        fig.add_trace(go.Candlestick(
+            x=df_daily["timestamp"],
+            open=df_daily["bitcoin_open"],
+            high=df_daily["bitcoin_high"],
+            low=df_daily["bitcoin_low"],
+            close=df_daily["bitcoin_close"],
+            name="Actual (Daily)",
+            increasing_line_color="green",
+            decreasing_line_color="red",
+            increasing_fillcolor="rgba(0,255,0,0.3)",
+            decreasing_fillcolor="rgba(255,0,0,0.3)"
+        ))
+
+        # Predicted candles
+        fig.add_trace(go.Candlestick(
+            x=df_pred["timestamp"],
+            open=df_pred["open"],
+            high=df_pred["high"],
+            low=df_pred["low"],
+            close=df_pred["close"],
+            name="Predicted (Next 7 Days)",
+            increasing_line_color="blue",
+            decreasing_line_color="orange",
+            increasing_fillcolor="rgba(0,0,255,0.3)",
+            decreasing_fillcolor="rgba(255,165,0,0.3)"
+        ))
+
+        fig.update_layout(
+            title="Bitcoin Daily Candlestick with 7-Day Forecast",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            xaxis_rangeslider_visible=False,
+            template="plotly_dark",
+            height=600,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error rendering daily candlestick chart: {e}")
+
+
+    
     # --- Weekly Pattern Contributions ---
     st.write("### Weekly Pattern Contributions")
     bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
