@@ -228,56 +228,64 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         st.error(f"Missing columns in actual data: {missing}")
         return
 
+    # Rename for convenience
     df_ohlc = df_actual.rename(columns={
         "bitcoin_open": "open",
         "bitcoin_high": "high",
         "bitcoin_low": "low",
         "bitcoin_close": "close"
-    }).dropna(subset=["open", "high", "low", "close"])
-    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"])
+    }).copy()
+
+    # Convert Bitcoin OHLC to numeric (force errors to NaN)
+    for col in ["open", "high", "low", "close"]:
+        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
+
+    # Drop any rows with invalid OHLC
+    df_ohlc = df_ohlc.dropna(subset=["open", "high", "low", "close"])
+    if df_ohlc.empty:
+        st.error("No valid Bitcoin OHLC data available after cleaning.")
+        return
+
+    # Ensure timestamp is datetime
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+    df_ohlc = df_ohlc.dropna(subset=["timestamp"])
 
     # Short-term & classical patterns
-    df_last_week = df_ohlc[df_ohlc["timestamp"] >= df_ohlc["timestamp"].max()-timedelta(days=7)]
-    short_patterns = detect_candle_patterns_on_series(df_last_week)
-    df_last_month = df_ohlc[df_ohlc["timestamp"] >= df_ohlc["timestamp"].max()-timedelta(days=30)]
-    classical_patterns = detect_classical_patterns(df_last_month)
+    last_ts = df_ohlc["timestamp"].max()
+    df_last_week = df_ohlc[df_ohlc["timestamp"] >= last_ts - timedelta(days=7)]
+    df_last_month = df_ohlc[df_ohlc["timestamp"] >= last_ts - timedelta(days=30)]
 
+    short_patterns = detect_candle_patterns_on_series(df_last_week)
+    classical_patterns = detect_classical_patterns(df_last_month)
     all_patterns = short_patterns + classical_patterns
+
     weekly_patterns = aggregate_weekly_patterns(all_patterns)
     signal = decide_weekly_signal(weekly_patterns)
     st.subheader(f"Weekly Signal: {signal}")
 
     # Predicted candles
     df_predicted = synthesize_predicted_candles(df_last_week.tail(5), signal)
-    #if not df_predicted.empty:
-    #    log_weekly_candlestick_predictions(df_predicted)
+    if not df_predicted.empty:
+        for col in ["open", "high", "low", "close"]:
+            df_predicted[col] = pd.to_numeric(df_predicted[col], errors="coerce")
+        df_predicted = df_predicted.dropna(subset=["open", "high", "low", "close"])
 
-    # --- Candlestick chart ---
-    # --- Safe and Enhanced Candlestick Chart ---
+    # --- Candlestick Chart ---
     fig = go.Figure()
 
-    # Clean data before plotting
-    df_ohlc = df_ohlc.dropna(subset=["open", "high", "low", "close"])
-    df_predicted = df_predicted.dropna(subset=["open", "high", "low", "close"]) if not df_predicted.empty else df_predicted
-
-    # Convert to float explicitly to avoid ValueError
-    for col in ["open", "high", "low", "close"]:
-        df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
-        if not df_predicted.empty:
-            df_predicted[col] = pd.to_numeric(df_predicted[col], errors="coerce")
-
-    # Actual candles
     fig.add_trace(go.Candlestick(
         x=df_ohlc["timestamp"],
-        open=df_ohlc["open"], high=df_ohlc["high"],
-        low=df_ohlc["low"], close=df_ohlc["close"],
+        open=df_ohlc["open"],
+        high=df_ohlc["high"],
+        low=df_ohlc["low"],
+        close=df_ohlc["close"],
         name="Actual",
         increasing_line_color="green",
         decreasing_line_color="red",
         increasing_fillcolor="rgba(0,255,0,0.3)",
         decreasing_fillcolor="rgba(255,0,0,0.3)",
         hovertemplate=(
-            "<b>Date:</b> %{x|%Y-%m-%d}<br>"
+            "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
             "<b>Open:</b> %{open:.2f}<br>"
             "<b>High:</b> %{high:.2f}<br>"
             "<b>Low:</b> %{low:.2f}<br>"
@@ -285,19 +293,20 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         )
     ))
 
-    # Predicted candles — distinct pastel blue/orange + opacity
     if not df_predicted.empty:
         fig.add_trace(go.Candlestick(
             x=df_predicted["timestamp"],
-            open=df_predicted["open"], high=df_predicted["high"],
-            low=df_predicted["low"], close=df_predicted["close"],
+            open=df_predicted["open"],
+            high=df_predicted["high"],
+            low=df_predicted["low"],
+            close=df_predicted["close"],
             name="Predicted",
-            increasing_line_color="#00BFFF",  # bright sky blue
-            decreasing_line_color="#FFA500",  # vivid orange
+            increasing_line_color="#00BFFF",
+            decreasing_line_color="#FFA500",
             increasing_fillcolor="rgba(0,191,255,0.4)",
             decreasing_fillcolor="rgba(255,165,0,0.4)",
             hovertemplate=(
-                "<b>Date:</b> %{x|%Y-%m-%d}<br>"
+                "<b>Date:</b> %{x|%Y-%m-%d %H:%M}<br>"
                 "<b>Open:</b> %{open:.2f}<br>"
                 "<b>High:</b> %{high:.2f}<br>"
                 "<b>Low:</b> %{low:.2f}<br>"
@@ -316,10 +325,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-
-
-    # --- Stacked Pattern Contribution Chart ---
+    # --- Weekly Pattern Contributions ---
     st.write("### Weekly Pattern Contributions")
 
     bull = {k:v for k,v in weekly_patterns.items() if any(bp in k for bp in ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"])}
@@ -331,13 +337,13 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         colors = {}
         for i, (k, _) in enumerate(sorted_items):
             if i == 0:
-                colors[k] = "#a8e6cf"  # pastel green
+                colors[k] = "#a8e6cf"
             elif i == 1:
-                colors[k] = "#dcedff"  # pastel blue
+                colors[k] = "#dcedff"
             elif i == 2:
-                colors[k] = "#ffd3e0"  # pastel pink
+                colors[k] = "#ffd3e0"
             else:
-                colors[k] = "#f0f0f0"  # light pastel gray
+                colors[k] = "#f0f0f0"
         return colors
 
     fig2 = go.Figure()
@@ -360,3 +366,4 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         height=500
     )
     st.plotly_chart(fig2, use_container_width=True)
+
