@@ -215,10 +215,6 @@ def log_weekly_candlestick_predictions(df_pred: pd.DataFrame):
 # UI RENDERING
 # -------------------------------
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
-    """
-    Fully Streamlit-proof dashboard for Bitcoin candlesticks, weekly patterns, 
-    and predicted 5-day synthetic candles.
-    """
     if df_actual is None or df_actual.empty:
         st.error("Error: No data available to plot the candlestick chart.")
         return
@@ -245,65 +241,64 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
     for col in ["open", "high", "low", "close"]:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col], errors="coerce")
-
     df_ohlc.dropna(subset=["timestamp", "open", "high", "low", "close"], inplace=True)
     if df_ohlc.empty:
         st.error("No valid OHLC data to plot.")
         return
 
-    # ------------------------------
-    # 1. Plot actual candlesticks
-    # ------------------------------
-# ------------------------------
-# 5. Plot the candlestick chart (with predictions)
-# ------------------------------
-try:
-    fig = go.Figure()
+    # --- Compute weekly patterns and decide signal ---
+    try:
+        short_term = detect_candle_patterns_on_series(df_ohlc)
+        classical = detect_classical_patterns(df_ohlc)
+        all_patterns = short_term + classical
+        weekly_patterns = aggregate_weekly_patterns(all_patterns)
+        weekly_signal = decide_weekly_signal(weekly_patterns)
+    except Exception:
+        weekly_patterns = {}
+        weekly_signal = "Neutral ⚖️"
 
-    # Actual candles
-    fig.add_trace(go.Candlestick(
-        x=df_ohlc["timestamp"],
-        open=df_ohlc["open"],
-        high=df_ohlc["high"],
-        low=df_ohlc["low"],
-        close=df_ohlc["close"],
-        name="Actual",
-        increasing_line_color='green',
-        decreasing_line_color='red',
-        increasing_fillcolor='rgba(0,255,0,0.3)',
-        decreasing_fillcolor='rgba(255,0,0,0.3)'
-    ))
+    # --- Generate predicted candles ---
+    df_pred = synthesize_predicted_candles(df_ohlc, weekly_signal)
 
-    # Predicted candles
-    df_pred = synthesize_predicted_candles(df_ohlc, decide_weekly_signal(aggregate_weekly_patterns(
-        detect_candle_patterns_on_series(df_ohlc) + detect_classical_patterns(df_ohlc)
-    )))
-    if not df_pred.empty:
+    # --- Plot candlestick chart ---
+    try:
+        fig = go.Figure()
+
+        # Actual candles
         fig.add_trace(go.Candlestick(
-            x=df_pred["timestamp"],
-            open=df_pred["open"],
-            high=df_pred["high"],
-            low=df_pred["low"],
-            close=df_pred["close"],
-            name="Predicted (Next 5 Days)",
-            increasing_line_color="blue",
-            decreasing_line_color="orange",
-            increasing_fillcolor="rgba(0,0,255,0.3)",
-            decreasing_fillcolor="rgba(255,165,0,0.3)"
+            x=df_ohlc["timestamp"],
+            open=df_ohlc["open"],
+            high=df_ohlc["high"],
+            low=df_ohlc["low"],
+            close=df_ohlc["close"],
+            name="Actual",
+            increasing_line_color='green',
+            decreasing_line_color='red',
+            increasing_fillcolor='rgba(0,255,0,0.3)',
+            decreasing_fillcolor='rgba(255,0,0,0.3)'
         ))
 
-    fig.update_layout(title="Bitcoin Candlestick Chart", xaxis_rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
-except Exception as e:
-    st.error(f"Error rendering candlestick chart: {e}")
+        # Predicted candles
+        if not df_pred.empty:
+            fig.add_trace(go.Candlestick(
+                x=df_pred["timestamp"],
+                open=df_pred["open"],
+                high=df_pred["high"],
+                low=df_pred["low"],
+                close=df_pred["close"],
+                name="Predicted (Next 5 Days)",
+                increasing_line_color="blue",
+                decreasing_line_color="orange",
+                increasing_fillcolor="rgba(0,0,255,0.3)",
+                decreasing_fillcolor="rgba(255,165,0,0.3)"
+            ))
 
+        fig.update_layout(title="Bitcoin Candlestick Chart", xaxis_rangeslider_visible=False)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error rendering candlestick chart: {e}")
 
-    fig.update_layout(title="Bitcoin Candlestick Chart (Actual + Predicted)", xaxis_rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ------------------------------
-    # 3. Weekly pattern contributions
-    # ------------------------------
+    # --- Weekly Pattern Contributions ---
     st.write("### Weekly Pattern Contributions")
     bull_patterns = ["Bullish","Bottom","Cup & Handle","Ascending","Falling Wedge"]
     bear_patterns = ["Bearish","Top","Head & Shoulders","Descending","Rising Wedge"]
