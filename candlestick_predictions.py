@@ -327,3 +327,39 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     fig2.update_layout(barmode='stack', title="Weekly Pattern Contributions by Type",
                        xaxis_title="Count", yaxis_title="Signal Type", legend_title="Patterns", height=500)
     st.plotly_chart(fig2, use_container_width=True)
+    # --- Weekly Candlestick Aggregation Chart ---
+    st.write("### Weekly Candlestick View (Aggregated from Hourly Data)")
+
+    try:
+        df_weekly = df_ohlc.resample('W', on='timestamp').agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last'
+        }).dropna().reset_index()
+
+        fig_weekly = go.Figure()
+        fig_weekly.add_trace(go.Candlestick(
+            x=df_weekly["timestamp"],
+            open=df_weekly["open"],
+            high=df_weekly["high"],
+            low=df_weekly["low"],
+            close=df_weekly["close"],
+            name="Weekly Candlestick",
+            increasing_line_color='green',
+            decreasing_line_color='red',
+            increasing_fillcolor='rgba(0,255,0,0.3)',
+            decreasing_fillcolor='rgba(255,0,0,0.3)'
+        ))
+
+        fig_weekly.update_layout(
+            title="Aggregated Weekly Candlestick (From Hourly Data)",
+            xaxis_title="Week",
+            yaxis_title="Price",
+            xaxis_rangeslider_visible=False,
+            height=500
+        )
+        st.plotly_chart(fig_weekly, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error creating weekly candlestick chart: {e}")
