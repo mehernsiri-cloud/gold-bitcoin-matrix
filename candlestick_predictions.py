@@ -291,6 +291,8 @@ def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=
 # ===============================================================
 # 🖥️ 7. MAIN DASHBOARD RENDERING
 # ===============================================================
+import plotly.express as px
+
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📊 Bitcoin Candlestick Dashboard (Enhanced)")
 
@@ -325,7 +327,38 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
         signal = decide_weekly_signal(weekly_patterns)
 
         st.metric("Overall Weekly Signal", signal)
-        st.write("Detected pattern counts:", weekly_patterns)
+
+        # Show counts in text + bar chart
+        st.subheader("📊 Detected Pattern Counts")
+        if weekly_patterns:
+            # Convert to DataFrame for visualization
+            pattern_df = pd.DataFrame(
+                list(weekly_patterns.items()),
+                columns=["Pattern", "Count"]
+            ).sort_values(by="Count", ascending=False)
+
+            # Display table
+            st.dataframe(pattern_df, hide_index=True)
+
+            # Bar chart for visual impact
+            fig = px.bar(
+                pattern_df,
+                x="Pattern",
+                y="Count",
+                color="Count",
+                color_continuous_scale="Blues",
+                title="Detected Pattern Frequency",
+                height=400
+            )
+            fig.update_layout(
+                xaxis_title="Pattern Type",
+                yaxis_title="Occurrences",
+                xaxis_tickangle=-45,
+                template="plotly_white"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No patterns detected for this period.")
 
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
