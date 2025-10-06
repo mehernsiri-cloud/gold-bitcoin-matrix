@@ -316,16 +316,42 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
     df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
     df_ohlc.dropna(inplace=True)
 
-    # Pattern detection
-    with st.expander("📈 Detected Patterns and Signals", expanded=True):
-        short = detect_candle_patterns_on_series(df_ohlc)
-        classical = detect_classical_patterns(df_ohlc)
-        all_patterns = short + classical
-        weekly_patterns = aggregate_weekly_patterns(all_patterns)
-        signal = decide_weekly_signal(weekly_patterns)
+# --- Pattern detection ---
+with st.expander("📈 Detected Patterns and Signals", expanded=True):
+    short = detect_candle_patterns_on_series(df_ohlc)
+    classical = detect_classical_patterns(df_ohlc)
+    all_patterns = short + classical
+    weekly_patterns = aggregate_weekly_patterns(all_patterns)
+    signal = decide_weekly_signal(weekly_patterns)
 
-        st.metric("Overall Weekly Signal", signal)
-        st.write("Detected pattern counts:", weekly_patterns)
+    st.metric("Overall Weekly Signal", signal)
+
+    # --- Diagram for pattern counts ---
+    if weekly_patterns:
+        fig_pat = go.Figure()
+        patterns_sorted = dict(sorted(weekly_patterns.items(), key=lambda x: x[1], reverse=True))
+        colors = ["#1f77b4" if "Bullish" in k or "Bottom" in k else
+                  "#d62728" if "Bearish" in k or "Top" in k else "#ff7f0e"
+                  for k in patterns_sorted.keys()]
+
+        fig_pat.add_trace(go.Bar(
+            x=list(patterns_sorted.values()),
+            y=list(patterns_sorted.keys()),
+            orientation='h',
+            marker_color=colors
+        ))
+
+        fig_pat.update_layout(
+            title="Detected Pattern Counts (Weighted)",
+            xaxis_title="Count",
+            yaxis_title="Pattern",
+            height=400,
+            template="plotly_white"
+        )
+        st.plotly_chart(fig_pat, use_container_width=True)
+    else:
+        st.info("No patterns detected this week.")
+
 
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
