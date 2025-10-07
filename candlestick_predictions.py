@@ -505,4 +505,3 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.3)
     st.pyplot(fig)
-plot_candlestick(df_daily, df_pred, title="Daily Candlestick + 7-Day Forecast")
