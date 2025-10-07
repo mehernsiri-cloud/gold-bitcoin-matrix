@@ -420,136 +420,252 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 # ===============================================================
 # 📅 8. DAILY CANDLESTICK DASHBOARD
 # ===============================================================
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-import streamlit as st
-from datetime import timedelta
+def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
+    """
+    Render a robust daily candlestick dashboard (from hourly df_actual) and
+    show a 7-day probabilistic forecast. This function is defensive: it will
+    try to find OHLC columns under several common names and fall back to a
+    single price column if needed.
+    """
+    import numpy as np
+    import plotly.graph_objects as go
+    import streamlit as st
+    from datetime import timedelta
 
-def render_daily_candlestick_dashboard(df_daily):
+    st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
 
-    st.subheader("📅 Daily Candlestick Forecast Dashboard")
+    # Basic validation
+    if df_actual is None or df_actual.empty:
+        st.warning("No data available.")
+        return
 
-    # --- Defensive checks and normalization ---
-    df_daily = df_daily.copy()
+    # Work on a copy
+    df = df_actual.copy()
 
-    # Ensure timestamp is datetime
-    if "timestamp" not in df_daily.columns:
-        raise ValueError("❌ Missing 'timestamp' column in df_daily.")
-    df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
+    # --- Helper to find a best-fit column name from candidates ---
+    def find_col(cols, candidates):
+        cols_low = {c: c.lower() for c in cols}
+        # 1) exact match on candidate
+        for cand in candidates:
+            for orig, low in cols_low.items():
+                if low == cand:
+                    return orig
+        # 2) candidate substring in column name
+        for cand in candidates:
+            for orig, low in cols_low.items():
+                if cand in low:
+                    return orig
+        return None
 
-    # Ensure OHLC columns exist or build them from a single price
-    ohlc_cols = ["open", "high", "low", "close"]
-    if not all(col in df_daily.columns for col in ohlc_cols):
-        if "price" in df_daily.columns:
-            df_daily["open"] = df_daily["price"]
-            df_daily["high"] = df_daily["price"] * (1 + np.random.uniform(-0.003, 0.003, len(df_daily)))
-            df_daily["low"] = df_daily["price"] * (1 - np.random.uniform(-0.003, 0.003, len(df_daily)))
-            df_daily["close"] = df_daily["price"]
-        else:
-            raise ValueError("❌ Missing OHLC or 'price' column in df_daily.")
+    cols = list(df.columns)
 
-    # If no type column, assume all are actual
-    if "type" not in df_daily.columns:
-        df_daily["type"] = "actual"
+    # timestamp detection
+    ts_col = find_col(cols, ["timestamp", "time", "date", "datetime"])
+    if ts_col is None:
+        st.error("Missing a timestamp column (looked for timestamp/time/date/datetime). Columns: " + ", ".join(cols))
+        return
+    # normalize timestamp
+    df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce")
+    df = df.dropna(subset=[ts_col])
+    if df.empty:
+        st.error("All timestamp values are invalid after parsing.")
+        return
+    df = df.sort_values(ts_col)
 
-    # --- Compute indicators ---
+    # OHLC detection candidates
+    open_col = find_col(cols, ["bitcoin_open", "open", "open_price", "btc_open"])
+    high_col = find_col(cols, ["bitcoin_high", "high", "high_price", "btc_high"])
+    low_col = find_col(cols, ["bitcoin_low", "low", "low_price", "btc_low"])
+    close_col = find_col(cols, ["bitcoin_close", "close", "close_price", "bitcoin_actual", "bitcoin_price", "price", "last", "value"])
+
+    # If no close/price found -> fail gracefully
+    if close_col is None:
+        st.error("Missing price/close information. Expected one of: bitcoin_close, bitcoin_actual, price, close, last. Columns: " + ", ".join(cols))
+        return
+
+    # Convert numeric columns to numeric dtype (coerce non-numeric -> NaN)
+    for c in set([open_col, high_col, low_col, close_col]) - {None}:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # If open/high/low missing, we'll fall back to using close_col for them
+    src_open = open_col if open_col is not None else close_col
+    src_high = high_col if high_col is not None else close_col
+    src_low = low_col if low_col is not None else close_col
+    src_close = close_col
+
+    # Build daily OHLC by resampling on timestamp
+    df_indexed = df.set_index(ts_col)
+    try:
+        daily_open = df_indexed[src_open].resample("D").first()
+        daily_high = df_indexed[src_high].resample("D").max()
+        daily_low = df_indexed[src_low].resample("D").min()
+        daily_close = df_indexed[src_close].resample("D").last()
+    except Exception as e:
+        st.error(f"Error resampling data to daily OHLC: {e}")
+        return
+
+    df_daily = pd.concat([daily_open, daily_high, daily_low, daily_close], axis=1)
+    df_daily.columns = ["open", "high", "low", "close"]
+    df_daily = df_daily.dropna(subset=["close"]).reset_index()
+
+    if df_daily.empty:
+        st.warning("No valid daily OHLC rows after resampling. Check your input data.")
+        st.write("Sample of input columns:", cols[:20])
+        return
+
+    # Make sure numeric
+    for c in ["open", "high", "low", "close"]:
+        df_daily[c] = pd.to_numeric(df_daily[c], errors="coerce")
+
+    # Indicators: SMA and rolling volatility for bands
     df_daily["SMA20"] = df_daily["close"].rolling(window=20, min_periods=1).mean()
-    df_daily["volatility"] = df_daily["close"].rolling(window=20, min_periods=1).std()
-    df_daily["upper_band"] = df_daily["SMA20"] + 2 * df_daily["volatility"]
-    df_daily["lower_band"] = df_daily["SMA20"] - 2 * df_daily["volatility"]
+    df_daily["ret"] = df_daily["close"].pct_change()
+    df_daily["vol20"] = df_daily["ret"].rolling(window=20, min_periods=1).std().fillna(0)
+    df_daily["upper"] = df_daily["SMA20"] + 2 * df_daily["vol20"] * df_daily["SMA20"]
+    df_daily["lower"] = df_daily["SMA20"] - 2 * df_daily["vol20"] * df_daily["SMA20"]
 
-    # --- Split actual vs predicted ---
-    df_actual = df_daily[df_daily["type"] == "actual"]
-    df_pred = df_daily[df_daily["type"] == "predicted"]
+    # --- Forecast using Monte-Carlo (geometric-ish) ---
+    last_close = float(df_daily["close"].iloc[-1])
+    returns = df_daily["ret"].dropna()
+    mu = float(returns.tail(7).mean()) if not returns.empty else 0.0
+    sigma = float(returns.tail(20).std()) if not returns.empty else 0.01
+    sigma = max(sigma, 1e-4)
 
-    # --- Plotly figure setup ---
+    days = 7
+    N = 500
+    rng = np.random.default_rng()
+    # simulate N paths
+    z = rng.normal(loc=0.0, scale=1.0, size=(N, days))
+    # use daily drift mu and volatility sigma
+    paths = np.zeros((N, days + 1), dtype=float)
+    paths[:, 0] = last_close
+    for t in range(days):
+        # multiplicative step: S_{t+1} = S_t * (1 + mu + sigma * z)
+        paths[:, t + 1] = paths[:, t] * (1.0 + mu + sigma * z[:, t])
+
+    mc_median = np.median(paths, axis=0)[1:]  # length = days
+    mc_p10 = np.percentile(paths, 10, axis=0)[1:]
+    mc_p90 = np.percentile(paths, 90, axis=0)[1:]
+
+    # Build predicted DataFrame of OHLC-like candles
+    prev_close = last_close
+    pred_rows = []
+    pred_dates = [df_daily[ts_col].iloc[-1] + timedelta(days=i) for i in range(1, days + 1)]
+    for i, dt in enumerate(pred_dates):
+        close_p = float(mc_median[i])
+        open_p = float(prev_close)  # open = previous close (common assumption)
+        # small wiggle to define high/low
+        wiggle = max(0.0025, sigma * 0.5)
+        high_p = max(open_p, close_p) * (1.0 + wiggle)
+        low_p = min(open_p, close_p) * (1.0 - wiggle)
+        pred_rows.append({"timestamp": dt, "open": open_p, "high": high_p, "low": low_p, "close": close_p})
+        prev_close = close_p
+
+    df_pred = pd.DataFrame(pred_rows)
+
+    # --- Plot using Plotly (actual + predicted) ---
     fig = go.Figure()
 
-    # Actual Candlestick
+    # hover text for actuals (include % change)
+    pct = df_daily["close"].pct_change().fillna(0)
+    hover_actual = [
+        f"Date: {d:%Y-%m-%d}<br>Open: {o:.2f}<br>High: {h:.2f}<br>Low: {l:.2f}<br>Close: {c:.2f}<br>Change: {p:.2%}"
+        for d, o, h, l, c, p in zip(df_daily["timestamp"], df_daily["open"], df_daily["high"], df_daily["low"], df_daily["close"], pct)
+    ]
     fig.add_trace(go.Candlestick(
-        x=df_actual["timestamp"],
-        open=df_actual["open"],
-        high=df_actual["high"],
-        low=df_actual["low"],
-        close=df_actual["close"],
+        x=df_daily["timestamp"],
+        open=df_daily["open"],
+        high=df_daily["high"],
+        low=df_daily["low"],
+        close=df_daily["close"],
         name="Actual",
-        increasing_line_color="green",
-        decreasing_line_color="red",
-        showlegend=True
+        increasing_line_color="#00CC96",
+        decreasing_line_color="#EF553B",
+        hovertext=hover_actual,
+        hoverinfo="text"
     ))
 
-    # Predicted Candles (with correct bullish/bearish color)
-    for _, row in df_pred.iterrows():
-        color = "rgba(0,255,0,0.6)" if row["close"] >= row["open"] else "rgba(255,99,71,0.6)"
+    # SMA line
+    fig.add_trace(go.Scatter(
+        x=df_daily["timestamp"], y=df_daily["SMA20"],
+        mode="lines", name="SMA 20", line=dict(color="#636EFA", width=2), hoverinfo="skip"
+    ))
+
+    # Volatility bands (fill between)
+    fig.add_trace(go.Scatter(
+        x=df_daily["timestamp"], y=df_daily["upper"],
+        line=dict(color="rgba(200,200,200,0.2)", width=1),
+        name="Upper Band", hoverinfo="skip", showlegend=False
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_daily["timestamp"], y=df_daily["lower"],
+        fill='tonexty',
+        line=dict(color="rgba(200,200,200,0.2)", width=1),
+        name="Lower Band", hoverinfo="skip", showlegend=False
+    ))
+
+    # Add a subtle forecast zone rectangle
+    if not df_pred.empty:
+        x0 = df_pred["timestamp"].iloc[0]
+        x1 = df_pred["timestamp"].iloc[-1]
+        fig.add_vrect(x0=x0, x1=x1, fillcolor="rgba(150,150,150,0.06)", line_width=0, layer="below")
+
+    # Predicted candles: draw individually so we can color each one correctly
+    pastel_green = "#B2F7EF"
+    pastel_red = "#FFB6B9"
+    for _, r in df_pred.iterrows():
+        color = pastel_green if r["close"] >= r["open"] else pastel_red
+        hover_pred = (f"Predicted<br>Date: {r['timestamp']:%Y-%m-%d}<br>"
+                      f"Open: {r['open']:.2f}<br>High: {r['high']:.2f}<br>Low: {r['low']:.2f}<br>Close: {r['close']:.2f}")
         fig.add_trace(go.Candlestick(
-            x=[row["timestamp"]],
-            open=[row["open"]],
-            high=[row["high"]],
-            low=[row["low"]],
-            close=[row["close"]],
+            x=[r["timestamp"]],
+            open=[r["open"]],
+            high=[r["high"]],
+            low=[r["low"]],
+            close=[r["close"]],
             name="Predicted",
             increasing_line_color=color,
             decreasing_line_color=color,
+            opacity=0.8,
+            hovertext=hover_pred,
+            hoverinfo="text",
             showlegend=False
         ))
 
-    # --- SMA line ---
+    # Optional: show MC band median & percentiles as line + shaded area
+    df_band = pd.DataFrame({
+        "timestamp": pred_dates,
+        "p10": mc_p10,
+        "p50": mc_median,
+        "p90": mc_p90
+    })
+    # median line
     fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"],
-        y=df_daily["SMA20"],
-        mode="lines",
-        line=dict(color="orange", width=1.5),
-        name="SMA 20"
+        x=df_band["timestamp"], y=df_band["p50"],
+        mode="lines", name="Forecast median", line=dict(color="#FF7F0E", width=1.8)
+    ))
+    # shaded 10-90 band
+    fig.add_trace(go.Scatter(
+        x=list(df_band["timestamp"]) + list(df_band["timestamp"][::-1]),
+        y=list(df_band["p90"]) + list(df_band["p10"][::-1]),
+        fill='toself',
+        fillcolor='rgba(255,127,14,0.12)',
+        line=dict(color='rgba(255,127,14,0)'),
+        hoverinfo="skip",
+        showlegend=True,
+        name="Forecast 10-90%"
     ))
 
-    # --- Volatility bands ---
-    fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"],
-        y=df_daily["upper_band"],
-        mode="lines",
-        line=dict(color="rgba(255,165,0,0.2)", width=1),
-        name="Upper Band"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"],
-        y=df_daily["lower_band"],
-        fill='tonexty',
-        mode="lines",
-        line=dict(color="rgba(255,165,0,0.2)", width=1),
-        name="Lower Band"
-    ))
-
-    # --- Layout ---
     fig.update_layout(
-        template="plotly_dark",
+        title="Bitcoin Daily Candlestick + 7-Day Forecast",
         xaxis_title="Date",
-        yaxis_title="Price",
+        yaxis_title="Price (USD)",
         xaxis_rangeslider_visible=False,
+        template="plotly_dark",
         hovermode="x unified",
-        height=520,
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)"
+        height=600,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
-    # --- Hover tooltip ---
-    fig.update_traces(
-        hovertemplate="<b>Date</b>: %{x}<br>"
-                      "<b>Open</b>: %{open:.2f}<br>"
-                      "<b>High</b>: %{high:.2f}<br>"
-                      "<b>Low</b>: %{low:.2f}<br>"
-                      "<b>Close</b>: %{close:.2f}<extra></extra>"
-    )
-
-    # --- Render ---
     st.plotly_chart(fig, use_container_width=True)
 
