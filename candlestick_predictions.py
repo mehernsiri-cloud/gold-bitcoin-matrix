@@ -426,100 +426,41 @@ import plotly.graph_objects as go
 import streamlit as st
 from datetime import timedelta
 
-def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
-    st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
+def render_daily_candlestick_dashboard(df_daily):
+    st.subheader("📅 Daily Candlestick Forecast Dashboard")
 
-    if df_actual.empty:
-        st.warning("No data available.")
-        return
+    # --- Ensure timestamp column is datetime ---
+    df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
 
-    # Convert timestamp and sort
-    df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
-    df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
+    # --- Compute 20-day SMA and volatility bands ---
+    df_daily["SMA20"] = df_daily["close"].rolling(window=20).mean()
+    df_daily["volatility"] = df_daily["close"].rolling(window=20).std()
+    df_daily["upper_band"] = df_daily["SMA20"] + 2 * df_daily["volatility"]
+    df_daily["lower_band"] = df_daily["SMA20"] - 2 * df_daily["volatility"]
 
-    # Build daily OHLC
-    df_daily = (
-        df_actual.set_index("timestamp")
-        .resample("D")
-        .agg({
-            "bitcoin_open": "first",
-            "bitcoin_high": "max",
-            "bitcoin_low": "min",
-            "bitcoin_close": "last"
-        })
-        .dropna()
-        .reset_index()
-        .rename(columns={
-            "bitcoin_open": "open",
-            "bitcoin_high": "high",
-            "bitcoin_low": "low",
-            "bitcoin_close": "close"
-        })
-    )
+    # --- Split actual and predicted data ---
+    df_actual = df_daily[df_daily["type"] == "actual"]
+    df_pred = df_daily[df_daily["type"] == "predicted"]
 
-    if df_daily.empty:
-        st.warning("No valid daily data.")
-        return
-
-    # Calculate SMA
-    df_daily["SMA_5"] = df_daily["close"].rolling(5).mean()
-
-    # Volatility bands (using 1 standard deviation)
-    df_daily["vol"] = df_daily["close"].pct_change().rolling(5).std().fillna(0)
-    df_daily["upper"] = df_daily["close"] * (1 + df_daily["vol"])
-    df_daily["lower"] = df_daily["close"] * (1 - df_daily["vol"])
-
-    # Simple forecast for next 7 days
-    last_close = df_daily["close"].iloc[-1]
-    avg_change = df_daily["close"].pct_change().mean()
-    vol = df_daily["close"].pct_change().std() or 0.01
-
-    future = []
-    for i in range(1, 8):
-        shock = vol * (0.5 - np.random.rand()) * 2  # add random volatility
-        last_close *= (1 + avg_change + shock)
-        open_ = last_close * (1 - vol / 2)
-        close = last_close * (1 + vol / 2)
-        high = max(open_, close) * (1 + vol / 2)
-        low = min(open_, close) * (1 - vol / 2)
-        future.append({
-            "timestamp": df_daily["timestamp"].iloc[-1] + timedelta(days=i),
-            "open": open_, "high": high, "low": low, "close": close
-        })
-    df_pred = pd.DataFrame(future)
-
-    # Build figure
+    # --- Create figure ---
     fig = go.Figure()
 
-    # --- Actual candles ---
-    pct_change = df_daily["close"].pct_change().fillna(0)
-    hover_text = [
-        f"Date: {d:%Y-%m-%d}<br>"
-        f"Open: {o:.2f}<br>High: {h:.2f}<br>Low: {l:.2f}<br>Close: {c:.2f}<br>"
-        f"Change: {p:.2%}"
-        for d, o, h, l, c, p in zip(df_daily["timestamp"], 
-                                      df_daily["open"],
-                                      df_daily["high"],
-                                      df_daily["low"],
-                                      df_daily["close"],
-                                      pct_change)
-    ]
+    # --- Actual Candlestick Chart ---
     fig.add_trace(go.Candlestick(
-        x=df_daily["timestamp"],
-        open=df_daily["open"],
-        high=df_daily["high"],
-        low=df_daily["low"],
-        close=df_daily["close"],
+        x=df_actual["timestamp"],
+        open=df_actual["open"],
+        high=df_actual["high"],
+        low=df_actual["low"],
+        close=df_actual["close"],
         name="Actual",
-        increasing_line_color="#00CC96",
-        decreasing_line_color="#EF553B",
-        hovertext=hover_text,
-        hoverinfo="text"
+        increasing_line_color="green",
+        decreasing_line_color="red",
+        showlegend=True
     ))
 
-    # --- Predicted candles (custom pastel colors) ---
+    # --- Predicted Candles (drawn individually for flexible color & transparency) ---
     for _, row in df_pred.iterrows():
-        color = "#B2F7EF" if row["close"] >= row["open"] else "#FFB6B9"  # pastel green vs pastel red
+        color = "rgba(0,255,0,0.6)" if row["close"] >= row["open"] else "rgba(255,99,71,0.6)"  # semi-transparent
         fig.add_trace(go.Candlestick(
             x=[row["timestamp"]],
             open=[row["open"]],
@@ -529,42 +470,65 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
             name="Predicted",
             increasing_line_color=color,
             decreasing_line_color=color,
-            line=dict(width=1),
-            opacity=0.8,
-            hovertext=f"Predicted<br>Date: {row['timestamp']:%Y-%m-%d}<br>"
-                      f"Open: {row['open']:.2f}<br>High: {row['high']:.2f}<br>"
-                      f"Low: {row['low']:.2f}<br>Close: {row['close']:.2f}",
-            hoverinfo="text"
+            showlegend=False
         ))
 
-    # --- SMA line ---
+    # --- SMA Line ---
     fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"], y=df_daily["SMA_5"],
+        x=df_daily["timestamp"],
+        y=df_daily["SMA20"],
         mode="lines",
-        name="SMA 5",
-        line=dict(color="#636EFA", width=2)
+        line=dict(color="orange", width=1.5),
+        name="SMA 20"
     ))
 
-    # --- Volatility bands ---
+    # --- Volatility Bands ---
     fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"], y=df_daily["upper"],
-        line=dict(color="lightgray", width=1), name="Upper Band", opacity=0.5
-    ))
-    fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"], y=df_daily["lower"],
-        line=dict(color="lightgray", width=1), name="Lower Band", opacity=0.5,
-        fill="tonexty", fillcolor="rgba(200,200,200,0.2)"
+        x=df_daily["timestamp"],
+        y=df_daily["upper_band"],
+        mode="lines",
+        line=dict(color="rgba(255,165,0,0.2)", width=1),
+        name="Upper Band"
     ))
 
-    # --- Layout ---
+    fig.add_trace(go.Scatter(
+        x=df_daily["timestamp"],
+        y=df_daily["lower_band"],
+        fill='tonexty',
+        mode="lines",
+        line=dict(color="rgba(255,165,0,0.2)", width=1),
+        name="Lower Band"
+    ))
+
+    # --- Layout Styling ---
     fig.update_layout(
+        template="plotly_dark",
         xaxis_title="Date",
         yaxis_title="Price",
-        template="plotly_white",
-        showlegend=True,
+        xaxis_rangeslider_visible=False,
         hovermode="x unified",
-        height=500,
-        title="Daily Candlestick + 7-Day Forecast"
+        height=520,
+        margin=dict(l=10, r=10, t=40, b=10),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
     )
 
+    # --- Unified Hover Tooltip ---
+    fig.update_traces(
+        hovertemplate="<b>Date</b>: %{x}<br>"
+                      "<b>Open</b>: %{open:.2f}<br>"
+                      "<b>High</b>: %{high:.2f}<br>"
+                      "<b>Low</b>: %{low:.2f}<br>"
+                      "<b>Close</b>: %{close:.2f}<extra></extra>"
+    )
+
+    # --- Render in Streamlit ---
     st.plotly_chart(fig, use_container_width=True)
+
