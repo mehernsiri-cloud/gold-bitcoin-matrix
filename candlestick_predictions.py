@@ -298,9 +298,9 @@ import plotly.graph_objects as go
 def classify_pattern_sentiment(pattern_name: str) -> str:
     """Classify pattern type into Bullish / Bearish / Neutral."""
     name = pattern_name.lower()
-    if any(k in name for k in ["bullish", "hammer", "engulfing", "morning", "piercing", "kicker"]):
+    if any(k in name for k in ["bullish", "hammer", "engulfing", "morning", "piercing", "kicker", "rising", "ascending", "bottom"]):
         return "Bullish"
-    elif any(k in name for k in ["bearish", "shooting", "dark", "hanging", "evening", "tweezer"]):
+    elif any(k in name for k in ["bearish", "shooting", "dark", "hanging", "evening", "tweezer", "falling", "top"]):
         return "Bearish"
     else:
         return "Neutral"
@@ -341,48 +341,54 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
         st.metric("Overall Weekly Signal", signal)
 
-        # --- 📊 Pattern Sentiment Diagram ---
+        # --- 📊 Unified Sentiment Overview (Stacked Horizontal Bar) ---
         st.subheader("📊 Pattern Sentiment Overview")
 
         if weekly_patterns:
-            # Convert pattern counts to DataFrame
+            # Convert to DataFrame
             pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
             pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
 
-            # Group patterns by sentiment
-            for sentiment, color in zip(
-                ["Bullish", "Neutral", "Bearish"],
-                ["#2ecc71", "#95a5a6", "#e74c3c"]
-            ):
+            sentiments = ["Bullish", "Neutral", "Bearish"]
+            colors = {"Bullish": "#2ecc71", "Neutral": "#95a5a6", "Bearish": "#e74c3c"}
+
+            fig = go.Figure()
+
+            # Add one stacked bar per sentiment
+            for sentiment in sentiments:
                 subset = pattern_df[pattern_df["Sentiment"] == sentiment]
                 if subset.empty:
                     continue
 
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    y=[sentiment],
-                    x=subset["Count"],
-                    orientation="h",
-                    text=subset["Pattern"],
-                    marker=dict(color=color, line=dict(width=0)),
-                    hovertemplate="%{text}: %{x}<extra></extra>",
-                ))
+                for _, row in subset.iterrows():
+                    fig.add_trace(go.Bar(
+                        y=[sentiment],
+                        x=[row["Count"]],
+                        orientation="h",
+                        name=row["Pattern"],
+                        text=f"{row['Pattern']} ({row['Count']})",
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        hovertemplate="%{text}<extra></extra>",
+                        marker=dict(color=colors[sentiment], line=dict(width=0.5, color="white"))
+                    ))
 
-                fig.update_layout(
-                    barmode="stack",
-                    title=f"{sentiment} Patterns",
-                    xaxis_title="Count",
-                    yaxis_title="",
-                    template="plotly_white",
-                    height=250,
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    showlegend=False,
-                )
+            fig.update_layout(
+                barmode="stack",
+                template="plotly_white",
+                height=350,
+                showlegend=False,
+                xaxis_title="Count",
+                yaxis_title="Sentiment Category",
+                margin=dict(l=50, r=50, t=30, b=40),
+                title="Detected Pattern Composition by Sentiment"
+            )
 
-                st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
         else:
             st.info("No patterns detected for this period.")
+
 
 
 
