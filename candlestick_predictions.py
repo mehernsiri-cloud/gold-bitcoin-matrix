@@ -423,6 +423,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import numpy as np
 from datetime import timedelta
 
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
@@ -475,7 +476,7 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     for i in range(1, 8):
         # Random walk like realistic daily prediction
         drift = avg_return
-        shock = vol * (0.5 - pd.np.random.rand()) * 2  # random volatility effect
+        shock = vol * (0.5 - np.random.rand()) * 2 # random volatility effect
         predicted_close = last_close * (1 + drift + shock)
         predicted_open = last_close
         predicted_high = max(predicted_open, predicted_close) * (1 + vol)
