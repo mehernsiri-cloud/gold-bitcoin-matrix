@@ -421,7 +421,7 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
 
-    if df_actual.empty:
+    if df_actual is None or df_actual.empty:
         st.warning("No data available.")
         return
 
@@ -452,22 +452,56 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
         st.warning("No valid daily data.")
         return
 
-    # Simple forecast
+    # --- Forecast using Holt-Winters + Monte Carlo ensemble ---
     last_close = df_daily["close"].iloc[-1]
-    avg_change = df_daily["close"].pct_change().mean()
-    vol = df_daily["close"].pct_change().std() or 0.01
+    returns = df_daily["close"].pct_change().dropna()
+    recent_return = returns.tail(7).mean()
+    recent_vol = returns.tail(20).std() or 0.01
 
-    future = []
-    for i in range(1, 8):
-        last_close *= (1 + avg_change)
-        open_ = last_close * (1 - vol / 2)
-        close = last_close * (1 + vol / 2)
-        high = max(open_, close) * (1 + vol)
-        low = min(open_, close) * (1 - vol)
-        future.append({
-            "timestamp": df_daily["timestamp"].iloc[-1] + timedelta(days=i),
-            "open": open_, "high": high, "low": low, "close": close
-        })
-    df_pred = pd.DataFrame(future)
+    # 1) Holt-Winters forecast
+    try:
+        hw_model = ExponentialSmoothing(df_daily['close'], trend='add', seasonal=None, initialization_method="estimated")
+        hw_fit = hw_model.fit()
+        hw_pred = hw_fit.forecast(7).values
+    except:
+        hw_pred = np.full(7, last_close * (1 + recent_return))
 
-    plot_candlestick(df_daily, df_pred, title="Daily Candlestick + 7-Day Forecast")
+    # 2) Monte-Carlo simulation
+    N = 500
+    mc_paths = np.zeros((N, 8))
+    mc_paths[:, 0] = last_close
+    for t in range(1, 8):
+        z = np.random.normal(recent_return, recent_vol, size=N)
+        mc_paths[:, t] = mc_paths[:, t-1] * (1 + z)
+    mc_median = np.median(mc_paths, axis=0)[1:]
+    mc_p10 = np.percentile(mc_paths, 10, axis=0)[1:]
+    mc_p90 = np.percentile(mc_paths, 90, axis=0)[1:]
+
+    # 3) Linear baseline (optional)
+    linear = last_close * np.cumprod(1 + np.full(7, recent_return))
+
+    # Ensemble (weights)
+    w = np.array([0.5, 0.3, 0.2])
+    ensemble = w[0]*hw_pred + w[1]*mc_median + w[2]*linear
+
+    # Build predicted DataFrame
+    future_dates = [df_daily["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, 8)]
+    df_pred = pd.DataFrame({
+        "timestamp": future_dates,
+        "close": ensemble,
+        "low": mc_p10,
+        "high": mc_p90
+    })
+
+    # --- Plot ---
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(df_daily["timestamp"], df_daily["close"], label="Historical Close", color="#1f77b4")
+    ax.plot(df_pred["timestamp"], df_pred["close"], label="Forecast (Ensemble)", color="#ff7f0e")
+    ax.fill_between(df_pred["timestamp"], df_pred["low"], df_pred["high"], color="#ffbb78", alpha=0.3, label="Uncertainty (10-90%)")
+
+    ax.set_title("Bitcoin Daily Candlestick + 7-Day Forecast", fontsize=14)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Close Price")
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.3)
+    st.pyplot(fig)
