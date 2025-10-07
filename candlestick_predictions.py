@@ -293,76 +293,66 @@ def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=
 # ===============================================================
 import plotly.express as px
 
-if weekly_patterns:
-    import matplotlib.pyplot as plt
+            import matplotlib.pyplot as plt
+            import pandas as pd
 
-    # Helper classifier (tweak keywords if you want)
-    def classify_pattern_sentiment(pattern_name: str) -> str:
-        s = str(pattern_name).lower()
-        bullish_kws = ["bullish", "hammer", "engulfing", "morning", "piercing",
-                       "kicker", "rising", "ascending", "bottom", "cup & handle", "falling wedge"]
-        bearish_kws = ["bearish", "shooting", "dark", "hanging", "evening",
-                       "tweezer", "rising wedge", "double top", "triple top", "head & shoulders", "top"]
-        if any(k in s for k in bullish_kws):
-            return "Bullish"
-        if any(k in s for k in bearish_kws):
-            return "Bearish"
-        return "Neutral"
+            def classify_pattern_sentiment(pattern_name: str) -> str:
+                s = str(pattern_name).lower()
+                bullish_kws = ["bullish", "hammer", "engulfing", "morning", "piercing",
+                               "kicker", "rising", "ascending", "bottom", "cup & handle", "falling wedge"]
+                bearish_kws = ["bearish", "shooting", "dark", "hanging", "evening",
+                               "tweezer", "rising wedge", "double top", "triple top",
+                               "head & shoulders", "top"]
+                if any(k in s for k in bullish_kws):
+                    return "Bullish"
+                if any(k in s for k in bearish_kws):
+                    return "Bearish"
+                return "Neutral"
 
-    # Build DataFrame from weekly_patterns dict
-    pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
-    if pattern_df.empty:
-        st.info("No detected patterns to display.")
-    else:
-        pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
+            pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
+            pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
 
-        # Aggregate counts by sentiment
-        sentiment_summary = pattern_df.groupby("Sentiment", as_index=False)["Count"].sum()
+            sentiment_summary = pattern_df.groupby("Sentiment", as_index=False)["Count"].sum()
+            for s in ["Bullish", "Neutral", "Bearish"]:
+                if s not in sentiment_summary["Sentiment"].values:
+                    sentiment_summary = pd.concat(
+                        [sentiment_summary, pd.DataFrame([{"Sentiment": s, "Count": 0}])],
+                        ignore_index=True
+                    )
 
-        # Ensure all three sentiments present in fixed order
-        for s in ["Bullish", "Neutral", "Bearish"]:
-            if s not in sentiment_summary["Sentiment"].values:
-                sentiment_summary = pd.concat([sentiment_summary, pd.DataFrame([{"Sentiment": s, "Count": 0}])], ignore_index=True)
+            sentiment_summary["Sentiment"] = pd.Categorical(
+                sentiment_summary["Sentiment"],
+                categories=["Bullish", "Neutral", "Bearish"],
+                ordered=True
+            )
+            sentiment_summary = sentiment_summary.sort_values("Sentiment").reset_index(drop=True)
 
-        sentiment_summary["Sentiment"] = pd.Categorical(sentiment_summary["Sentiment"],
-                                                        categories=["Bullish", "Neutral", "Bearish"],
-                                                        ordered=True)
-        sentiment_summary = sentiment_summary.sort_values("Sentiment").reset_index(drop=True)
+            counts = sentiment_summary["Count"].astype(int).tolist()
+            labels = ["Bullish 🟢", "Neutral ⚪", "Bearish 🔴"]
+            pastel_colors = ["#A8E6CF", "#FFD3B6", "#FFAAA5"]
 
-        # Values and pastel colors
-        counts = sentiment_summary["Count"].astype(int).tolist()
-        labels = ["Bullish 🟢", "Neutral ⚪", "Bearish 🔴"]
-        pastel_colors = ["#A8E6CF", "#FFD3B6", "#FFAAA5"]  # green, peach, red
+            fig, ax = plt.subplots(figsize=(8, 2.4))
+            y_pos = range(len(labels))
+            bars = ax.barh(y_pos, counts, color=pastel_colors, edgecolor="white", height=0.6)
 
-        # Create figure with 3 horizontal bars (one per sentiment)
-        fig, ax = plt.subplots(figsize=(8, 2.4))
-        y_pos = range(len(labels))
-        bars = ax.barh(y_pos, counts, color=pastel_colors, edgecolor="white", height=0.6)
+            for i, bar in enumerate(bars):
+                w = bar.get_width()
+                if w > 0:
+                    ax.text(w / 2, bar.get_y() + bar.get_height() / 2,
+                            f"{int(w)}", ha="center", va="center",
+                            fontsize=10, fontweight="bold", color="black")
 
-        # Add count labels centered in each bar (skip label if width==0)
-        max_val = max(counts) if counts else 1
-        for i, bar in enumerate(bars):
-            w = bar.get_width()
-            if w > 0:
-                ax.text(w / 2, bar.get_y() + bar.get_height() / 2,
-                        f"{int(w)}", ha="center", va="center", fontsize=10, fontweight="bold", color="black")
+            ax.set_yticks(list(y_pos))
+            ax.set_yticklabels(labels)
+            ax.set_xticks([])
+            ax.set_xlim(0, max(counts) * 1.2 if max(counts) > 0 else 1)
+            for spine in ["top", "right", "left", "bottom"]:
+                ax.spines[spine].set_visible(False)
+            ax.set_title("", pad=6)
 
-        # Styling: no x ticks, minimal borders
-        ax.set_yticks(list(y_pos))
-        ax.set_yticklabels(labels)
-        ax.set_xticks([])
-        ax.set_xlim(0, max_val * 1.2 if max_val > 0 else 1)
-        for spine in ["top", "right", "left", "bottom"]:
-            ax.spines[spine].set_visible(False)
-        ax.set_title("", pad=6)  # keep no title between bars as requested
-
-        st.pyplot(fig)
-else:
-    st.info("No patterns detected for this period.")
-
-
-
-
+            st.pyplot(fig)
+        else:
+            st.info("No patterns detected for this period.")
 
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
