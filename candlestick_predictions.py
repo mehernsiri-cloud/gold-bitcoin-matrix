@@ -293,6 +293,8 @@ def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=
 # ===============================================================
 import plotly.express as px
 
+import plotly.graph_objects as go
+
 def classify_pattern_sentiment(pattern_name: str) -> str:
     """Classify pattern type into Bullish / Bearish / Neutral."""
     name = pattern_name.lower()
@@ -338,44 +340,79 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
         st.metric("Overall Weekly Signal", signal)
 
-        # 📊 Enhanced visualization
-        st.subheader("📊 Pattern Sentiment Distribution")
+        # 📊 Sentiment summary diagram (horizontal stacked bar)
+        st.subheader("📊 Sentiment Category Overview")
+
         if weekly_patterns:
             # Convert to DataFrame
             pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
             pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
 
-            # Sort by count for readability
-            pattern_df = pattern_df.sort_values(by="Count", ascending=True)
+            # Aggregate by sentiment
+            sentiment_summary = pattern_df.groupby("Sentiment", as_index=False)["Count"].sum()
 
-            # Horizontal bar chart grouped by sentiment
-            fig = px.bar(
-                pattern_df,
-                y="Pattern",
-                x="Count",
-                color="Sentiment",
+            # Ensure all categories exist (for consistent stacking)
+            for sentiment in ["Bullish", "Neutral", "Bearish"]:
+                if sentiment not in sentiment_summary["Sentiment"].values:
+                    sentiment_summary.loc[len(sentiment_summary)] = [sentiment, 0]
+
+            # Sort consistently
+            sentiment_summary["Sentiment"] = pd.Categorical(sentiment_summary["Sentiment"],
+                categories=["Bullish", "Neutral", "Bearish"], ordered=True)
+            sentiment_summary = sentiment_summary.sort_values("Sentiment")
+
+            # Extract data
+            bullish = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Bullish", "Count"].values[0]
+            neutral = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Neutral", "Count"].values[0]
+            bearish = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Bearish", "Count"].values[0]
+
+            # Create horizontal stacked bar
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                y=["Sentiment Summary"],
+                x=[bullish],
+                name="Bullish",
                 orientation="h",
-                color_discrete_map={
-                    "Bullish": "#2ecc71",  # green
-                    "Bearish": "#e74c3c",  # red
-                    "Neutral": "#95a5a6"   # gray
-                },
-                title="Detected Pattern Counts by Sentiment",
-                height=500
-            )
+                marker_color="#2ecc71"
+            ))
+            fig.add_trace(go.Bar(
+                y=["Sentiment Summary"],
+                x=[neutral],
+                name="Neutral",
+                orientation="h",
+                marker_color="#95a5a6"
+            ))
+            fig.add_trace(go.Bar(
+                y=["Sentiment Summary"],
+                x=[bearish],
+                name="Bearish",
+                orientation="h",
+                marker_color="#e74c3c"
+            ))
 
             fig.update_layout(
-                xaxis_title="Occurrences",
-                yaxis_title="Pattern",
+                barmode="stack",
+                title="Sentiment Distribution (Horizontal Stacked)",
+                xaxis_title="Total Detected Patterns",
+                yaxis_title="",
                 template="plotly_white",
-                legend_title_text="Sentiment Category",
-                margin=dict(l=80, r=40, t=50, b=40)
+                height=300,
+                margin=dict(l=40, r=40, t=50, b=40),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5
+                )
             )
 
             st.plotly_chart(fig, use_container_width=True)
 
         else:
             st.info("No patterns detected for this period.")
+
 
 
     # Prediction
