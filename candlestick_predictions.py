@@ -305,6 +305,7 @@ def classify_pattern_sentiment(pattern_name: str) -> str:
     else:
         return "Neutral"
 
+
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📊 Bitcoin Candlestick Dashboard (Enhanced)")
 
@@ -340,78 +341,49 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
         st.metric("Overall Weekly Signal", signal)
 
-        # 📊 Sentiment summary diagram (horizontal stacked bar)
-        st.subheader("📊 Sentiment Category Overview")
+        # --- 📊 Pattern Sentiment Diagram ---
+        st.subheader("📊 Pattern Sentiment Overview")
 
         if weekly_patterns:
-            # Convert to DataFrame
+            # Convert pattern counts to DataFrame
             pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
             pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
 
-            # Aggregate by sentiment
-            sentiment_summary = pattern_df.groupby("Sentiment", as_index=False)["Count"].sum()
+            # Group patterns by sentiment
+            for sentiment, color in zip(
+                ["Bullish", "Neutral", "Bearish"],
+                ["#2ecc71", "#95a5a6", "#e74c3c"]
+            ):
+                subset = pattern_df[pattern_df["Sentiment"] == sentiment]
+                if subset.empty:
+                    continue
 
-            # Ensure all categories exist (for consistent stacking)
-            for sentiment in ["Bullish", "Neutral", "Bearish"]:
-                if sentiment not in sentiment_summary["Sentiment"].values:
-                    sentiment_summary.loc[len(sentiment_summary)] = [sentiment, 0]
-
-            # Sort consistently
-            sentiment_summary["Sentiment"] = pd.Categorical(sentiment_summary["Sentiment"],
-                categories=["Bullish", "Neutral", "Bearish"], ordered=True)
-            sentiment_summary = sentiment_summary.sort_values("Sentiment")
-
-            # Extract data
-            bullish = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Bullish", "Count"].values[0]
-            neutral = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Neutral", "Count"].values[0]
-            bearish = sentiment_summary.loc[sentiment_summary["Sentiment"] == "Bearish", "Count"].values[0]
-
-            # Create horizontal stacked bar
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                y=["Sentiment Summary"],
-                x=[bullish],
-                name="Bullish",
-                orientation="h",
-                marker_color="#2ecc71"
-            ))
-            fig.add_trace(go.Bar(
-                y=["Sentiment Summary"],
-                x=[neutral],
-                name="Neutral",
-                orientation="h",
-                marker_color="#95a5a6"
-            ))
-            fig.add_trace(go.Bar(
-                y=["Sentiment Summary"],
-                x=[bearish],
-                name="Bearish",
-                orientation="h",
-                marker_color="#e74c3c"
-            ))
-
-            fig.update_layout(
-                barmode="stack",
-                title="Sentiment Distribution (Horizontal Stacked)",
-                xaxis_title="Total Detected Patterns",
-                yaxis_title="",
-                template="plotly_white",
-                height=300,
-                margin=dict(l=40, r=40, t=50, b=40),
-                showlegend=True,
-                legend=dict(
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    y=[sentiment],
+                    x=subset["Count"],
                     orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5
-                )
-            )
+                    text=subset["Pattern"],
+                    marker=dict(color=color, line=dict(width=0)),
+                    hovertemplate="%{text}: %{x}<extra></extra>",
+                ))
 
-            st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(
+                    barmode="stack",
+                    title=f"{sentiment} Patterns",
+                    xaxis_title="Count",
+                    yaxis_title="",
+                    template="plotly_white",
+                    height=250,
+                    margin=dict(l=40, r=40, t=40, b=40),
+                    showlegend=False,
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
 
         else:
             st.info("No patterns detected for this period.")
+
 
 
 
