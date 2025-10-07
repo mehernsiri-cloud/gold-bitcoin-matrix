@@ -427,25 +427,46 @@ import streamlit as st
 from datetime import timedelta
 
 def render_daily_candlestick_dashboard(df_daily):
+
     st.subheader("📅 Daily Candlestick Forecast Dashboard")
 
-    # --- Ensure timestamp column is datetime ---
+    # --- Defensive checks and normalization ---
+    df_daily = df_daily.copy()
+
+    # Ensure timestamp is datetime
+    if "timestamp" not in df_daily.columns:
+        raise ValueError("❌ Missing 'timestamp' column in df_daily.")
     df_daily["timestamp"] = pd.to_datetime(df_daily["timestamp"])
 
-    # --- Compute 20-day SMA and volatility bands ---
-    df_daily["SMA20"] = df_daily["close"].rolling(window=20).mean()
-    df_daily["volatility"] = df_daily["close"].rolling(window=20).std()
+    # Ensure OHLC columns exist or build them from a single price
+    ohlc_cols = ["open", "high", "low", "close"]
+    if not all(col in df_daily.columns for col in ohlc_cols):
+        if "price" in df_daily.columns:
+            df_daily["open"] = df_daily["price"]
+            df_daily["high"] = df_daily["price"] * (1 + np.random.uniform(-0.003, 0.003, len(df_daily)))
+            df_daily["low"] = df_daily["price"] * (1 - np.random.uniform(-0.003, 0.003, len(df_daily)))
+            df_daily["close"] = df_daily["price"]
+        else:
+            raise ValueError("❌ Missing OHLC or 'price' column in df_daily.")
+
+    # If no type column, assume all are actual
+    if "type" not in df_daily.columns:
+        df_daily["type"] = "actual"
+
+    # --- Compute indicators ---
+    df_daily["SMA20"] = df_daily["close"].rolling(window=20, min_periods=1).mean()
+    df_daily["volatility"] = df_daily["close"].rolling(window=20, min_periods=1).std()
     df_daily["upper_band"] = df_daily["SMA20"] + 2 * df_daily["volatility"]
     df_daily["lower_band"] = df_daily["SMA20"] - 2 * df_daily["volatility"]
 
-    # --- Split actual and predicted data ---
+    # --- Split actual vs predicted ---
     df_actual = df_daily[df_daily["type"] == "actual"]
     df_pred = df_daily[df_daily["type"] == "predicted"]
 
-    # --- Create figure ---
+    # --- Plotly figure setup ---
     fig = go.Figure()
 
-    # --- Actual Candlestick Chart ---
+    # Actual Candlestick
     fig.add_trace(go.Candlestick(
         x=df_actual["timestamp"],
         open=df_actual["open"],
@@ -458,9 +479,9 @@ def render_daily_candlestick_dashboard(df_daily):
         showlegend=True
     ))
 
-    # --- Predicted Candles (drawn individually for flexible color & transparency) ---
+    # Predicted Candles (with correct bullish/bearish color)
     for _, row in df_pred.iterrows():
-        color = "rgba(0,255,0,0.6)" if row["close"] >= row["open"] else "rgba(255,99,71,0.6)"  # semi-transparent
+        color = "rgba(0,255,0,0.6)" if row["close"] >= row["open"] else "rgba(255,99,71,0.6)"
         fig.add_trace(go.Candlestick(
             x=[row["timestamp"]],
             open=[row["open"]],
@@ -473,7 +494,7 @@ def render_daily_candlestick_dashboard(df_daily):
             showlegend=False
         ))
 
-    # --- SMA Line ---
+    # --- SMA line ---
     fig.add_trace(go.Scatter(
         x=df_daily["timestamp"],
         y=df_daily["SMA20"],
@@ -482,7 +503,7 @@ def render_daily_candlestick_dashboard(df_daily):
         name="SMA 20"
     ))
 
-    # --- Volatility Bands ---
+    # --- Volatility bands ---
     fig.add_trace(go.Scatter(
         x=df_daily["timestamp"],
         y=df_daily["upper_band"],
@@ -500,7 +521,7 @@ def render_daily_candlestick_dashboard(df_daily):
         name="Lower Band"
     ))
 
-    # --- Layout Styling ---
+    # --- Layout ---
     fig.update_layout(
         template="plotly_dark",
         xaxis_title="Date",
@@ -520,7 +541,7 @@ def render_daily_candlestick_dashboard(df_daily):
         paper_bgcolor="rgba(0,0,0,0)"
     )
 
-    # --- Unified Hover Tooltip ---
+    # --- Hover tooltip ---
     fig.update_traces(
         hovertemplate="<b>Date</b>: %{x}<br>"
                       "<b>Open</b>: %{open:.2f}<br>"
@@ -529,6 +550,6 @@ def render_daily_candlestick_dashboard(df_daily):
                       "<b>Close</b>: %{close:.2f}<extra></extra>"
     )
 
-    # --- Render in Streamlit ---
+    # --- Render ---
     st.plotly_chart(fig, use_container_width=True)
 
