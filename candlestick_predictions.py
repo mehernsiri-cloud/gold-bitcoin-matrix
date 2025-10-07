@@ -486,32 +486,33 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     # Create Plotly Candlestick chart
     fig = go.Figure()
 
-    # Actual candles
-    fig.add_trace(go.Candlestick(
-        x=df_daily["timestamp"],
-        open=df_daily["open"],
-        high=df_daily["high"],
-        low=df_daily["low"],
-        close=df_daily["close"],
-        name="Actual",
-        increasing_line_color="#00CC96",
-        decreasing_line_color="#EF553B",
-        hovertemplate=(
-            "Date: %{x}<br>Open: %{open:.2f}<br>High: %{high:.2f}<br>"
-            "Low: %{low:.2f}<br>Close: %{close:.2f}<br>"
-            "Change: %{customdata:.2%}"
-        ),
-        customdata=df_daily["close"].pct_change()
-    ))
+# Actual candles with hover % change
+pct_change = df_daily["close"].pct_change().fillna(0)  # avoid NaN for first row
+hover_text = [
+    f"Date: {d:%Y-%m-%d}<br>"
+    f"Open: {o:.2f}<br>High: {h:.2f}<br>Low: {l:.2f}<br>Close: {c:.2f}<br>"
+    f"Change: {p:.2%}"
+    for d, o, h, l, c, p in zip(df_daily["timestamp"], 
+                                  df_daily["open"],
+                                  df_daily["high"],
+                                  df_daily["low"],
+                                  df_daily["close"],
+                                  pct_change)
+]
 
-    # SMA line
-    fig.add_trace(go.Scatter(
-        x=df_daily["timestamp"],
-        y=df_daily["SMA_7"],
-        mode="lines",
-        name="SMA 7",
-        line=dict(color="blue", width=2)
-    ))
+fig.add_trace(go.Candlestick(
+    x=df_daily["timestamp"],
+    open=df_daily["open"],
+    high=df_daily["high"],
+    low=df_daily["low"],
+    close=df_daily["close"],
+    name="Actual",
+    increasing_line_color="#00CC96",
+    decreasing_line_color="#EF553B",
+    hovertext=hover_text,
+    hoverinfo="text"
+))
+
 
     # Predicted candles (lighter color)
     fig.add_trace(go.Candlestick(
