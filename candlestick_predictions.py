@@ -420,6 +420,11 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 # ===============================================================
 # 📅 8. DAILY CANDLESTICK DASHBOARD
 # ===============================================================
+import pandas as pd
+import streamlit as st
+import plotly.graph_objects as go
+from datetime import timedelta
+
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
 
@@ -427,10 +432,16 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
         st.warning("No data available.")
         return
 
+    # Ensure datetime and clean data
     df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
     df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
 
     # Build daily OHLC
+    required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
+    if not all(col in df_actual.columns for col in required_cols):
+        st.error("Missing Bitcoin OHLC columns in dataset")
+        return
+
     df_daily = (
         df_actual.set_index("timestamp")
         .resample("D")
@@ -451,59 +462,76 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     )
 
     if df_daily.empty:
-        st.warning("No valid daily data.")
+        st.warning("No valid daily OHLC data available")
         return
 
-    # --- Forecast using Holt-Winters + Monte Carlo ensemble ---
+    # --- Forecast 7 Days with Volatility-Adjusted Drift ---
     last_close = df_daily["close"].iloc[-1]
-    returns = df_daily["close"].pct_change().dropna()
-    recent_return = returns.tail(7).mean()
-    recent_vol = returns.tail(20).std() or 0.01
+    daily_returns = df_daily["close"].pct_change().dropna()
+    avg_return = daily_returns.mean() or 0
+    vol = daily_returns.std() or 0.01  # fallback if 0
 
-    # 1) Holt-Winters forecast
-    try:
-        hw_model = ExponentialSmoothing(df_daily['close'], trend='add', seasonal=None, initialization_method="estimated")
-        hw_fit = hw_model.fit()
-        hw_pred = hw_fit.forecast(7).values
-    except:
-        hw_pred = np.full(7, last_close * (1 + recent_return))
+    df_pred_rows = []
+    for i in range(1, 8):
+        # Random walk like realistic daily prediction
+        drift = avg_return
+        shock = vol * (0.5 - pd.np.random.rand()) * 2  # random volatility effect
+        predicted_close = last_close * (1 + drift + shock)
+        predicted_open = last_close
+        predicted_high = max(predicted_open, predicted_close) * (1 + vol)
+        predicted_low = min(predicted_open, predicted_close) * (1 - vol)
+        date = df_daily["timestamp"].iloc[-1] + timedelta(days=i)
+        df_pred_rows.append({
+            "timestamp": date,
+            "open": predicted_open,
+            "high": predicted_high,
+            "low": predicted_low,
+            "close": predicted_close
+        })
+        last_close = predicted_close
 
-    # 2) Monte-Carlo simulation
-    N = 500
-    mc_paths = np.zeros((N, 8))
-    mc_paths[:, 0] = last_close
-    for t in range(1, 8):
-        z = np.random.normal(recent_return, recent_vol, size=N)
-        mc_paths[:, t] = mc_paths[:, t-1] * (1 + z)
-    mc_median = np.median(mc_paths, axis=0)[1:]
-    mc_p10 = np.percentile(mc_paths, 10, axis=0)[1:]
-    mc_p90 = np.percentile(mc_paths, 90, axis=0)[1:]
+    df_pred = pd.DataFrame(df_pred_rows)
 
-    # 3) Linear baseline (optional)
-    linear = last_close * np.cumprod(1 + np.full(7, recent_return))
+    # --- Plot Candlestick Chart with Plotly ---
+    fig = go.Figure()
 
-    # Ensemble (weights)
-    w = np.array([0.5, 0.3, 0.2])
-    ensemble = w[0]*hw_pred + w[1]*mc_median + w[2]*linear
+    # Actual daily candles
+    fig.add_trace(go.Candlestick(
+        x=df_daily["timestamp"],
+        open=df_daily["open"],
+        high=df_daily["high"],
+        low=df_daily["low"],
+        close=df_daily["close"],
+        name="Actual (Daily)",
+        increasing_line_color='green',
+        decreasing_line_color='red',
+        increasing_fillcolor='rgba(0,255,0,0.3)',
+        decreasing_fillcolor='rgba(255,0,0,0.3)'
+    ))
 
-    # Build predicted DataFrame
-    future_dates = [df_daily["timestamp"].iloc[-1] + timedelta(days=i) for i in range(1, 8)]
-    df_pred = pd.DataFrame({
-        "timestamp": future_dates,
-        "close": ensemble,
-        "low": mc_p10,
-        "high": mc_p90
-    })
+    # Predicted next 7 days
+    fig.add_trace(go.Candlestick(
+        x=df_pred["timestamp"],
+        open=df_pred["open"],
+        high=df_pred["high"],
+        low=df_pred["low"],
+        close=df_pred["close"],
+        name="Predicted (7-Day)",
+        increasing_line_color='blue',
+        decreasing_line_color='orange',
+        increasing_fillcolor='rgba(0,0,255,0.2)',
+        decreasing_fillcolor='rgba(255,165,0,0.2)'
+    ))
 
-    # --- Plot ---
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df_daily["timestamp"], df_daily["close"], label="Historical Close", color="#1f77b4")
-    ax.plot(df_pred["timestamp"], df_pred["close"], label="Forecast (Ensemble)", color="#ff7f0e")
-    ax.fill_between(df_pred["timestamp"], df_pred["low"], df_pred["high"], color="#ffbb78", alpha=0.3, label="Uncertainty (10-90%)")
+    fig.update_layout(
+        title="Bitcoin Daily Candlestick with 7-Day Forecast",
+        xaxis_title="Date",
+        yaxis_title="Price (USD)",
+        xaxis_rangeslider_visible=False,
+        template="plotly_dark",
+        height=600,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
 
-    ax.set_title("Bitcoin Daily Candlestick + 7-Day Forecast", fontsize=14)
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Close Price")
-    ax.legend()
-    ax.grid(True, linestyle='--', alpha=0.3)
-    st.pyplot(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
