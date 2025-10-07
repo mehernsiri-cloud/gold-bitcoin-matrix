@@ -420,11 +420,11 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 # ===============================================================
 # 📅 8. DAILY CANDLESTICK DASHBOARD
 # ===============================================================
-import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+import pandas as pd
 import numpy as np
 from datetime import timedelta
+import plotly.graph_objects as go
 
 def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📅 Daily Candlestick Dashboard (7-Day Projection)")
@@ -433,16 +433,11 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
         st.warning("No data available.")
         return
 
-    # Ensure datetime and clean data
+    # Ensure timestamp is datetime
     df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], errors="coerce")
     df_actual = df_actual.dropna(subset=["timestamp"]).sort_values("timestamp")
 
     # Build daily OHLC
-    required_cols = ["bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"]
-    if not all(col in df_actual.columns for col in required_cols):
-        st.error("Missing Bitcoin OHLC columns in dataset")
-        return
-
     df_daily = (
         df_actual.set_index("timestamp")
         .resample("D")
@@ -463,76 +458,99 @@ def render_daily_candlestick_dashboard(df_actual: pd.DataFrame):
     )
 
     if df_daily.empty:
-        st.warning("No valid daily OHLC data available")
+        st.warning("No valid daily data.")
         return
 
-    # --- Forecast 7 Days with Volatility-Adjusted Drift ---
+    # Calculate SMA 7
+    df_daily["SMA_7"] = df_daily["close"].rolling(7).mean()
+
+    # Forecast 7 days
     last_close = df_daily["close"].iloc[-1]
-    daily_returns = df_daily["close"].pct_change().dropna()
-    avg_return = daily_returns.mean() or 0
-    vol = daily_returns.std() or 0.01  # fallback if 0
+    avg_change = df_daily["close"].pct_change().mean() or 0
+    vol = df_daily["close"].pct_change().std() or 0.01
 
-    df_pred_rows = []
+    future = []
     for i in range(1, 8):
-        # Random walk like realistic daily prediction
-        drift = avg_return
-        shock = vol * (0.5 - np.random.rand()) * 2 # random volatility effect
-        predicted_close = last_close * (1 + drift + shock)
-        predicted_open = last_close
-        predicted_high = max(predicted_open, predicted_close) * (1 + vol)
-        predicted_low = min(predicted_open, predicted_close) * (1 - vol)
-        date = df_daily["timestamp"].iloc[-1] + timedelta(days=i)
-        df_pred_rows.append({
-            "timestamp": date,
-            "open": predicted_open,
-            "high": predicted_high,
-            "low": predicted_low,
-            "close": predicted_close
+        shock = vol * (0.5 - np.random.rand()) * 2  # small random effect
+        last_close *= (1 + avg_change + shock)
+        open_ = last_close * (1 - vol / 2)
+        close = last_close * (1 + vol / 2)
+        high = max(open_, close) * (1 + vol)
+        low = min(open_, close) * (1 - vol)
+        future.append({
+            "timestamp": df_daily["timestamp"].iloc[-1] + timedelta(days=i),
+            "open": open_, "high": high, "low": low, "close": close
         })
-        last_close = predicted_close
+    df_pred = pd.DataFrame(future)
 
-    df_pred = pd.DataFrame(df_pred_rows)
-
-    # --- Plot Candlestick Chart with Plotly ---
+    # Create Plotly Candlestick chart
     fig = go.Figure()
 
-    # Actual daily candles
+    # Actual candles
     fig.add_trace(go.Candlestick(
         x=df_daily["timestamp"],
         open=df_daily["open"],
         high=df_daily["high"],
         low=df_daily["low"],
         close=df_daily["close"],
-        name="Actual (Daily)",
-        increasing_line_color='green',
-        decreasing_line_color='red',
-        increasing_fillcolor='rgba(0,255,0,0.3)',
-        decreasing_fillcolor='rgba(255,0,0,0.3)'
+        name="Actual",
+        increasing_line_color="#00CC96",
+        decreasing_line_color="#EF553B",
+        hovertemplate=(
+            "Date: %{x}<br>Open: %{open:.2f}<br>High: %{high:.2f}<br>"
+            "Low: %{low:.2f}<br>Close: %{close:.2f}<br>"
+            "Change: %{customdata:.2%}"
+        ),
+        customdata=df_daily["close"].pct_change()
     ))
 
-    # Predicted next 7 days
+    # SMA line
+    fig.add_trace(go.Scatter(
+        x=df_daily["timestamp"],
+        y=df_daily["SMA_7"],
+        mode="lines",
+        name="SMA 7",
+        line=dict(color="blue", width=2)
+    ))
+
+    # Predicted candles (lighter color)
     fig.add_trace(go.Candlestick(
         x=df_pred["timestamp"],
         open=df_pred["open"],
         high=df_pred["high"],
         low=df_pred["low"],
         close=df_pred["close"],
-        name="Predicted (7-Day)",
-        increasing_line_color='blue',
-        decreasing_line_color='orange',
-        increasing_fillcolor='rgba(0,0,255,0.2)',
-        decreasing_fillcolor='rgba(255,165,0,0.2)'
+        name="Predicted",
+        increasing_line_color="rgba(0,204,150,0.4)",
+        decreasing_line_color="rgba(239,85,59,0.4)",
+        hovertemplate=(
+            "Date: %{x}<br>Open: %{open:.2f}<br>High: %{high:.2f}<br>"
+            "Low: %{low:.2f}<br>Close: %{close:.2f}"
+        )
     ))
 
+    # Volatility bands for predicted candles
+    upper = df_pred["close"] * (1 + vol)
+    lower = df_pred["close"] * (1 - vol)
+    fig.add_trace(go.Scatter(
+        x=df_pred["timestamp"], y=upper, fill=None, mode="lines",
+        line_color="rgba(0,0,0,0)", showlegend=False
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_pred["timestamp"], y=lower, fill='tonexty', mode="lines",
+        fillcolor="rgba(0,128,255,0.1)", line_color="rgba(0,0,0,0)",
+        name="Predicted Range"
+    ))
+
+    # Update layout
     fig.update_layout(
-        title="Bitcoin Daily Candlestick with 7-Day Forecast",
         xaxis_title="Date",
         yaxis_title="Price (USD)",
         xaxis_rangeslider_visible=False,
-        template="plotly_dark",
-        height=600,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        template="plotly_white",
+        height=500
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
