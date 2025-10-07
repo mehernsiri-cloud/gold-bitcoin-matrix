@@ -293,6 +293,16 @@ def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=
 # ===============================================================
 import plotly.express as px
 
+def classify_pattern_sentiment(pattern_name: str) -> str:
+    """Classify pattern type into Bullish / Bearish / Neutral."""
+    name = pattern_name.lower()
+    if any(k in name for k in ["bullish", "hammer", "engulfing", "morning", "piercing", "kicker"]):
+        return "Bullish"
+    elif any(k in name for k in ["bearish", "shooting", "dark", "hanging", "evening", "tweezer"]):
+        return "Bearish"
+    else:
+        return "Neutral"
+
 def render_candlestick_dashboard(df_actual: pd.DataFrame):
     st.header("📊 Bitcoin Candlestick Dashboard (Enhanced)")
 
@@ -328,35 +338,42 @@ def render_candlestick_dashboard(df_actual: pd.DataFrame):
 
         st.metric("Overall Weekly Signal", signal)
 
-        # Show counts in text + bar chart
-        st.subheader("📊 Detected Pattern Counts")
+        # 📊 Enhanced visualization
+        st.subheader("📊 Pattern Sentiment Distribution")
         if weekly_patterns:
-            # Convert to DataFrame for visualization
-            pattern_df = pd.DataFrame(
-                list(weekly_patterns.items()),
-                columns=["Pattern", "Count"]
-            ).sort_values(by="Count", ascending=False)
+            # Convert to DataFrame
+            pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
+            pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
 
-            # Display table
-            st.dataframe(pattern_df, hide_index=True)
+            # Sort by count for readability
+            pattern_df = pattern_df.sort_values(by="Count", ascending=True)
 
-            # Bar chart for visual impact
+            # Horizontal bar chart grouped by sentiment
             fig = px.bar(
                 pattern_df,
-                x="Pattern",
-                y="Count",
-                color="Count",
-                color_continuous_scale="Blues",
-                title="Detected Pattern Frequency",
-                height=400
+                y="Pattern",
+                x="Count",
+                color="Sentiment",
+                orientation="h",
+                color_discrete_map={
+                    "Bullish": "#2ecc71",  # green
+                    "Bearish": "#e74c3c",  # red
+                    "Neutral": "#95a5a6"   # gray
+                },
+                title="Detected Pattern Counts by Sentiment",
+                height=500
             )
+
             fig.update_layout(
-                xaxis_title="Pattern Type",
-                yaxis_title="Occurrences",
-                xaxis_tickangle=-45,
-                template="plotly_white"
+                xaxis_title="Occurrences",
+                yaxis_title="Pattern",
+                template="plotly_white",
+                legend_title_text="Sentiment Category",
+                margin=dict(l=80, r=40, t=50, b=40)
             )
+
             st.plotly_chart(fig, use_container_width=True)
+
         else:
             st.info("No patterns detected for this period.")
 
