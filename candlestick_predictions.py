@@ -292,60 +292,101 @@ def plot_candlestick(df_actual, df_pred=None, title="Candlestick Chart", height=
 # 🖥️ 7. MAIN DASHBOARD RENDERING
 # ===============================================================
 import plotly.express as px
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-# --- Sentiment data ---
-bullish = weekly_patterns.get("Bullish", 0)
-neutral = weekly_patterns.get("Neutral", 0)
-bearish = weekly_patterns.get("Bearish", 0)
+def classify_pattern_sentiment(pattern_name: str) -> str:
+    """Classify pattern type into Bullish / Bearish / Neutral."""
+    name = pattern_name.lower()
+    if any(k in name for k in ["bullish", "hammer", "engulfing", "morning", "piercing", "kicker", "rising", "ascending", "bottom"]):
+        return "Bullish"
+    elif any(k in name for k in ["bearish", "shooting", "dark", "hanging", "evening", "tweezer", "falling", "top"]):
+        return "Bearish"
+    else:
+        return "Neutral"
 
-# Pastel colors for each sentiment
-colors = {
-    "Bullish": "#A8E6CF",  # pastel green
-    "Neutral": "#FFD3B6",  # pastel peach
-    "Bearish": "#FFAAA5",  # pastel red
-}
 
-# Data setup
-categories = ["Bullish 🟢", "Neutral ⚪", "Bearish 🔴"]
-values = [bullish, neutral, bearish]
-bar_colors = [colors["Bullish"], colors["Neutral"], colors["Bearish"]]
+def render_candlestick_dashboard(df_actual: pd.DataFrame):
+    st.header("📊 Bitcoin Candlestick Dashboard (Enhanced)")
 
-# Create figure
-fig, ax = plt.subplots(figsize=(6, 2.8))
+    if df_actual is None or df_actual.empty:
+        st.error("No data available to plot the candlestick chart.")
+        return
 
-# Plot each sentiment as its own horizontal bar
-y_positions = range(len(categories))
-bars = ax.barh(y_positions, values, color=bar_colors, edgecolor="white")
+    # Column mapping
+    col_map = {
+        "timestamp": "timestamp",
+        "open": "bitcoin_open",
+        "high": "bitcoin_high",
+        "low": "bitcoin_low",
+        "close": "bitcoin_close"
+    }
 
-# Add count labels inside each bar
-for i, bar in enumerate(bars):
-    width = bar.get_width()
-    if width > 0:
-        ax.text(
-            width / 2,
-            bar.get_y() + bar.get_height() / 2,
-            f"{int(width)}",
-            ha="center",
-            va="center",
-            fontsize=10,
-            fontweight="bold",
-            color="black"
-        )
+    missing = [v for v in col_map.values() if v not in df_actual.columns]
+    if missing:
+        st.error(f"Missing required columns: {missing}")
+        return
 
-# Clean style
-ax.set_yticks(y_positions)
-ax.set_yticklabels(categories)
-ax.set_xticks([])
-ax.set_xlabel("")
-ax.set_xlim(0, max(values) * 1.2 if max(values) > 0 else 1)
-ax.set_title("📊 Weekly Pattern Sentiment Breakdown", fontsize=12, pad=10)
+    df_ohlc = df_actual[list(col_map.values())].rename(columns={v: k for k, v in col_map.items()})
+    df_ohlc["timestamp"] = pd.to_datetime(df_ohlc["timestamp"], errors="coerce")
+    df_ohlc.dropna(inplace=True)
 
-# Remove borders for a minimalist look
-for spine in ["top", "right", "left", "bottom"]:
-    ax.spines[spine].set_visible(False)
+    # Pattern detection
+    with st.expander("📈 Detected Patterns and Signals", expanded=True):
+        short = detect_candle_patterns_on_series(df_ohlc)
+        classical = detect_classical_patterns(df_ohlc)
+        all_patterns = short + classical
+        weekly_patterns = aggregate_weekly_patterns(all_patterns)
+        signal = decide_weekly_signal(weekly_patterns)
 
-st.pyplot(fig)
+        st.metric("Overall Weekly Signal", signal)
+
+        # --- 📊 Unified Sentiment Overview (Stacked Horizontal Bar) ---
+        st.subheader("📊 Pattern Sentiment Overview")
+
+        if weekly_patterns:
+            # Convert to DataFrame
+            pattern_df = pd.DataFrame(list(weekly_patterns.items()), columns=["Pattern", "Count"])
+            pattern_df["Sentiment"] = pattern_df["Pattern"].apply(classify_pattern_sentiment)
+
+            sentiments = ["Bullish", "Neutral", "Bearish"]
+            colors = {"Bullish": "#2ecc71", "Neutral": "#95a5a6", "Bearish": "#e74c3c"}
+
+            fig = go.Figure()
+
+            # Add one stacked bar per sentiment
+            for sentiment in sentiments:
+                subset = pattern_df[pattern_df["Sentiment"] == sentiment]
+                if subset.empty:
+                    continue
+
+                for _, row in subset.iterrows():
+                    fig.add_trace(go.Bar(
+                        y=[sentiment],
+                        x=[row["Count"]],
+                        orientation="h",
+                        name=row["Pattern"],
+                        text=f"{row['Pattern']} ({row['Count']})",
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        hovertemplate="%{text}<extra></extra>",
+                        marker=dict(color=colors[sentiment], line=dict(width=0.5, color="white"))
+                    ))
+
+            fig.update_layout(
+                barmode="stack",
+                template="plotly_white",
+                height=350,
+                showlegend=False,
+                xaxis_title="Count",
+                yaxis_title="Sentiment Category",
+                margin=dict(l=50, r=50, t=30, b=40),
+                title="Detected Pattern Composition by Sentiment"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.info("No patterns detected for this period.")
 
     # Prediction
     df_pred = synthesize_predicted_candles(df_ohlc, signal)
