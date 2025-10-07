@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from datetime import timedelta
 from typing import List, Tuple, Dict
 import numpy as np
+import matplotlib.pyplot as plt
+
 
 DATA_DIR = "data"
 AI_PRED_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
