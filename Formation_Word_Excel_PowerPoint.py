@@ -1,23 +1,88 @@
 import streamlit as st
-import json
 import os
+import json
+import requests
+from bs4 import BeautifulSoup
+from pathlib import Path
+import base64
+
+WORD_JSON_PATH = "word_courses.json"
+
+def scrape_word_courses():
+    """Scrape Word lessons from coursinfo.fr/word/ and save to JSON."""
+    base_url = "https://www.coursinfo.fr/word/"
+    response = requests.get(base_url)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Find all course links on main Word page
+    lessons = {}
+    for a in soup.select("a[href*='/word/']"):
+        href = a.get("href")
+        title = a.get_text(strip=True)
+        if href and title and not href.endswith("#"):
+            lessons[title] = base_url.rstrip("/") + "/" + href.split("/word/")[-1]
+
+    # For each lesson, fetch content and images
+    courses = []
+    for lesson_title, lesson_url in lessons.items():
+        lesson_resp = requests.get(lesson_url)
+        lesson_resp.raise_for_status()
+        lesson_soup = BeautifulSoup(lesson_resp.text, "html.parser")
+        # Extract text
+        paragraphs = [p.get_text(strip=True) for p in lesson_soup.select("p")]
+        # Extract images
+        images = [img["src"] for img in lesson_soup.select("img") if img.get("src")]
+        courses.append({
+            "title": lesson_title,
+            "url": lesson_url,
+            "text": paragraphs,
+            "images": images,
+            "exercises": ["Exercice 1: ...", "Exercice 2: ..."],
+            "quiz": ["Question 1: ...", "Question 2: ..."]
+        })
+
+    # Save JSON
+    with open(WORD_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(courses, f, ensure_ascii=False, indent=2)
+
+def load_word_courses():
+    if not os.path.exists(WORD_JSON_PATH):
+        scrape_word_courses()
+    with open(WORD_JSON_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def render_word_submenu():
+    st.header("📝 Parcours Word — Débutant")
+    courses = load_word_courses()
+
+    for course in courses:
+        with st.expander(course["title"]):
+            st.markdown(f"**URL du cours :** [{course['url']}]({course['url']})")
+            # Display text
+            for paragraph in course["text"]:
+                st.write(paragraph)
+            # Display images
+            for img_url in course["images"]:
+                st.image(img_url)
+            # Exercises
+            st.subheader("📚 Exercices")
+            for ex in course["exercises"]:
+                st.markdown(f"- {ex}")
+            # Mini quiz
+            st.subheader("🧠 Quiz")
+            for q in course["quiz"]:
+                st.markdown(f"- {q}")
 
 def render_training_dashboard():
     st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
+    st.markdown("Bienvenue dans votre espace de formation continue !")
 
-    st.markdown("""
-    Bienvenue dans votre espace de formation continue !  
-    Ici, vous trouverez un parcours structuré pour apprendre **Microsoft Word, Excel et PowerPoint**.  
-    Les ressources sont gratuites, accessibles hors ligne via JSON et organisées par modules et sous-modules.
-    """)
-
-    # --- Sidebar menu for navigation ---
     section = st.sidebar.radio(
         "📘 Choisissez un module de formation :",
         ["Introduction", "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Tests & Exercices"]
     )
 
-    # --- Introduction ---
     if section == "Introduction":
         st.subheader("🧭 Objectifs de la formation")
         st.markdown("""
@@ -25,82 +90,8 @@ def render_training_dashboard():
         - Créer, formater et présenter des documents professionnels  
         - Maîtriser les outils bureautiques pour le travail en entreprise
         """)
-        st.info("💡 Avancez module par module et testez vos connaissances à la fin de chaque partie.")
-
-    # --- Microsoft Word ---
     elif section == "Microsoft Word":
-        st.header("📝 Parcours Word — Débutant")
+        render_word_submenu()
+    else:
+        st.info("Sections Excel / PowerPoint / Tests & Exercices restent inchangées pour l'instant.")
 
-        # Load scraped JSON
-        json_path = os.path.join("data", "word_courses.json")
-        if not os.path.exists(json_path):
-            st.error("⚠️ Une erreur est survenue : le fichier word_courses.json est manquant.")
-            return
-
-        with open(json_path, "r", encoding="utf-8") as f:
-            word_courses = json.load(f)
-
-        # Organize by modules
-        modules_dict = {}
-        for course in word_courses:
-            # Assuming the module is first part of title "Module X : ..."
-            if ":" in course["title"]:
-                module_name = course["title"].split(":")[0].strip()
-            else:
-                module_name = "Autres cours"
-            modules_dict.setdefault(module_name, []).append(course)
-
-        # Display modules and courses
-        for module_name, courses in modules_dict.items():
-            with st.expander(module_name):
-                for course in courses:
-                    st.subheader(course["title"])
-                    # Display text content
-                    for paragraph in course["text"]:
-                        st.write(paragraph)
-                    # Display images
-                    for img_url in course["images"]:
-                        st.image(img_url)
-                    # Link to original course page
-                    st.markdown(f"[Voir sur coursinfo.fr]({course['url']})")
-                    st.markdown("---")
-
-        # --- Exercises ---
-        st.subheader("📚 Exercices pratiques Word")
-        st.markdown("""
-        - Rédigez un courrier professionnel avec en-tête et pied de page  
-        - Créez une page de garde et appliquez un style uniforme  
-        - Insérez une table des matières automatique  
-        """)
-
-        # --- Mini-quiz ---
-        st.subheader("🧠 Mini-quiz Word")
-        st.markdown("**Question 1:** Quelle option permet de créer un en-tête dans Word ?")
-        st.checkbox("Insertion > En-tête", key="q1a")
-        st.checkbox("Disposition > Bordures", key="q1b")
-        st.checkbox("Accueil > Styles", key="q1c")
-        st.success("Réponse correcte : Insertion > En-tête")
-
-    # --- Microsoft Excel ---
-    elif section == "Microsoft Excel":
-        st.header("📊 Parcours Excel — Débutant")
-        st.markdown("Module en préparation…")
-
-    # --- Microsoft PowerPoint ---
-    elif section == "Microsoft PowerPoint":
-        st.header("📈 Parcours PowerPoint — Débutant")
-        st.markdown("Module en préparation…")
-
-    # --- Tests & Exercices ---
-    elif section == "Tests & Exercices":
-        st.header("🧩 Tests & Exercices finaux")
-        st.markdown("""
-        Testez vos compétences à travers ces mini-projets :
-        - **Word :** Créez une lettre professionnelle avec en-tête et pied de page  
-        - **Excel :** Créez un tableau de suivi de dépenses avec un graphique  
-        - **PowerPoint :** Présentez un sujet de votre choix en 5 slides
-        """)
-        st.success("✅ Astuce : Comparez vos fichiers avec les exemples disponibles en ligne.")
-
-    st.markdown("---")
-    st.caption("© 2025 Formation IA & Bureautique — Ressources gratuites pour l'apprentissage continu.")
