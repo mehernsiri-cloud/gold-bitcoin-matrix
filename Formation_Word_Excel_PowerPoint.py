@@ -1,89 +1,106 @@
 import streamlit as st
+from io import BytesIO
+import base64
 
 def render_training_dashboard():
-    st.title("🎓 Formation Bureautique – Word, Excel & PowerPoint")
-    st.markdown(
-        """
-        **Bienvenue dans votre espace de formation gratuite à la bureautique.**  
-        Apprenez à maîtriser Microsoft **Word**, **Excel** et **PowerPoint** à votre rythme grâce à des vidéos, exercices pratiques et quiz.  
-        *(Tout le contenu est gratuit et issu de ressources publiques fiables en français.)*
-        """
-    )
+    st.title("📚 Formation Word & Excel - Débutants")
+    st.markdown("Bienvenue dans votre espace de formation interactif. Suivez les cours, faites les exercices et testez vos connaissances !")
 
-    # Sidebar menu
-    menu = st.sidebar.radio(
-        "📘 Sélectionnez un module de formation :",
-        ["Microsoft Word – Débutant", "Microsoft Excel – Débutant à Intermédiaire", "Microsoft PowerPoint – Débutant"]
-    )
+    # Tabs for LMS-like structure
+    tabs = st.tabs(["Cours", "Exercices Pratiques", "Mini-Quiz"])
 
-    # --- WORD ---
-    if menu == "Microsoft Word – Débutant":
-        st.header("📝 Formation Microsoft Word – Niveau Débutant")
-        st.markdown("Apprenez les bases du traitement de texte et la mise en forme professionnelle de vos documents.")
-
-        st.subheader("🎥 Cours vidéo complet")
-        st.video("https://www.youtube.com/watch?v=zbZ4GYt8i_0")  # vidéo de formation Word débutant
-        st.video("https://www.youtube.com/watch?v=jbQDbhg4qek")  # les bases Word en 35 min
-
-        st.subheader("📂 Exercices & supports")
+    # --- Cours Tab ---
+    with tabs[0]:
+        st.header("📝 Cours")
+        
+        # WORD Lesson
+        st.subheader("Microsoft Word - Débutant")
         st.markdown("""
-        - 📘 [Cours Word niveau 1 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonctions-de-base-word-niveau-1/)
-        - 📗 [Télécharger exercices Word débutant (WordPratique.com)](https://www.word-pratique.com/)
-        - 📄 [Formation Microsoft officielle (niveau base)](https://support.microsoft.com/fr-fr/training)
-        """)
+**Objectifs :**
+- Apprendre à créer, formater et sauvegarder un document Word
+- Maîtriser les bases de la mise en page et du texte
+- Utiliser les styles et listes
 
-        st.subheader("🧩 Quiz & Auto-évaluation")
+**Contenu du cours :**
+1. Interface Word et ruban
+2. Création et sauvegarde d’un document
+3. Mise en forme du texte : gras, italique, souligné
+4. Paragraphes, alignement et interligne
+5. Listes à puces et numérotation
+6. Insertion d’images et tableaux
+7. En-têtes, pieds de page et pagination
+""")
+        # Option to download PDF
+        word_pdf_bytes = b"%PDF-1.4\n%PDF content for Word beginner course (replace with real PDF bytes)"
+        b64_word_pdf = base64.b64encode(word_pdf_bytes).decode()
+        st.markdown(f"[📄 Télécharger le PDF du cours Word](data:application/pdf;base64,{b64_word_pdf})")
+
+        # EXCEL Lesson
+        st.subheader("Microsoft Excel - Débutant")
         st.markdown("""
-        👉 Testez vos connaissances sur [Cursa.app – Word Débutant](https://cursa.app/cours-gratuits-productivite-bureautique-online)
-        """)
+**Objectifs :**
+- Comprendre l'interface Excel et les cellules
+- Saisir et formater les données
+- Utiliser les formules de base
 
-    # --- EXCEL ---
-    elif menu == "Microsoft Excel – Débutant à Intermédiaire":
-        st.header("📊 Formation Microsoft Excel – Débutant à Intermédiaire")
-        st.markdown("Découvrez comment manipuler des données, créer des formules et des graphiques, et automatiser vos tâches Excel.")
+**Contenu du cours :**
+1. Interface et ruban Excel
+2. Cellules, lignes, colonnes
+3. Saisie et formatage de données
+4. Formules de base : SUM, AVERAGE, MIN, MAX
+5. Gestion de feuilles et de classeurs
+6. Mise en forme conditionnelle
+7. Création de graphiques simples
+""")
+        excel_pdf_bytes = b"%PDF-1.4\n%PDF content for Excel beginner course (replace with real PDF bytes)"
+        b64_excel_pdf = base64.b64encode(excel_pdf_bytes).decode()
+        st.markdown(f"[📄 Télécharger le PDF du cours Excel](data:application/pdf;base64,{b64_excel_pdf})")
 
-        st.subheader("🎥 Cours vidéo complet")
-        st.video("https://www.youtube.com/watch?v=aZ-SY0ORaoA")  # 2h30 formation Excel débutant
-        st.video("https://www.youtube.com/watch?v=qzVnA_rfjvQ")  # Formules Excel
+    # --- Exercises Tab ---
+    with tabs[1]:
+        st.header("🧩 Exercices pratiques")
 
-        st.subheader("📂 Exercices & supports")
-        st.markdown("""
-        - 📘 [Cours Excel – Excel-Pratique.com](https://excel-pratique.com/fr/formation-excel)
-        - 📗 [Formation Excel – Excel-Formation.com](https://www.excel-formation.com/post/formation-excel-d%C3%A9butant)
-        - 📄 [Télécharger fichiers d’exercices gratuits (Excel-Pratique.com)](https://excel-pratique.com/fr/formation-excel/exercices)
-        """)
+        st.subheader("Exercice Word")
+        st.markdown("Créez un document Word avec :")
+        st.markdown("- Un titre centré")
+        st.markdown("- Deux paragraphes avec mise en forme (gras, italique)")
+        st.markdown("- Une liste à puces")
+        completed_word = st.checkbox("J'ai complété l'exercice Word ✅")
 
-        st.subheader("🧩 Quiz & Auto-évaluation")
-        st.markdown("""
-        👉 Essayez les quiz gratuits sur [Cursa.app – Excel Formation](https://cursa.app/cours-gratuits-productivite-bureautique-online)
-        """)
+        st.subheader("Exercice Excel")
+        st.markdown("Dans Excel :")
+        st.markdown("- Créez un tableau avec 5 lignes et 3 colonnes")
+        st.markdown("- Ajoutez les valeurs numériques de votre choix")
+        st.markdown("- Calculez la somme et la moyenne d'une colonne")
+        completed_excel = st.checkbox("J'ai complété l'exercice Excel ✅")
 
-        st.subheader("💡 Astuce du jour")
-        st.info("💡 Utilisez **Ctrl + ;** pour insérer la date du jour automatiquement dans une cellule Excel.")
+        if completed_word and completed_excel:
+            st.success("🎉 Bravo ! Vous avez complété tous les exercices pratiques.")
 
-    # --- POWERPOINT ---
-    elif menu == "Microsoft PowerPoint – Débutant":
-        st.header("📽️ Formation Microsoft PowerPoint – Débutant")
-        st.markdown("Apprenez à concevoir des présentations efficaces et professionnelles.")
+    # --- Mini-Quiz Tab ---
+    with tabs[2]:
+        st.header("📝 Mini-Quiz")
 
-        st.subheader("🎥 Cours vidéo complet")
-        st.video("https://www.youtube.com/watch?v=HY0P1b_hJqg")  # Formation PowerPoint débutant
-        st.video("https://www.youtube.com/watch?v=6S-3Th_rpGc")  # Créer un diaporama
+        st.subheader("Question 1 - Word")
+        q1 = st.radio("Quel raccourci permet de copier un texte ?", ["Ctrl+V", "Ctrl+C", "Ctrl+X"], key="q1")
+        st.subheader("Question 2 - Excel")
+        q2 = st.radio("Quelle formule calcule la moyenne ?", ["=SUM()", "=AVERAGE()", "=MAX()"], key="q2")
 
-        st.subheader("📂 Exercices & supports")
-        st.markdown("""
-        - 📘 [Cours PowerPoint – OfficePPT.com](https://www.officepourtous.com/formation-powerpoint-debutant/)
-        - 📗 [Formation Microsoft officielle – PowerPoint](https://support.microsoft.com/fr-fr/training)
-        """)
+        st.subheader("Question 3 - Word")
+        q3 = st.radio("Comment insérer une liste à puces ?", ["Onglet Accueil > Puces", "Onglet Insertion > Image", "Onglet Fichier > Nouveau"], key="q3")
 
-        st.subheader("🧩 Quiz & Auto-évaluation")
-        st.markdown("""
-        👉 Quiz en ligne sur [Cursa.app – PowerPoint](https://cursa.app/cours-gratuits-productivite-bureautique-online)
-        """)
+        if st.button("Valider mes réponses"):
+            score = 0
+            score += 1 if q1 == "Ctrl+C" else 0
+            score += 1 if q2 == "=AVERAGE()" else 0
+            score += 1 if q3 == "Onglet Accueil > Puces" else 0
+            st.info(f"Votre score : {score}/3")
+            if score == 3:
+                st.success("🎉 Parfait ! Vous avez répondu correctement à toutes les questions.")
+            elif score == 2:
+                st.warning("👍 Presque parfait, 2 bonnes réponses !")
+            else:
+                st.error("😕 Révisez le cours et réessayez !")
 
-        st.success("🎯 Objectif : savoir créer une présentation claire, animée et cohérente pour vos réunions ou vos projets.")
-
-    # Footer
     st.markdown("---")
-    st.caption("📚 Ressources publiques – Formation bureautique gratuite (Microsoft, CoursInfo, Excel-Pratique, YouTube)")
-
+    st.markdown("© 2025 Formation Word & Excel - Débutants | Tous droits réservés")
