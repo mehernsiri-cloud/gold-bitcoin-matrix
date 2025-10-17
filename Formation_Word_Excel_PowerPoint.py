@@ -1,61 +1,49 @@
 import streamlit as st
 
-def render_training_dashboard():
-    st.title("🎓 Formation Microsoft Word — Niveau Débutant (LMS-Style)")
+def render_word_training():
+    st.title("🎓 Formation Microsoft Word — Niveau Débutant")
 
     st.markdown("""
-    Bienvenue dans votre parcours de formation **Microsoft Word** pour débutants.  
-    Suivez les modules, sous-modules et cours pour progresser étape par étape.  
-    Les liens renvoient vers des ressources fiables et publiques sur [CoursInfo.fr](https://www.coursinfo.fr/word/).
+    Suivez le parcours complet pour débutants sur Microsoft Word.  
+    Chaque module contient des sous-modules avec un cours et un exercice pratique.  
+    Les liens renvoient vers les pages correspondantes sur [CoursInfo.fr](https://www.coursinfo.fr/word/).
     """)
 
-    # --- Module 1 ---
+    # --- Module 1: Prise en main ---
     with st.expander("Module 1 : Prise en main de Word"):
-        st.markdown("Découvrir l’interface et créer ses premiers documents Word.")
-        st.markdown("**1.1 Ouvrir Word et créer un document**")
-        st.markdown("""
-        - Cours : Comment ouvrir Word sur Windows  
-        - Ressource en ligne : [CoursInfo - Ouvrir Word](https://www.coursinfo.fr/word/)  
-        - Exercice : Créez un document vierge et enregistrez-le sur votre bureau.
-        """)
+        st.markdown("**1.1 Ouvrir Word sur Windows**")
+        st.markdown("- Description : Comment lancer Word et créer un document vierge.")
+        st.markdown("- Cours en ligne : [CoursInfo - Ouvrir Word](https://www.coursinfo.fr/word/comment-ouvrir-le-logiciel-word-sur-windows)")
+        st.markdown("- Exercice : Créez et enregistrez un document sur votre bureau.\n")
+
         st.markdown("**1.2 Enregistrer et fermer un document**")
-        st.markdown("""
-        - Cours : Enregistrer, sauvegarder et fermer un document Word  
-        - Ressource en ligne : [CoursInfo - Sauvegarder Word](https://www.coursinfo.fr/word/)  
-        - Exercice : Enregistrez et fermez votre document créé.
-        """)
+        st.markdown("- Description : Sauvegarder vos documents correctement.")
+        st.markdown("- Cours en ligne : [CoursInfo - Enregistrer et fermer](https://www.coursinfo.fr/word/enregistrer-et-fermer-un-document)")
+        st.markdown("- Exercice : Enregistrez votre document et fermez-le.\n")
 
-    # --- Module 2 ---
+    # --- Module 2: Mise en forme et styles ---
     with st.expander("Module 2 : Mise en forme et styles"):
-        st.markdown("Apprendre à formater le texte, utiliser les styles, listes et tableaux.")
-        st.markdown("**2.1 Formater le texte et les paragraphes**")
-        st.markdown("""
-        - Cours : Styles, polices et alignements  
-        - Ressource en ligne : [CoursInfo - Formater le texte](https://www.coursinfo.fr/word/)  
-        - Exercice : Formatez un texte avec différentes polices et couleurs.
-        """)
-        st.markdown("**2.2 Listes et tableaux**")
-        st.markdown("""
-        - Cours : Créer des listes à puces, numérotées et insérer un tableau  
-        - Ressource en ligne : [CoursInfo - Listes et tableaux](https://www.coursinfo.fr/word/)  
-        - Exercice : Créez une liste et un tableau dans votre document.
-        """)
+        st.markdown("**2.1 Appliquer des styles et formats**")
+        st.markdown("- Description : Police, taille, couleurs, alignement et styles.")
+        st.markdown("- Cours en ligne : [CoursInfo - Styles et formats](https://www.coursinfo.fr/word/appliquer-des-styles-et-formats)")
+        st.markdown("- Exercice : Formatez un texte avec différentes polices et styles.\n")
 
-    # --- Module 3 ---
-    with st.expander("Module 3 : En-têtes, pieds de page et pagination"):
-        st.markdown("Ajouter en-têtes, pieds de page et numérotation pour un document professionnel.")
-        st.markdown("**3.1 En-têtes et pieds de page**")
-        st.markdown("""
-        - Cours : Ajouter en-têtes et pieds de page  
-        - Ressource en ligne : [CoursInfo - En-têtes & pieds de page](https://www.coursinfo.fr/word/)  
-        - Exercice : Ajoutez un en-tête et un pied de page à votre document.
-        """)
+        st.markdown("**2.2 Créer des listes et tableaux**")
+        st.markdown("- Description : Listes à puces, numérotées et insertion de tableaux.")
+        st.markdown("- Cours en ligne : [CoursInfo - Listes et tableaux](https://www.coursinfo.fr/word/creer-des-listes-et-tableaux)")
+        st.markdown("- Exercice : Créez une liste et un tableau dans votre document.\n")
+
+    # --- Module 3: En-têtes et pagination ---
+    with st.expander("Module 3 : En-têtes, pieds de page et numérotation"):
+        st.markdown("**3.1 Ajouter en-têtes et pieds de page**")
+        st.markdown("- Description : Personnaliser vos documents avec en-têtes/pieds de page.")
+        st.markdown("- Cours en ligne : [CoursInfo - En-têtes et pieds de page](https://www.coursinfo.fr/word/ajouter-en-tetes-et-pieds-de-page)")
+        st.markdown("- Exercice : Ajoutez un en-tête et pied de page à votre document.\n")
+
         st.markdown("**3.2 Numérotation des pages**")
-        st.markdown("""
-        - Cours : Numérotation des pages  
-        - Ressource en ligne : [CoursInfo - Numérotation](https://www.coursinfo.fr/word/)  
-        - Exercice : Numérotez toutes les pages de votre document.
-        """)
+        st.markdown("- Description : Numéroter vos pages automatiquement.")
+        st.markdown("- Cours en ligne : [CoursInfo - Numérotation des pages](https://www.coursinfo.fr/word/numerotation-des-pages)")
+        st.markdown("- Exercice : Numérotez toutes les pages de votre document.\n")
 
     st.markdown("---")
-    st.caption("© 2025 Formation IA & Bureautique — LMS-style Word parcours pour débutants. Les liens renvoient vers des ressources publiques fiables.")
+    st.caption("© 2025 Formation IA & Bureautique — Parcours Word débutant avec ressources publiques.")
