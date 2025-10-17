@@ -44,11 +44,8 @@ except Exception:
     def real_estate_dashboard():
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
 
-try:
     from Formation_Word_Excel_PowerPoint import render_training_dashboard
-except Exception:
-    def render_training_dashboard():
-        st.warning("render_training_dashboard not found — render_training_dashboard unavailable.")
+
 # -------------------------------------------------------------------
 # NEW: candlestick module import (all candlestick-specific logic moved there)
 # -------------------------------------------------------------------
@@ -696,10 +693,7 @@ elif menu == "Real Estate Bot":
 # Training MENU
 # -------------------------------------------------------------------
 elif menu == "Formation":
-   try:
        render_training_dashboard()
-except Exception as e:
-        st.error(f"Error running render_training_dashboard: {e}")
 
 # -------------------------------------------------------------------
 # FOOTER: diagnostics and downloads
