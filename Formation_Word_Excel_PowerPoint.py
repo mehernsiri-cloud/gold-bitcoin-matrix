@@ -1,7 +1,7 @@
 import streamlit as st
 
 def render_training_dashboard():
-    st.title("🎓 Formation Bureautique – Word, Excel & PowerPoint")
+    st.title("🎓 Formation Bureautique – Word, Excel & PowerPoint _______ By KHAWLA NSIRI")
     st.markdown(
         """
         **Bienvenue dans votre espace de formation gratuite à la bureautique.**  
@@ -22,12 +22,13 @@ def render_training_dashboard():
         st.markdown("Apprenez les bases du traitement de texte et la mise en forme professionnelle de vos documents.")
 
         st.subheader("🎥 Cours vidéo complet")
-        st.video("https://www.youtube.com/watch?v=zbZ4GYt8i_0")  # vidéo de formation Word débutant
-        st.video("https://www.youtube.com/watch?v=jbQDbhg4qek")  # les bases Word en 35 min
-
+        st.video("https://www.youtube.com/watch?v=SfwJV9nCseU&list=PL8sQnj6qF1Lvo8lXJhtY_RjedsNnARPNY")  # vidéo de formation Word débutant
+        
         st.subheader("📂 Exercices & supports")
         st.markdown("""
         - 📘 [Cours Word niveau 1 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonctions-de-base-word-niveau-1/)
+        - 📘 [Cours Word niveau 2 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonction-de-base-word-niveau-2/)
+        - 📘 [Cours Word niveau 3 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonction-de-base-word-niveau-3/)
         - 📗 [Télécharger exercices Word débutant (WordPratique.com)](https://www.word-pratique.com/)
         - 📄 [Formation Microsoft officielle (niveau base)](https://support.microsoft.com/fr-fr/training)
         """)
