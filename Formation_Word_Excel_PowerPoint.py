@@ -1,82 +1,87 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import json
+import os
 
-# Example JSON-like offline Word content
-WORD_JSON = {
-    "Module 1 : Découverte de Word": {
-        "1.1 - Ouvrir et naviguer dans Word": {
-            "text": """
-Apprendre à ouvrir Word et naviguer dans les menus principaux.
-- Accéder au logiciel depuis le bureau ou la barre des tâches
-- Comprendre les onglets et le ruban
-            """,
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/ouvrir-word"
-        },
-        "1.2 - Interface et rubans": {
-            "text": """
-Identifier les rubans, onglets, et barres d'outils.
-- Accéder aux fonctionnalités rapidement
-- Utiliser les icônes pour mise en forme
-            """,
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/interface-rubans"
-        },
-        "1.3 - Créer un document simple": {
-            "text": """
-Créer et enregistrer un document simple.
-- Rédiger un texte
-- Enregistrer et rouvrir un fichier
-            """,
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/creer-document"
-        }
-    },
-    "Module 2 : Mise en forme": {
-        "2.1 - Polices et paragraphes": {
-            "text": "Modifier les polices, tailles, et alignement des paragraphes.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/polices-paragraphes"
-        },
-        "2.2 - Styles et thèmes": {
-            "text": "Appliquer des styles prédéfinis et thèmes de document.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/styles-themes"
-        },
-        "2.3 - Listes et tableaux": {
-            "text": "Créer des listes à puces/numérotées et des tableaux simples.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/listes-tableaux"
-        }
-    },
-    "Module 3 : Documents avancés": {
-        "3.1 - En-têtes et pieds de page": {
-            "text": "Ajouter et personnaliser les en-têtes et pieds de page.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/en-tetes-pieds"
-        },
-        "3.2 - Table des matières automatique": {
-            "text": "Créer et mettre à jour automatiquement une table des matières.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/table-matieres"
-        },
-        "3.3 - Insertion d’images et graphiques": {
-            "text": "Insérer et formater des images et graphiques dans Word.",
-            "images": [],
-            "url": "https://www.coursinfo.fr/word/images-graphiques"
-        }
-    }
-}
+# --- Constants ---
+WORD_BASE_URL = "https://www.coursinfo.fr/word/"
+WORD_JSON_FILE = "word_courses.json"
+IMAGES_DIR = "word_images"
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
+# --- Scraper ---
+def get_page_content(url):
+    r = requests.get(url)
+    r.raise_for_status()
+    return r.text
+
+def scrape_word_courses(base_url=WORD_BASE_URL):
+    """Scrapes Word modules/submodules from coursinfo.fr and saves locally as JSON"""
+    courses = {}
+    html = get_page_content(base_url)
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Menu links (adjust selector if site structure changes)
+    menu_items = soup.select("nav a")
+    for item in menu_items:
+        module_name = item.get_text(strip=True)
+        module_url = item['href']
+        if not module_url.startswith("http"):
+            module_url = f"https://www.coursinfo.fr{module_url}"
+
+        # Scrape submodules
+        module_html = get_page_content(module_url)
+        module_soup = BeautifulSoup(module_html, "html.parser")
+        submodules = {}
+        headers = module_soup.find_all(["h2", "h3"])
+        for h in headers:
+            sub_name = h.get_text(strip=True)
+            content_text = ""
+            images = []
+            for sib in h.find_next_siblings():
+                if sib.name in ["h2", "h3"]:
+                    break
+                if sib.name == "p":
+                    content_text += sib.get_text(strip=True) + "\n"
+                if sib.name == "img":
+                    img_url = sib['src']
+                    if not img_url.startswith("http"):
+                        img_url = f"https://www.coursinfo.fr{img_url}"
+                    images.append(img_url)
+            if content_text.strip() or images:
+                submodules[sub_name] = {
+                    "text": content_text.strip(),
+                    "images": images,
+                    "url": module_url
+                }
+        if submodules:
+            courses[module_name] = submodules
+
+    # Save JSON
+    with open(WORD_JSON_FILE, "w", encoding="utf-8") as f:
+        json.dump(courses, f, ensure_ascii=False, indent=2)
+
+# --- Load JSON ---
+def load_word_json():
+    if not os.path.exists(WORD_JSON_FILE):
+        st.info("⚡ Scraping Word courses from coursinfo.fr, please wait...")
+        scrape_word_courses()
+    with open(WORD_JSON_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+WORD_JSON = load_word_json()
+
+# --- Streamlit LMS ---
 def render_training_dashboard():
     st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
 
     st.markdown("""
     Bienvenue dans votre espace de formation continue !  
     Ici, vous trouverez un parcours structuré pour apprendre **Microsoft Word, Excel et PowerPoint**.  
-    Les ressources sont gratuites, accessibles hors ligne, et organisées par modules et sous-modules.
+    Les ressources sont gratuites et organisées par modules et sous-modules.
     """)
 
-    # --- Sidebar menu for navigation ---
     section = st.sidebar.radio(
         "📘 Choisissez un module de formation :",
         ["Introduction", "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Tests & Exercices"]
@@ -95,21 +100,19 @@ def render_training_dashboard():
     # --- Microsoft Word ---
     elif section == "Microsoft Word":
         st.header("📝 Parcours Word — Débutant")
-
         for module_name, submodules in WORD_JSON.items():
-            with st.expander(module_name):
-                submodule_names = list(submodules.keys())
-                selected_sub = st.selectbox(f"Sélectionnez un cours dans {module_name}", submodule_names, key=module_name)
-                content = submodules[selected_sub]
-
-                # Display lesson content
-                st.markdown(content["text"])
-                for img_url in content["images"]:
-                    st.image(img_url, use_column_width=True)
-                st.markdown(f"[Voir sur coursinfo.fr]({content['url']})")
+            module_expander = st.expander(module_name)
+            with module_expander:
+                for sub_name, content in submodules.items():
+                    st.subheader(sub_name)
+                    st.markdown(content["text"])
+                    for img_url in content["images"]:
+                        st.image(img_url, use_column_width=True)
+                    st.markdown(f"[Voir sur coursinfo.fr]({content['url']})")
+                    st.markdown("---")
 
         # Exercises
-        st.subheader("📚 Exercices pratiques Word")
+        st.subheader("📚 Exercices pratiques")
         st.markdown("""
         - Rédigez un courrier professionnel avec en-tête et pied de page  
         - Créez une page de garde et appliquez un style uniforme  
@@ -127,12 +130,12 @@ def render_training_dashboard():
     # --- Microsoft Excel ---
     elif section == "Microsoft Excel":
         st.header("📊 Parcours Excel — Débutant")
-        st.info("💡 Contenu à compléter hors ligne comme pour Word, avec modules et sous-modules.")
+        st.markdown("Contenu Excel sera ajouté ici (modules, exercices et quiz).")
 
     # --- Microsoft PowerPoint ---
     elif section == "Microsoft PowerPoint":
         st.header("📈 Parcours PowerPoint — Débutant")
-        st.info("💡 Contenu à compléter hors ligne comme pour Word, avec modules et sous-modules.")
+        st.markdown("Contenu PowerPoint sera ajouté ici (modules, exercices et quiz).")
 
     # --- Tests & Exercices ---
     elif section == "Tests & Exercices":
