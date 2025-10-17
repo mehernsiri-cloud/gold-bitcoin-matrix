@@ -9,14 +9,6 @@ st.set_page_config(
 
 from Formation_Word_Excel_PowerPoint import render_training_dashboard
 
-# --------------------------
-# 🎓 App Configuration
-# --------------------------
-st.set_page_config(
-    page_title="Formation Word / Excel / PowerPoint",
-    page_icon="🎓",
-    layout="wide",
-)
 
 # --------------------------
 # 🎯 Header / Branding
