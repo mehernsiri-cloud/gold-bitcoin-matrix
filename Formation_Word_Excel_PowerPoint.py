@@ -21,11 +21,6 @@ def load_word_courses():
         return []
 
 def render_training_dashboard():
-    st.set_page_config(
-        page_title="Formation Word / Excel / PowerPoint",
-        page_icon="🎓",
-        layout="wide"
-    )
 
     st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
     st.markdown("""
