@@ -1,7 +1,7 @@
 import streamlit as st
 
 def render_training_dashboard():
-    st.title("🎓 Formation Bureautique – Word, Excel & PowerPoint _______ By KHAWLA NSIRI")
+    st.title("🎓 Formation Bureautique – Word, Excel & PowerPoint _ By KHAWLA NSIRI")
     st.markdown(
         """
         **Bienvenue dans votre espace de formation gratuite à la bureautique.**  
@@ -29,8 +29,8 @@ def render_training_dashboard():
         - 📘 [Cours Word niveau 1 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonctions-de-base-word-niveau-1/)
         - 📘 [Cours Word niveau 2 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonction-de-base-word-niveau-2/)
         - 📘 [Cours Word niveau 3 – CoursInfo.fr](https://www.coursinfo.fr/word/les-fonction-de-base-word-niveau-3/)
-        - 📗 [Télécharger exercices Word débutant (WordPratique.com)](https://www.word-pratique.com/)
-        - 📄 [Formation Microsoft officielle (niveau base)](https://support.microsoft.com/fr-fr/training)
+        - 📘 [Guide word : ](https://www.cours-bureautique.fr/wp-content/uploads/2020/10/Guide-word-2013-intermediaire.pdf)
+        - 📗 [Télécharger exercices Word débutant ](https://www.clic-formation.net/exercices-niveau-1.html/)
         """)
 
         st.subheader("🧩 Quiz & Auto-évaluation")
