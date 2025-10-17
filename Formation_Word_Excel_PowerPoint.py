@@ -1,130 +1,76 @@
 import streamlit as st
 
 def render_training_dashboard():
-    st.title("🎓 Formation Word, Excel & PowerPoint — Débutants")
+    st.title("🎓 Formation Microsoft Word — Niveau Débutant (LMS-Style)")
 
     st.markdown("""
-    Bienvenue dans votre espace de formation continue !  
-    Ici, vous trouverez des **cours gratuits, structurés et progressifs** pour apprendre à utiliser **Microsoft Word**, **Excel** et **PowerPoint**.  
-    Les ressources sont issues de plateformes publiques et toujours accessibles en ligne.
+    Bienvenue dans votre parcours de formation **Microsoft Word** pour débutants.  
+    Suivez les modules, sous-modules et cours pour progresser étape par étape.  
+    Les liens renvoient vers des ressources fiables et publiques sur [CoursInfo.fr](https://www.coursinfo.fr/word/).
     """)
 
-    # --- Menu latéral de navigation ---
-    section = st.sidebar.radio(
-        "📘 Choisissez un module de formation :",
-        ["Introduction", "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Tests & Exercices"]
-    )
+    # --- Learning Path Modules ---
+    st.header("📝 Parcours de formation Word - Débutants")
 
-    # --- Introduction ---
-    if section == "Introduction":
-        st.subheader("🧭 Objectifs de la formation")
-        st.markdown("""
-        - Acquérir les bases de Word, Excel et PowerPoint.  
-        - Apprendre à créer, formater et présenter des documents professionnels.  
-        - Maîtriser les outils de bureautique pour le travail en entreprise.  
-        """)
-        st.info("💡 Conseil : Avancez module par module, à votre rythme, et testez vos connaissances à la fin de chaque partie.")
-
-    # --- Microsoft Word ---
-    elif section == "Microsoft Word":
-        st.header("📝 Formation Microsoft Word — Niveau Débutant")
-
-        with st.expander("📺 Cours Vidéos (YouTube)"):
-            st.video("https://www.youtube.com/watch?v=3bU9W1E5YqY")  # base Word
-            st.video("https://www.youtube.com/watch?v=GdJZBjaCxMw")  # mise en forme
-
-        with st.expander("📚 Exercices Pratiques"):
+    # Module 1
+    with st.expander("Module 1 : Prise en main de Word"):
+        st.markdown("Découvrir l’interface et créer ses premiers documents Word.")
+        
+        # Submodule 1.1
+        with st.expander("1.1 Ouvrir Word et créer un document"):
             st.markdown("""
-            - Rédiger un courrier professionnel  
-            - Créer une page de garde  
-            - Utiliser les styles et la mise en page  
-            - Insérer une table des matières automatique  
+            - **Cours:** Comment ouvrir Word sur Windows  
+            - **Ressource en ligne:** [CoursInfo - Ouvrir Word](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Créez un document vierge, enregistrez-le sur votre bureau.
             """)
-            st.checkbox("Exercice 1 terminé ?")
-            st.checkbox("Exercice 2 terminé ?")
-            st.checkbox("Exercice 3 terminé ?")
-            st.checkbox("Exercice 4 terminé ?")
-
-        with st.expander("🧠 Mini Quiz"):
+        
+        # Submodule 1.2
+        with st.expander("1.2 Enregistrer et fermer un document"):
             st.markdown("""
-            1. Comment insérer une table des matières automatique dans Word ?  
-            2. Quels sont les raccourcis pour mettre en gras, italique et souligné ?  
-            3. Comment créer un en-tête et un pied de page ?  
+            - **Cours:** Enregistrer, sauvegarder et fermer un document Word  
+            - **Ressource en ligne:** [CoursInfo - Sauvegarder Word](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Enregistrez et fermez votre document créé.
             """)
-            st.radio("Question 1", ["Option A", "Option B", "Option C"])
-            st.radio("Question 2", ["Option A", "Option B", "Option C"])
-            st.radio("Question 3", ["Option A", "Option B", "Option C"])
 
-    # --- Microsoft Excel ---
-    elif section == "Microsoft Excel":
-        st.header("📊 Formation Microsoft Excel — Niveau Débutant")
-
-        with st.expander("📺 Cours Vidéos (YouTube)"):
-            st.video("https://www.youtube.com/watch?v=9JpNY-XAseg")  # base Excel
-            st.video("https://www.youtube.com/watch?v=QbmM1U4kRrw")  # formules simples
-
-        with st.expander("📚 Exercices Pratiques"):
+    # Module 2
+    with st.expander("Module 2 : Mise en forme et styles"):
+        st.markdown("Apprendre à formater le texte, utiliser les styles, listes et tableaux.")
+        
+        # Submodule 2.1
+        with st.expander("2.1 Formater le texte et les paragraphes"):
             st.markdown("""
-            - Créer un tableau de budget personnel  
-            - Appliquer des formules de base (SOMME, MOYENNE, MAX, MIN)  
-            - Utiliser les filtres et tris  
-            - Créer un graphique simple  
+            - **Cours:** Styles, polices et alignements  
+            - **Ressource en ligne:** [CoursInfo - Formater le texte](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Formatez un texte avec différentes polices et couleurs.
             """)
-            st.checkbox("Exercice 1 terminé ?")
-            st.checkbox("Exercice 2 terminé ?")
-            st.checkbox("Exercice 3 terminé ?")
-            st.checkbox("Exercice 4 terminé ?")
-
-        with st.expander("🧠 Mini Quiz"):
+        
+        # Submodule 2.2
+        with st.expander("2.2 Listes et tableaux"):
             st.markdown("""
-            1. Comment créer un graphique à partir d'un tableau ?  
-            2. Quels sont les raccourcis pour copier, coller et remplir automatiquement ?  
-            3. Comment trier et filtrer des données ?  
+            - **Cours:** Créer des listes à puces, numérotées et insérer un tableau  
+            - **Ressource en ligne:** [CoursInfo - Listes et tableaux](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Créez une liste et un tableau dans votre document.
             """)
-            st.radio("Question 1", ["Option A", "Option B", "Option C"])
-            st.radio("Question 2", ["Option A", "Option B", "Option C"])
-            st.radio("Question 3", ["Option A", "Option B", "Option C"])
 
-    # --- Microsoft PowerPoint ---
-    elif section == "Microsoft PowerPoint":
-        st.header("📈 Formation Microsoft PowerPoint — Niveau Débutant")
-
-        with st.expander("📺 Cours Vidéos (YouTube)"):
-            st.video("https://www.youtube.com/watch?v=GdpXHgycvU0")  # base PowerPoint
-            st.video("https://www.youtube.com/watch?v=RGvhDyc8jA4")  # animations
-
-        with st.expander("📚 Exercices Pratiques"):
+    # Module 3
+    with st.expander("Module 3 : En-têtes, pieds de page et pagination"):
+        st.markdown("Ajouter en-têtes, pieds de page et numérotation pour un document professionnel.")
+        
+        # Submodule 3.1
+        with st.expander("3.1 En-têtes et pieds de page"):
             st.markdown("""
-            - Créer une présentation de 5 diapositives  
-            - Appliquer un thème et des transitions  
-            - Insérer des images et graphiques  
-            - Animer des objets et du texte  
+            - **Cours:** Ajouter en-têtes et pieds de page  
+            - **Ressource en ligne:** [CoursInfo - En-têtes & pieds de page](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Ajoutez un en-tête et un pied de page à votre document.
             """)
-            st.checkbox("Exercice 1 terminé ?")
-            st.checkbox("Exercice 2 terminé ?")
-            st.checkbox("Exercice 3 terminé ?")
-            st.checkbox("Exercice 4 terminé ?")
-
-        with st.expander("🧠 Mini Quiz"):
+        
+        # Submodule 3.2
+        with st.expander("3.2 Numérotation des pages"):
             st.markdown("""
-            1. Comment ajouter une transition entre deux diapositives ?  
-            2. Comment insérer un graphique dans PowerPoint ?  
-            3. Comment animer un texte ou un objet ?  
+            - **Cours:** Numérotation des pages  
+            - **Ressource en ligne:** [CoursInfo - Numérotation](https://www.coursinfo.fr/word/)  
+            - **Exercice:** Numérotez toutes les pages de votre document.
             """)
-            st.radio("Question 1", ["Option A", "Option B", "Option C"])
-            st.radio("Question 2", ["Option A", "Option B", "Option C"])
-            st.radio("Question 3", ["Option A", "Option B", "Option C"])
-
-    # --- Tests & Exercices ---
-    elif section == "Tests & Exercices":
-        st.header("🧩 Tests & Exercices Finaux")
-        st.markdown("""
-        Testez vos compétences à travers ces mini-projets :
-        - **Word :** Créez une lettre professionnelle avec en-tête et pied de page.  
-        - **Excel :** Créez un tableau de suivi de dépenses avec un graphique.  
-        - **PowerPoint :** Présentez un sujet de votre choix en 5 slides claires.  
-        """)
-        st.success("✅ Astuce : Enregistrez vos fichiers et comparez-les avec les modèles disponibles en ligne.")
 
     st.markdown("---")
-    st.caption("© 2025 Formation IA & Bureautique — Ressources gratuites pour l'apprentissage continu.")
+    st.caption("© 2025 Formation IA & Bureautique — LMS-style Word parcours pour débutants. Les liens renvoient vers des ressources publiques fiables.")
