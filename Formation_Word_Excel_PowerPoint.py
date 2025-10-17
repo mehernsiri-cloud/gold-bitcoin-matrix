@@ -1,56 +1,99 @@
 import streamlit as st
 
 def render_training_dashboard():
-    st.title("Formation Word, Excel & PowerPoint")
-    st.write("**Bienvenue dans l’espace de formation bureautique (niveau débutant)** 💻")
+    st.title("🎓 Formation Word, Excel & PowerPoint — Débutants")
 
     st.markdown("""
-    ### 📘 Contenu disponible :
-    - **Cours Microsoft Word** (vidéos, exercices, tests)
-    - **Cours Microsoft Excel** (vidéos, exercices, tests)
-    - **Cours Microsoft PowerPoint** (vidéos, exercices, tests)
+    Bienvenue dans votre espace de formation continue !  
+    Ici, vous trouverez des **cours gratuits, structurés et progressifs** pour apprendre à utiliser **Microsoft Word**, **Excel** et **PowerPoint**.  
+    Les ressources sont issues de plateformes publiques et toujours accessibles en ligne.
     """)
 
-    choice = st.sidebar.selectbox(
-        "Choisissez un module", 
-        ["Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint"]
+    # --- Menu latéral de navigation ---
+    section = st.sidebar.radio(
+        "📘 Choisissez un module de formation :",
+        ["Introduction", "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Tests & Exercices"]
     )
 
-    if choice == "Microsoft Word":
-        st.header("Formation Microsoft Word - Débutant")
-        st.video("https://www.youtube.com/watch?v=9Q3BO-44sVs")  # example video
+    # --- Introduction ---
+    if section == "Introduction":
+        st.subheader("🧭 Objectifs de la formation")
         st.markdown("""
-        #### Exercices :
-        - Créer un document Word avec mise en forme (titres, listes, styles)
-        - Insérer un tableau et une image
-        """)
-        st.markdown("""
-        #### Test :
-        - QCM : notions de base, mise en page, insertion
+        - Acquérir les bases de Word, Excel et PowerPoint.  
+        - Apprendre à créer, formater et présenter des documents professionnels.  
+        - Maîtriser les outils de bureautique pour le travail en entreprise.  
         """)
 
-    elif choice == "Microsoft Excel":
-        st.header("Formation Microsoft Excel - Débutant")
-        st.video("https://www.youtube.com/watch?v=0W4F8b1mA9Y")
+        st.info("💡 Conseil : Avancez module par module, à votre rythme, et testez vos connaissances à la fin de chaque partie.")
+
+    # --- Microsoft Word ---
+    elif section == "Microsoft Word":
+        st.header("📝 Formation Microsoft Word — Niveau Débutant")
+
+        st.subheader("📺 Cours Vidéos (YouTube)")
+        st.video("https://www.youtube.com/watch?v=3bU9W1E5YqY")  # base Word
+        st.video("https://www.youtube.com/watch?v=GdJZBjaCxMw")  # mise en forme
+
+        st.subheader("📚 Exercices Pratiques")
         st.markdown("""
-        #### Exercices :
-        - Créer un tableau de suivi de dépenses
-        - Utiliser les formules SOMME, MOYENNE, MAX
-        """)
-        st.markdown("""
-        #### Test :
-        - QCM : formules, tri, filtres, graphiques simples
+        - Rédiger un courrier professionnel  
+        - Créer une page de garde  
+        - Utiliser les styles et la mise en page  
+        - Insérer une table des matières automatique  
         """)
 
-    else:
-        st.header("Formation Microsoft PowerPoint - Débutant")
-        st.video("https://www.youtube.com/watch?v=JhY7CLtN1sA")
+        st.subheader("🧠 Quiz en ligne")
+        st.markdown("[Quiz Microsoft Word – Débutant](https://forms.office.com/)")
+
+    # --- Microsoft Excel ---
+    elif section == "Microsoft Excel":
+        st.header("📊 Formation Microsoft Excel — Niveau Débutant")
+
+        st.subheader("📺 Cours Vidéos (YouTube)")
+        st.video("https://www.youtube.com/watch?v=9JpNY-XAseg")  # base Excel
+        st.video("https://www.youtube.com/watch?v=QbmM1U4kRrw")  # formules simples
+
+        st.subheader("📚 Exercices Pratiques")
         st.markdown("""
-        #### Exercices :
-        - Créer une présentation de 5 diapositives
-        - Ajouter des transitions et animations
+        - Créer un tableau de budget personnel  
+        - Appliquer des formules de base (SOMME, MOYENNE, MAX, MIN)  
+        - Utiliser les filtres et tris  
+        - Créer un graphique simple  
         """)
+
+        st.subheader("🧠 Quiz en ligne")
+        st.markdown("[Quiz Microsoft Excel – Débutant](https://forms.office.com/)")
+
+    # --- Microsoft PowerPoint ---
+    elif section == "Microsoft PowerPoint":
+        st.header("📈 Formation Microsoft PowerPoint — Niveau Débutant")
+
+        st.subheader("📺 Cours Vidéos (YouTube)")
+        st.video("https://www.youtube.com/watch?v=GdpXHgycvU0")  # base PowerPoint
+        st.video("https://www.youtube.com/watch?v=RGvhDyc8jA4")  # animations
+
+        st.subheader("📚 Exercices Pratiques")
         st.markdown("""
-        #### Test :
-        - QCM : diapos, transitions, thème, insertion d’images
+        - Créer une présentation de 5 diapositives  
+        - Appliquer un thème et des transitions  
+        - Insérer des images et graphiques  
+        - Animer des objets et du texte  
         """)
+
+        st.subheader("🧠 Quiz en ligne")
+        st.markdown("[Quiz PowerPoint – Débutant](https://forms.office.com/)")
+
+    # --- Tests & Exercices ---
+    elif section == "Tests & Exercices":
+        st.header("🧩 Tests & Exercices Finaux")
+        st.markdown("""
+        Testez vos compétences à travers ces mini-projets :
+        - **Word :** Créez une lettre professionnelle avec en-tête et pied de page.  
+        - **Excel :** Créez un tableau de suivi de dépenses avec un graphique.  
+        - **PowerPoint :** Présentez un sujet de votre choix en 5 slides claires.  
+        """)
+
+        st.success("✅ Astuce : Enregistrez vos fichiers et comparez-les avec les modèles disponibles en ligne.")
+
+    st.markdown("---")
+    st.caption("© 2025 Formation IA & Bureautique — Ressources gratuites pour l'apprentissage continu.")
