@@ -1,89 +1,82 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import json
 
-# --- Scraping function for Word content ---
-def scrape_word_lessons():
-    base_url = "https://www.coursinfo.fr/word/"
-    lessons_pages = [
-        "ouvrir-word",
-        "interface-rubans",
-        "creer-document",
-        "polices-paragraphes",
-        "styles-themes",
-        "listes-tableaux",
-        "en-tetes-pieds",
-        "table-matieres",
-        "images-graphiques"
-    ]
-
-    modules = {
-        "Module 1 : Découverte de Word": ["ouvrir-word", "interface-rubans", "creer-document"],
-        "Module 2 : Mise en forme": ["polices-paragraphes", "styles-themes", "listes-tableaux"],
-        "Module 3 : Documents avancés": ["en-tetes-pieds", "table-matieres", "images-graphiques"]
+# Example JSON-like offline Word content
+WORD_JSON = {
+    "Module 1 : Découverte de Word": {
+        "1.1 - Ouvrir et naviguer dans Word": {
+            "text": """
+Apprendre à ouvrir Word et naviguer dans les menus principaux.
+- Accéder au logiciel depuis le bureau ou la barre des tâches
+- Comprendre les onglets et le ruban
+            """,
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/ouvrir-word"
+        },
+        "1.2 - Interface et rubans": {
+            "text": """
+Identifier les rubans, onglets, et barres d'outils.
+- Accéder aux fonctionnalités rapidement
+- Utiliser les icônes pour mise en forme
+            """,
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/interface-rubans"
+        },
+        "1.3 - Créer un document simple": {
+            "text": """
+Créer et enregistrer un document simple.
+- Rédiger un texte
+- Enregistrer et rouvrir un fichier
+            """,
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/creer-document"
+        }
+    },
+    "Module 2 : Mise en forme": {
+        "2.1 - Polices et paragraphes": {
+            "text": "Modifier les polices, tailles, et alignement des paragraphes.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/polices-paragraphes"
+        },
+        "2.2 - Styles et thèmes": {
+            "text": "Appliquer des styles prédéfinis et thèmes de document.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/styles-themes"
+        },
+        "2.3 - Listes et tableaux": {
+            "text": "Créer des listes à puces/numérotées et des tableaux simples.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/listes-tableaux"
+        }
+    },
+    "Module 3 : Documents avancés": {
+        "3.1 - En-têtes et pieds de page": {
+            "text": "Ajouter et personnaliser les en-têtes et pieds de page.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/en-tetes-pieds"
+        },
+        "3.2 - Table des matières automatique": {
+            "text": "Créer et mettre à jour automatiquement une table des matières.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/table-matieres"
+        },
+        "3.3 - Insertion d’images et graphiques": {
+            "text": "Insérer et formater des images et graphiques dans Word.",
+            "images": [],
+            "url": "https://www.coursinfo.fr/word/images-graphiques"
+        }
     }
+}
 
-    word_data = {}
-
-    for module_name, pages in modules.items():
-        word_data[module_name] = {}
-        for page_slug in pages:
-            url = f"{base_url}{page_slug}"
-            try:
-                response = requests.get(url)
-                if response.status_code != 200:
-                    word_data[module_name][page_slug] = {
-                        "title": page_slug,
-                        "text": "Contenu indisponible",
-                        "images": []
-                    }
-                    continue
-
-                soup = BeautifulSoup(response.text, "html.parser")
-                content_div = soup.find("div", class_="entry-content")
-                text_content = content_div.get_text(separator="\n", strip=True) if content_div else "Contenu indisponible"
-
-                images = []
-                for img_tag in content_div.find_all("img") if content_div else []:
-                    img_url = img_tag.get("src")
-                    if img_url:
-                        images.append(img_url)
-
-                word_data[module_name][page_slug] = {
-                    "title": page_slug.replace("-", " ").capitalize(),
-                    "text": text_content,
-                    "images": images,
-                    "url": url
-                }
-
-            except Exception as e:
-                word_data[module_name][page_slug] = {
-                    "title": page_slug,
-                    "text": f"Erreur lors du chargement: {e}",
-                    "images": [],
-                    "url": url
-                }
-
-    return word_data
-
-# --- Generate JSON once ---
-try:
-    WORD_JSON = scrape_word_lessons()
-except:
-    WORD_JSON = {}
-
-# --- Render LMS Dashboard ---
 def render_training_dashboard():
     st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
 
     st.markdown("""
     Bienvenue dans votre espace de formation continue !  
     Ici, vous trouverez un parcours structuré pour apprendre **Microsoft Word, Excel et PowerPoint**.  
-    Les ressources sont gratuites, accessibles en ligne, et organisées par modules et sous-modules.
+    Les ressources sont gratuites, accessibles hors ligne, et organisées par modules et sous-modules.
     """)
 
-    # Sidebar menu
+    # --- Sidebar menu for navigation ---
     section = st.sidebar.radio(
         "📘 Choisissez un module de formation :",
         ["Introduction", "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Tests & Exercices"]
@@ -102,29 +95,28 @@ def render_training_dashboard():
     # --- Microsoft Word ---
     elif section == "Microsoft Word":
         st.header("📝 Parcours Word — Débutant")
-        if not WORD_JSON:
-            st.error("⚠️ Une erreur est survenue lors du chargement de la formation.")
-            return
 
         for module_name, submodules in WORD_JSON.items():
             with st.expander(module_name):
-                for sub_slug, content in submodules.items():
-                    course_exp = st.expander(content["title"])
-                    with course_exp:
-                        st.markdown(content["text"])
-                        for img_url in content["images"]:
-                            st.image(img_url, use_column_width=True)
-                        st.markdown(f"[Voir sur coursinfo.fr]({content['url']})")
+                submodule_names = list(submodules.keys())
+                selected_sub = st.selectbox(f"Sélectionnez un cours dans {module_name}", submodule_names, key=module_name)
+                content = submodules[selected_sub]
+
+                # Display lesson content
+                st.markdown(content["text"])
+                for img_url in content["images"]:
+                    st.image(img_url, use_column_width=True)
+                st.markdown(f"[Voir sur coursinfo.fr]({content['url']})")
 
         # Exercises
-        st.subheader("📚 Exercices pratiques")
+        st.subheader("📚 Exercices pratiques Word")
         st.markdown("""
         - Rédigez un courrier professionnel avec en-tête et pied de page  
         - Créez une page de garde et appliquez un style uniforme  
         - Insérez une table des matières automatique
         """)
 
-        # Mini-quiz
+        # Mini quiz
         st.subheader("🧠 Mini-quiz Word")
         st.markdown("**Question 1:** Quelle option permet de créer un en-tête dans Word ?")
         st.checkbox("Insertion > En-tête", key="q1a")
@@ -135,12 +127,12 @@ def render_training_dashboard():
     # --- Microsoft Excel ---
     elif section == "Microsoft Excel":
         st.header("📊 Parcours Excel — Débutant")
-        st.info("Contenu Excel à venir...")
+        st.info("💡 Contenu à compléter hors ligne comme pour Word, avec modules et sous-modules.")
 
     # --- Microsoft PowerPoint ---
     elif section == "Microsoft PowerPoint":
         st.header("📈 Parcours PowerPoint — Débutant")
-        st.info("Contenu PowerPoint à venir...")
+        st.info("💡 Contenu à compléter hors ligne comme pour Word, avec modules et sous-modules.")
 
     # --- Tests & Exercices ---
     elif section == "Tests & Exercices":
@@ -154,5 +146,4 @@ def render_training_dashboard():
         st.success("✅ Astuce : Comparez vos fichiers avec les exemples disponibles en ligne.")
 
     st.markdown("---")
-    st.caption("© 2025 Formation IA & Bureautique — Contenu intégré depuis coursinfo.fr")
-
+    st.caption("© 2025 Formation IA & Bureautique — Ressources gratuites pour l'apprentissage continu.")
