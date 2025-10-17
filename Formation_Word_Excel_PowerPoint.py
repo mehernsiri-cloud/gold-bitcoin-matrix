@@ -1,6 +1,11 @@
 import streamlit as st
 import json
-
+# Must be first Streamlit call
+st.set_page_config(
+    page_title="Formation Word / Excel / PowerPoint",
+    page_icon="🎓",
+    layout="wide"
+)
 def load_word_courses():
     try:
         with open("word_courses.json", "r", encoding="utf-8") as f:
