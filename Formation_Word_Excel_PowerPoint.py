@@ -36,24 +36,27 @@ def scrape_word(force=False):
 
 def scrape_course_page(url):
     """Scrape a single course page"""
-    r = requests.get(url)
-    soup = BeautifulSoup(r.content, "html.parser")
+    try:
+        r = requests.get(url)
+        soup = BeautifulSoup(r.content, "html.parser")
 
-    # Extract main text
-    content_div = soup.find("div", {"class": "cours-content"})
-    text = content_div.get_text(separator="\n").strip() if content_div else ""
+        # Extract main text
+        content_div = soup.find("div", {"class": "cours-content"})
+        text = content_div.get_text(separator="\n").strip() if content_div else ""
 
-    # Extract images
-    images = []
-    for img in soup.find_all("img"):
-        src = img.get("src")
-        if src:
-            img_data = requests.get(src).content
-            img_name = os.path.join(IMG_FOLDER, os.path.basename(src))
-            with open(img_name, "wb") as f:
-                f.write(img_data)
-            images.append(img_name)
-    return {"text": text, "images": images}
+        # Extract images
+        images = []
+        for img in soup.find_all("img"):
+            src = img.get("src")
+            if src:
+                img_data = requests.get(src).content
+                img_name = os.path.join(IMG_FOLDER, os.path.basename(src))
+                with open(img_name, "wb") as f:
+                    f.write(img_data)
+                images.append(img_name)
+        return {"text": text, "images": images}
+    except Exception as e:
+        return {"text": f"⚠️ Impossible de charger la page : {e}", "images": []}
 
 # --- Word submenu ---
 def render_word_submenu():
@@ -63,20 +66,26 @@ def render_word_submenu():
             st.info("⚡ Premier lancement : récupération du contenu Word depuis le site coursinfo.fr ...")
             scrape_word()
         with open(JSON_FILE, "r", encoding="utf-8") as f:
-            courses = json.load(f)
+            courses_list = json.load(f)
     except Exception as e:
         st.error(f"⚠️ Erreur lors du chargement de la formation : {e}")
         return
 
-    for course in courses:
-        with st.expander(course["title"]):
-            st.text(course.get("text", ""))
-            for img_path in course.get("images", []):
-                try:
-                    img = Image.open(img_path)
-                    st.image(img)
-                except:
-                    pass
+    # Iterate over the list of courses safely
+    for course in courses_list:
+        if isinstance(course, dict):
+            title = course.get("title", "Cours sans titre")
+            text = course.get("text", "")
+            images = course.get("images", [])
+
+            with st.expander(title):
+                st.text(text)
+                for img_path in images:
+                    try:
+                        img = Image.open(img_path)
+                        st.image(img)
+                    except:
+                        pass
 
     # Example exercises and mini-quiz
     st.subheader("📚 Exercices pratiques")
