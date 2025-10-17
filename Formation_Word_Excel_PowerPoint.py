@@ -1,12 +1,18 @@
 import streamlit as st
 import json
-import os
 
-# --- Utility function to load Word courses JSON ---
 def load_word_courses():
     try:
         with open("word_courses.json", "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            # Ensure the top-level JSON is a list
+            if isinstance(data, dict):
+                return [data]
+            elif isinstance(data, list):
+                return data
+            else:
+                st.error("⚠️ Le format du fichier JSON n'est pas correct.")
+                return []
     except FileNotFoundError:
         st.error("⚠️ Le fichier word_courses.json est manquant.")
         return []
@@ -14,65 +20,18 @@ def load_word_courses():
         st.error("⚠️ Le fichier JSON est invalide.")
         return []
 
-# --- Word submenu rendering ---
-def render_word_submenu():
-    st.header("📝 Parcours Word — Débutant")
-    
-    courses = load_word_courses()
-    if not courses:
-        st.warning("Aucun cours disponible pour Word pour le moment.")
-        return
-
-    # Iterate over the list of courses
-    for course in courses:
-        title = course.get("title", "Cours sans titre")
-        url = course.get("url", "")
-        text = course.get("text", [])
-        images = course.get("images", [])
-        exercises = course.get("exercises", [])
-        quiz = course.get("quiz", [])
-
-        with st.expander(title):
-            if url:
-                st.markdown(f"**Lien du cours :** [{url}]({url})")
-            
-            # Display text content
-            for paragraph in text:
-                st.write(paragraph)
-            
-            # Display images
-            for img_url in images:
-                st.image(img_url)
-            
-            # Exercises
-            if exercises:
-                st.subheader("📚 Exercices")
-                for ex in exercises:
-                    st.markdown(f"- {ex}")
-            
-            # Mini-quiz
-            if quiz:
-                st.subheader("🧠 Mini-quiz")
-                for q in quiz:
-                    st.markdown(f"- {q}")
-
-# --- Excel submenu ---
-def render_excel_submenu():
-    st.header("📊 Parcours Excel — Débutant")
-    st.markdown("Contenu Excel ici... (à compléter avec vos cours/exercices/quiz)")
-
-# --- PowerPoint submenu ---
-def render_powerpoint_submenu():
-    st.header("📈 Parcours PowerPoint — Débutant")
-    st.markdown("Contenu PowerPoint ici... (à compléter avec vos cours/exercices/quiz)")
-
-# --- Main training dashboard ---
 def render_training_dashboard():
-    st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
+    st.set_page_config(
+        page_title="Formation Word / Excel / PowerPoint",
+        page_icon="🎓",
+        layout="wide"
+    )
 
+    st.title("🎓 Formation Bureautique — Word, Excel & PowerPoint (Débutants)")
     st.markdown("""
     Bienvenue dans votre espace de formation continue !  
-    Apprenez **Microsoft Word, Excel et PowerPoint** à travers des modules structurés et interactifs.
+    Ici, vous trouverez un parcours structuré pour apprendre **Microsoft Word, Excel et PowerPoint**.  
+    Les ressources sont gratuites, accessibles en ligne, et organisées par modules et sous-modules.
     """)
 
     # Sidebar menu
@@ -93,15 +52,59 @@ def render_training_dashboard():
 
     # --- Microsoft Word ---
     elif section == "Microsoft Word":
-        render_word_submenu()
+        st.header("📝 Parcours Word — Débutant")
+        courses = load_word_courses()
+
+        if courses:
+            for course in courses:
+                title = course.get("title", "Module sans titre")
+                text_content = course.get("text", [])
+                images = course.get("images", [])
+                exercises = course.get("exercises", [])
+                quiz = course.get("quiz", [])
+                url = course.get("url", None)
+
+                with st.expander(title):
+                    # Display course text
+                    for paragraph in text_content:
+                        st.markdown(paragraph)
+
+                    # Display images
+                    for img_url in images:
+                        st.image(img_url, use_column_width=True)
+
+                    # Link to external page if exists
+                    if url:
+                        st.markdown(f"[Voir le cours complet sur le site]({url})")
+
+                    # Exercises
+                    if exercises:
+                        st.subheader("📚 Exercices pratiques")
+                        for ex in exercises:
+                            st.markdown(f"- {ex}")
+
+                    # Mini quiz
+                    if quiz:
+                        st.subheader("🧠 Mini-quiz")
+                        for i, q in enumerate(quiz, 1):
+                            st.markdown(f"**Question {i}:** {q}")
+                            st.checkbox("Réponse A", key=f"{title}_q{i}_a")
+                            st.checkbox("Réponse B", key=f"{title}_q{i}_b")
+                            st.checkbox("Réponse C", key=f"{title}_q{i}_c")
+                            st.success("Réponse correcte à vérifier dans vos notes ou corrigé fourni.")
+
+        else:
+            st.warning("⚠️ Aucun cours Word disponible. Assurez-vous que 'word_courses.json' existe et est valide.")
 
     # --- Microsoft Excel ---
     elif section == "Microsoft Excel":
-        render_excel_submenu()
+        st.header("📊 Parcours Excel — Débutant")
+        st.markdown("Contenu Excel à compléter... (vous pouvez réutiliser le même format que Word avec un JSON séparé)")
 
     # --- Microsoft PowerPoint ---
     elif section == "Microsoft PowerPoint":
-        render_powerpoint_submenu()
+        st.header("📈 Parcours PowerPoint — Débutant")
+        st.markdown("Contenu PowerPoint à compléter... (vous pouvez réutiliser le même format que Word avec un JSON séparé)")
 
     # --- Tests & Exercices ---
     elif section == "Tests & Exercices":
