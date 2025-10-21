@@ -76,35 +76,45 @@ def tasks_for_date(target_date: date) -> List[Dict[str, Any]]:
 # -------------------------
 def render_interactive_calendar(selected_date: date):
     st.markdown("### 🗓️ Calendrier interactif")
-    now = datetime.now()
     month = selected_date.month
     year = selected_date.year
-
     cal = calendar.Calendar(firstweekday=0)
     month_days = cal.monthdatescalendar(year, month)
 
-    # Weekday headers
-    cols = st.columns(7)
-    for i, wd in enumerate(["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]):
-        cols[i].markdown(f"**{wd}**")
-
     clicked_date = None
+
+    # Weekday headers
+    header_cols = st.columns(7)
+    for i, wd in enumerate(["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]):
+        header_cols[i].markdown(f"<div style='text-align:center;font-weight:bold'>{wd}</div>", unsafe_allow_html=True)
+
+    # Calendar grid
     for week in month_days:
-        cols = st.columns(7)
+        week_cols = st.columns(7)
         for i, day in enumerate(week):
             day_tasks = tasks_for_date(day)
             badge = f" ({len(day_tasks)})" if day_tasks else ""
-            label = f"{day.day}{badge}"
-            if day == date.today():
-                label = f"🌟 {label}"
-            if cols[i].button(label, key=f"cal_{day.isoformat()}"):
+            is_today = day == date.today()
+            style = ""
+            if is_today:
+                style += "border: 2px solid #FF5733; background-color: #FFF0E0; border-radius: 8px; padding: 10px; text-align:center"
+            else:
+                style += "border: 1px solid #ccc; border-radius: 8px; padding: 10px; text-align:center"
+
+            # Only show current month days as bold
+            label_color = "#000" if day.month == month else "#aaa"
+
+            day_label = f"<div style='color:{label_color}; font-weight:bold'>{day.day}{badge}</div>"
+            # Add up to 2 task titles inside the box
+            task_lines = ""
+            for t in day_tasks[:2]:
+                task_lines += f"<div style='font-size:10px;text-align:left'>- {t.get('title')[:15]}</div>"
+
+            if week_cols[i].button("", key=f"cal_{day.isoformat()}"):
                 clicked_date = day
-            if day_tasks:
-                for t in day_tasks[:2]:
-                    try:
-                        cols[i].caption(f"- {t.get('title')[:20]}")
-                    except:
-                        pass
+
+            week_cols[i].markdown(f"<div style='{style}'>{day_label}{task_lines}</div>", unsafe_allow_html=True)
+
     return clicked_date
 
 def render_gantt_chart():
