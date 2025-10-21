@@ -22,8 +22,18 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Any
 
 
-# --- Auto-refresh every 30 minutes (1,800,000 ms) ---
-st_autorefresh(interval=1800000, key="datarefresh")
+# --- Optional Auto Refresh Setup ---
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_AVAILABLE = True
+except ImportError:
+    AUTOREFRESH_AVAILABLE = False
+
+# --- Auto-refresh every 30 minutes if available ---
+if AUTOREFRESH_AVAILABLE:
+    st_autorefresh(interval=1800000, key="datarefresh")  # 30 min in milliseconds
+else:
+    st.sidebar.warning("Auto-refresh disabled (install 'streamlit-autorefresh' to enable).")
 
 # --- Manual Refresh Button ---
 st.sidebar.markdown("### 🔁 Data Refresh")
