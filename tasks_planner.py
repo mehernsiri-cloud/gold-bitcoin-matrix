@@ -1,9 +1,9 @@
-# tasks_planner.py - Modern Project Management Dashboard
+# tasks_planner.py - Modern Task Planner Dashboard with Date+Time and Pastel Colors
 
 import streamlit as st
 import json
 import os
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 import calendar
 import uuid
 from typing import List, Dict, Any
@@ -62,21 +62,29 @@ def tasks_for_date(target_date: date) -> List[Dict[str, Any]]:
     day_tasks = []
     for t in tasks:
         try:
-            t_date = datetime.fromisoformat(t["date"]).date()
-            if t_date == target_date:
+            t_datetime = datetime.fromisoformat(t["datetime"])
+            if t_datetime.date() == target_date:
                 day_tasks.append(t)
         except Exception:
             continue
-    day_tasks.sort(key=lambda x: x.get("time") or "")
+    day_tasks.sort(key=lambda x: datetime.fromisoformat(x["datetime"]))
     return day_tasks
 
 # -------------------------
-# Calendar grid rendering
+# Calendar rendering
 # -------------------------
+CATEGORY_COLORS = {
+    "Integration": "#A8D5BA",
+    "Support": "#F6C8C8",
+    "Project": "#F9E79F",
+    "Maintenance": "#C3AED6",
+    "Personal": "#B3E5FC"
+}
+
 def render_interactive_calendar(selected_date: date):
     st.markdown("### 🗓️ Calendrier interactif")
 
-    # --- Month navigation ---
+    # Month navigation
     col1, col2, col3 = st.columns([1,3,1])
     prev_month = (selected_date.replace(day=1) - timedelta(days=1)).replace(day=1)
     next_month = (selected_date.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -96,46 +104,26 @@ def render_interactive_calendar(selected_date: date):
     year = selected_date.year
     cal = calendar.Calendar(firstweekday=0)
     month_days = cal.monthdatescalendar(year, month)
-
     clicked_date = None
 
-    # --- Weekday headers ---
+    # Weekday headers
     header_cols = st.columns(7)
     for i, wd in enumerate(["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]):
         header_cols[i].markdown(f"<div style='text-align:center;font-weight:bold'>{wd}</div>", unsafe_allow_html=True)
 
-    # --- Calendar grid ---
+    # Calendar grid
     for week in month_days:
         week_cols = st.columns(7)
         for i, day in enumerate(week):
             day_tasks = tasks_for_date(day)
-            num_tasks = len(day_tasks)
-            
-            # Color coding by task priority
-            if num_tasks > 0:
-                if any(t["priority"]=="High" for t in day_tasks):
-                    bg_color = "#FFB3B3"  # light red
-                elif any(t["priority"]=="Medium" for t in day_tasks):
-                    bg_color = "#FFF4B3"  # light yellow
-                else:
-                    bg_color = "#B3FFB3"  # light green
-            else:
-                bg_color = "#f0f0f0"
-
-            # Today highlight
+            bg_color = "#f0f0f0" if not day_tasks else CATEGORY_COLORS.get(day_tasks[0]["category"], "#ddd")
             border = "2px solid #FF5733" if day == date.today() else "1px solid #ccc"
             label_color = "#000" if day.month == month else "#aaa"
 
-            # Day box HTML
             day_label = f"<div style='color:{label_color}; font-weight:bold'>{day.day}</div>"
             task_lines = ""
             for t in day_tasks[:3]:
-                task_color = "#000"
-                if t["priority"]=="High":
-                    task_color = "#C70039"
-                elif t["priority"]=="Medium":
-                    task_color = "#FF8C00"
-                task_lines += f"<div style='font-size:10px;text-align:left;color:{task_color}'>- {t.get('title')[:15]}</div>"
+                task_lines += f"<div style='font-size:10px;text-align:left'>{t.get('title')[:15]} @ {datetime.fromisoformat(t['datetime']).strftime('%H:%M')}</div>"
 
             day_html = f"""
             <div style='border:{border}; background-color:{bg_color}; border-radius:8px; padding:5px; min-height:90px; text-align:center'>
@@ -146,35 +134,17 @@ def render_interactive_calendar(selected_date: date):
 
             if week_cols[i].button("", key=f"cal_{day.isoformat()}"):
                 clicked_date = day
-
             week_cols[i].markdown(day_html, unsafe_allow_html=True)
 
     return clicked_date
 
 # -------------------------
-# Gantt / Timeline rendering
-# -------------------------
-def render_gantt_chart():
-    tasks = load_tasks()
-    if not tasks:
-        st.info("Aucune tâche pour le Gantt.")
-        return
-    df = pd.DataFrame(tasks)
-    df["start"] = pd.to_datetime(df["date"])
-    df["end"] = df["start"] + pd.to_timedelta(1, unit="d")
-    df["Task"] = df["title"]
-    df["Status"] = df["done"].apply(lambda x: "Done" if x else "Pending")
-    fig = px.timeline(df, x_start="start", x_end="end", y="Task", color="Status", hover_data=["category","priority","time"])
-    fig.update_yaxes(autorange="reversed")
-    st.plotly_chart(fig, use_container_width=True)
-
-# -------------------------
-# Task editor & forms
+# Task editor
 # -------------------------
 def render_task_editor(selected_day: date):
     st.markdown(f"### Tâches pour le {selected_day.isoformat()}")
-
     day_tasks = tasks_for_date(selected_day)
+
     if day_tasks:
         st.markdown("**Tâches existantes**")
         for t in day_tasks:
@@ -184,8 +154,7 @@ def render_task_editor(selected_day: date):
                 st.write(f"{status} **{t.get('title')}** — {t.get('category')} — {t.get('priority')}")
                 if t.get("description"):
                     st.caption(t.get('description'))
-                if t.get("time"):
-                    st.caption(f"Heure: {t.get('time')}")
+                st.caption(f"Date & Heure: {datetime.fromisoformat(t['datetime']).strftime('%Y-%m-%d %H:%M')}")
             with cols[1]:
                 new_done = st.checkbox("Fait", value=bool(t.get("done")), key=f"done_{t['id']}")
                 if new_done != bool(t.get("done")):
@@ -200,18 +169,19 @@ def render_task_editor(selected_day: date):
     with st.form(key=f"add_task_form_{selected_day.isoformat()}"):
         title = st.text_input("Titre")
         description = st.text_area("Description (optionnelle)")
-        time_input = st.time_input("Heure (optionnelle)", value=None)
-        time_str = time_input.strftime("%H:%M") if time_input else ""
+        task_date = st.date_input("Date", value=selected_day)
+        task_time = st.time_input("Heure", value=datetime.now().time())
         priority = st.selectbox("Priorité", ["Low","Medium","High"])
         category = st.selectbox("Catégorie", ["Integration","Support","Project","Maintenance","Personal"])
         submit = st.form_submit_button("Ajouter la tâche")
+
         if submit:
+            task_datetime = datetime.combine(task_date, task_time)
             new_task = {
                 "id": str(uuid.uuid4()),
                 "title": title or "Tâche sans titre",
                 "description": description or "",
-                "date": selected_day.isoformat(),
-                "time": time_str,
+                "datetime": task_datetime.isoformat(),
                 "priority": priority,
                 "category": category,
                 "done": False,
@@ -233,17 +203,35 @@ def render_daily_notification():
         st.success(f"🔔 {len(todays_tasks)} tâche(s) aujourd'hui :")
         for t in todays_tasks:
             status = "✅" if t.get("done") else "🕘"
-            time_str = f" @ {t.get('time')}" if t.get("time") else ""
-            st.write(f"{status} **{t.get('title')}**{time_str} — {t.get('category')} — {t.get('priority')}")
+            st.write(f"{status} **{t.get('title')}** @ {datetime.fromisoformat(t['datetime']).strftime('%H:%M')} — {t.get('category')} — {t.get('priority')}")
 
 # -------------------------
-# Main render function
+# Gantt chart
+# -------------------------
+def render_gantt_chart(tasks):
+    if not tasks:
+        st.info("Aucune tâche pour le Gantt.")
+        return
+    df = pd.DataFrame(tasks)
+    df["start"] = pd.to_datetime(df["datetime"])
+    df["end"] = df["start"] + pd.to_timedelta(1, unit="h")  # default duration 1h
+    df["Task"] = df["title"]
+    df["Status"] = df["done"].apply(lambda x: "Done" if x else "Pending")
+    fig = px.timeline(df, x_start="start", x_end="end", y="Task", color="category",
+                      color_discrete_map=CATEGORY_COLORS,
+                      hover_data=["priority","Status","description"])
+    fig.update_yaxes(autorange="reversed")
+    st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------
+# Main dashboard
 # -------------------------
 def render_task_planner():
     st.header("📅 Task Planner — Dashboard Moderne")
 
-    # Sidebar filters & stats
     all_tasks = load_tasks()
+
+    # Sidebar
     st.sidebar.markdown("### 📊 Statuts et filtres")
     total = len(all_tasks)
     done = sum(1 for t in all_tasks if t.get("done"))
@@ -252,19 +240,20 @@ def render_task_planner():
     st.sidebar.write(f"- Terminées: **{done}**")
     st.sidebar.write(f"- En attente: **{pending}**")
     st.sidebar.markdown("---")
-    category_filter = st.sidebar.multiselect("Filtrer par catégorie", ["Integration","Support","Project","Maintenance","Personal"], default=[])
+
+    category_filter = st.sidebar.multiselect("Filtrer par catégorie", list(CATEGORY_COLORS.keys()), default=[])
     priority_filter = st.sidebar.multiselect("Filtrer par priorité", ["Low","Medium","High"], default=[])
     status_filter = st.sidebar.multiselect("Filtrer par statut", ["Pending","Done"], default=[])
 
     # Top notifications
     render_daily_notification()
 
-    # Selected day in session
+    # Session selected day
     today = date.today()
     st.session_state.setdefault("selected_day", today.isoformat())
     selected_day = parse_iso(st.session_state["selected_day"])
 
-    # --- Layout ---
+    # Layout
     left_col, right_col = st.columns([2,3])
     with left_col:
         clicked = render_interactive_calendar(selected_day)
@@ -275,7 +264,6 @@ def render_task_planner():
 
     with right_col:
         st.markdown("### 📈 Gantt / Planning des tâches")
-        # Apply filters to Gantt
         gantt_tasks = all_tasks
         if category_filter:
             gantt_tasks = [t for t in gantt_tasks if t["category"] in category_filter]
@@ -283,19 +271,7 @@ def render_task_planner():
             gantt_tasks = [t for t in gantt_tasks if t["priority"] in priority_filter]
         if status_filter:
             gantt_tasks = [t for t in gantt_tasks if ("Done" if t["done"] else "Pending") in status_filter]
-
-        if gantt_tasks:
-            df = pd.DataFrame(gantt_tasks)
-            df["start"] = pd.to_datetime(df["date"])
-            df["end"] = df["start"] + pd.to_timedelta(1, unit="d")
-            df["Task"] = df["title"]
-            df["Status"] = df["done"].apply(lambda x: "Done" if x else "Pending")
-            fig = px.timeline(df, x_start="start", x_end="end", y="Task", color="Status",
-                              hover_data=["category","priority","time"])
-            fig.update_yaxes(autorange="reversed")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Aucune tâche correspondante pour le Gantt avec vos filtres.")
+        render_gantt_chart(gantt_tasks)
 
 # -------------------------
 # Run app
