@@ -1,4 +1,5 @@
-# tasks_planner.py
+# tasks_planner.py (Enhanced with Gantt-like & planning features)
+
 import streamlit as st
 import json
 import os
@@ -6,11 +7,12 @@ from datetime import datetime, date, time, timedelta
 import calendar
 import uuid
 from typing import List, Dict, Any
+import pandas as pd
+import plotly.express as px
 
 DATA_DIR = "data"
 TASKS_FILE = os.path.join(DATA_DIR, "tasks.json")
 
-# Ensure data folder exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # -------------------------
@@ -70,7 +72,7 @@ def tasks_for_date(target_date: date) -> List[Dict[str, Any]]:
     return day_tasks
 
 # -------------------------
-# Calendar rendering
+# Interactive Calendar & Gantt
 # -------------------------
 def render_interactive_calendar(selected_date: date):
     st.markdown("### 🗓️ Calendrier interactif")
@@ -87,19 +89,16 @@ def render_interactive_calendar(selected_date: date):
         cols[i].markdown(f"**{wd}**")
 
     clicked_date = None
-
     for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
             day_tasks = tasks_for_date(day)
             badge = f" ({len(day_tasks)})" if day_tasks else ""
             label = f"{day.day}{badge}"
-            is_today = (day == date.today())
-            if is_today:
+            if day == date.today():
                 label = f"🌟 {label}"
             if cols[i].button(label, key=f"cal_{day.isoformat()}"):
                 clicked_date = day
-            # Show up to 2 task titles under day
             if day_tasks:
                 for t in day_tasks[:2]:
                     try:
@@ -107,6 +106,20 @@ def render_interactive_calendar(selected_date: date):
                     except:
                         pass
     return clicked_date
+
+def render_gantt_chart():
+    tasks = load_tasks()
+    if not tasks:
+        st.info("Aucune tâche pour le Gantt.")
+        return
+    df = pd.DataFrame(tasks)
+    df["start"] = pd.to_datetime(df["date"])
+    df["end"] = df["start"] + pd.to_timedelta(1, unit="d")
+    df["Task"] = df["title"]
+    df["Status"] = df["done"].apply(lambda x: "Done" if x else "Pending")
+    fig = px.timeline(df, x_start="start", x_end="end", y="Task", color="Status", hover_data=["category","priority"])
+    fig.update_yaxes(autorange="reversed")
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------
 # Task editor & forms
@@ -223,6 +236,11 @@ def render_task_planner():
     # Task editor
     st.markdown("---")
     render_task_editor(parse_iso(st.session_state["selected_day"]))
+
+    # Gantt Chart
+    st.markdown("---")
+    st.markdown("### 📈 Vue Gantt / Planning des tâches")
+    render_gantt_chart()
 
     # Sidebar stats
     all_tasks = load_tasks()
