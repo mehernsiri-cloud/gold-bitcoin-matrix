@@ -76,6 +76,23 @@ def tasks_for_date(target_date: date) -> List[Dict[str, Any]]:
 # -------------------------
 def render_interactive_calendar(selected_date: date):
     st.markdown("### 🗓️ Calendrier interactif")
+
+    # --- Month navigation ---
+    col1, col2, col3 = st.columns([1,3,1])
+    prev_month = (selected_date.replace(day=1) - timedelta(days=1)).replace(day=1)
+    next_month = (selected_date.replace(day=28) + timedelta(days=4)).replace(day=1)
+    
+    with col1:
+        if st.button("⬅", key="prev_month"):
+            st.session_state["selected_day"] = prev_month.isoformat()
+            st.experimental_rerun()
+    with col2:
+        st.markdown(f"<h3 style='text-align:center'>{selected_date.strftime('%B %Y')}</h3>", unsafe_allow_html=True)
+    with col3:
+        if st.button("➡", key="next_month"):
+            st.session_state["selected_day"] = next_month.isoformat()
+            st.experimental_rerun()
+
     month = selected_date.month
     year = selected_date.year
     cal = calendar.Calendar(firstweekday=0)
@@ -83,37 +100,50 @@ def render_interactive_calendar(selected_date: date):
 
     clicked_date = None
 
-    # Weekday headers
+    # --- Weekday headers ---
     header_cols = st.columns(7)
     for i, wd in enumerate(["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]):
         header_cols[i].markdown(f"<div style='text-align:center;font-weight:bold'>{wd}</div>", unsafe_allow_html=True)
 
-    # Calendar grid
+    # --- Calendar grid ---
     for week in month_days:
         week_cols = st.columns(7)
         for i, day in enumerate(week):
             day_tasks = tasks_for_date(day)
-            badge = f" ({len(day_tasks)})" if day_tasks else ""
-            is_today = day == date.today()
-            style = ""
-            if is_today:
-                style += "border: 2px solid #FF5733; background-color: #FFF0E0; border-radius: 8px; padding: 10px; text-align:center"
+            num_tasks = len(day_tasks)
+            
+            # Color coding by task priority
+            if num_tasks > 0:
+                if any(t["priority"]=="High" for t in day_tasks):
+                    bg_color = "#FFB3B3"  # light red
+                elif any(t["priority"]=="Medium" for t in day_tasks):
+                    bg_color = "#FFF4B3"  # light yellow
+                else:
+                    bg_color = "#B3FFB3"  # light green
             else:
-                style += "border: 1px solid #ccc; border-radius: 8px; padding: 10px; text-align:center"
+                bg_color = "#f0f0f0"
 
-            # Only show current month days as bold
+            # Today highlight
+            border = "2px solid #FF5733" if day == date.today() else "1px solid #ccc"
             label_color = "#000" if day.month == month else "#aaa"
 
-            day_label = f"<div style='color:{label_color}; font-weight:bold'>{day.day}{badge}</div>"
-            # Add up to 2 task titles inside the box
+            # Day box HTML
+            day_label = f"<div style='color:{label_color}; font-weight:bold'>{day.day}</div>"
             task_lines = ""
             for t in day_tasks[:2]:
                 task_lines += f"<div style='font-size:10px;text-align:left'>- {t.get('title')[:15]}</div>"
 
+            day_html = f"""
+            <div style='border:{border}; background-color:{bg_color}; border-radius:8px; padding:5px; min-height:70px; text-align:center'>
+                {day_label}
+                {task_lines}
+            </div>
+            """
+
             if week_cols[i].button("", key=f"cal_{day.isoformat()}"):
                 clicked_date = day
 
-            week_cols[i].markdown(f"<div style='{style}'>{day_label}{task_lines}</div>", unsafe_allow_html=True)
+            week_cols[i].markdown(day_html, unsafe_allow_html=True)
 
     return clicked_date
 
