@@ -21,6 +21,10 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Any
 
+# -------------------------------------------------------------------
+# APP CONFIGURATION
+# -------------------------------------------------------------------
+st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 # --- Optional Auto Refresh Setup ---
 try:
@@ -85,10 +89,6 @@ from tasks_planner import render_task_planner
 
 from candlestick_predictions import render_candlestick_dashboard
 from candlestick_predictions import render_daily_candlestick_dashboard
-# -------------------------------------------------------------------
-# APP CONFIGURATION
-# -------------------------------------------------------------------
-st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 # -------------------------------------------------------------------
 # FILE PATHS AND DATA DIRECTORIES
