@@ -57,6 +57,8 @@ except Exception:
     def real_estate_dashboard():
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
 
+from tasks_planner import render_task_planner
+
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
 
 # -------------------------------------------------------------------
@@ -504,7 +506,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot",  "Formation Word & Excel"]
+    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "📅 Task Planner"]
 )
 
 
@@ -707,6 +709,12 @@ elif menu == "Real Estate Bot":
 # -------------------------------------------------------------------
 #elif menu == "Formation Word & Excel":
 #       render_training_dashboard()
+
+# -------------------------------------------------------------------
+# Task planner MENU
+# -------------------------------------------------------------------
+if section == "📅 Task Planner":
+    render_task_planner()
 
 # -------------------------------------------------------------------
 # FOOTER: diagnostics and downloads
