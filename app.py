@@ -516,7 +516,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "📅 Task Planner"]
+    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "Task Planner"]
 )
 
 
@@ -723,7 +723,7 @@ elif menu == "Real Estate Bot":
 # -------------------------------------------------------------------
 # Task planner MENU
 # -------------------------------------------------------------------
-if section == "📅 Task Planner":
+if section == "Task Planner":
     render_task_planner()
 
 # -------------------------------------------------------------------
