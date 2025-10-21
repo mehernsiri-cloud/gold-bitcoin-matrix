@@ -21,6 +21,19 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Any
 
+
+# --- Auto-refresh every 30 minutes (1,800,000 ms) ---
+st_autorefresh(interval=1800000, key="datarefresh")
+
+# --- Manual Refresh Button ---
+st.sidebar.markdown("### 🔁 Data Refresh")
+if st.sidebar.button("Refresh Now"):
+    st.success("Refreshing dashboard... please wait ⏳")
+    st.experimental_rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
 # Preserve original external imports but provide safe fallbacks
 try:
     from jobs_app import jobs_dashboard
