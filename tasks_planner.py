@@ -248,7 +248,15 @@ def grid_view():
                     st.error(f"Erreur import CSV: {e}")
     with col3:
         st.download_button("Télécharger CSV", data=open(CSV_FILE, "rb"), file_name=f"tasks_{date.today().isoformat()}.csv")
-
+if os.path.exists(CSV_FILE):
+    with open(CSV_FILE, "rb") as f:
+        st.download_button(
+            "Télécharger CSV",
+            data=f,
+            file_name=f"tasks_{date.today().isoformat()}.csv",
+        )
+else:
+    st.info("Aucun fichier CSV trouvé — ajoutez une tâche pour créer le fichier.")
 def calendar_view():
     st.subheader("Calendar — Vue mensuelle")
     tasks = load_tasks()
