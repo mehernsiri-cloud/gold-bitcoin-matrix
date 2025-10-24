@@ -14,7 +14,18 @@ os.makedirs(DATA_DIR, exist_ok=True)
 def load_tasks():
     """Load tasks from CSV if it exists, else return empty DataFrame."""
     if os.path.exists(CSV_FILE):
-        return pd.read_csv(CSV_FILE, parse_dates=["Start Date", "End Date"])
+        try:
+            df = pd.read_csv(CSV_FILE, parse_dates=["Start Date", "End Date"])
+            # Ensure required columns exist (in case of corrupted file)
+            required_cols = ["Task Name", "Description", "Status", "Priority", "Start Date", "End Date"]
+            for col in required_cols:
+                if col not in df.columns:
+                    df[col] = None
+            return df[required_cols]
+        except Exception as e:
+            st.warning(f"⚠️ Could not read tasks CSV: {e}")
+            columns = ["Task Name", "Description", "Status", "Priority", "Start Date", "End Date"]
+            return pd.DataFrame(columns=columns)
     else:
         columns = ["Task Name", "Description", "Status", "Priority", "Start Date", "End Date"]
         return pd.DataFrame(columns=columns)
