@@ -1,385 +1,200 @@
-# tasks_planner.py
-"""
-Monday.com-like Task Planner for Streamlit
-Features:
- - Views: Grid (editable), Calendar (month grid), Kanban (columns)
- - Task model: id, title, description, start_datetime, end_datetime, priority, category, status, created_at
- - Pastel colors per category
- - Auto-save to CSV (data/tasks.csv) and JSON (data/tasks.json)
- - Inline editing via st.experimental_data_editor in Grid view
-"""
-
-import streamlit as st
 import os
-import json
-import uuid
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any
 import pandas as pd
-import calendar
+import streamlit as st
 import plotly.express as px
+from datetime import datetime, date
+import calendar
 
-# -------------------------
-# Config / Files
-# -------------------------
+# --- FILE SETUP ---
 DATA_DIR = "data"
-JSON_FILE = os.path.join(DATA_DIR, "tasks.json")
-CSV_FILE = os.path.join(DATA_DIR, "tasks.csv")
+CSV_FILE = os.path.join(DATA_DIR, "tasks_log.csv")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# -------------------------
-# Categories & Colors (pastel)
-# -------------------------
-CATEGORY_COLORS = {
-    "Integration": "#A8D5BA",  # pastel green
-    "Support": "#F6C8C8",      # pastel pink
-    "Project": "#F9E79F",      # pastel yellow
-    "Maintenance": "#C3AED6",  # pastel purple
-    "Personal": "#B3E5FC"      # pastel blue
+# --- TASK UTILITIES ---
+def load_tasks():
+    """Load tasks from CSV if it exists, else return empty DataFrame."""
+    if os.path.exists(CSV_FILE):
+        return pd.read_csv(CSV_FILE, parse_dates=["Start Date", "End Date"])
+    else:
+        columns = ["Task Name", "Description", "Status", "Priority", "Start Date", "End Date"]
+        return pd.DataFrame(columns=columns)
+
+def save_tasks(df):
+    """Save tasks to CSV."""
+    df.to_csv(CSV_FILE, index=False)
+
+# --- COLOR SCHEME ---
+STATUS_COLORS = {
+    "To Do": "#A5D8FF",      # light blue
+    "In Progress": "#FFE066",# soft yellow
+    "Done": "#B2F2BB",       # light green
+    "Blocked": "#FFC9C9"     # pastel red
 }
 
-PRIORITIES = ["Low", "Medium", "High"]
-STATUSES = ["To Do", "In Progress", "Blocked", "Done"]
+PRIORITY_COLORS = {
+    "Low": "#D0EBFF",
+    "Medium": "#FFD8A8",
+    "High": "#FFA8A8",
+    "Critical": "#FF8787"
+}
 
-# -------------------------
-# Persistence helpers
-# -------------------------
-def load_tasks() -> List[Dict[str, Any]]:
-    """Load tasks from CSV if present, else JSON, else return []"""
-    if os.path.exists(CSV_FILE):
-        try:
-            df = pd.read_csv(CSV_FILE)
-            tasks = df.to_dict(orient="records")
-            for t in tasks:
-                for k in ["description", "category", "priority", "status"]:
-                    if pd.isna(t.get(k, "")):
-                        t[k] = ""
-                if pd.isna(t.get("start_datetime", "")):
-                    t["start_datetime"] = ""
-                if pd.isna(t.get("end_datetime", "")):
-                    t["end_datetime"] = ""
-            return tasks
-        except Exception:
-            pass
-    if os.path.exists(JSON_FILE):
-        try:
-            with open(JSON_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
-        except Exception:
-            pass
-    return []
+# --- TASK CREATION FORM ---
+def add_task_form():
+    st.subheader("➕ Add a New Task")
 
+    with st.form("add_task"):
+        col1, col2 = st.columns(2)
+        with col1:
+            task_name = st.text_input("Task Name")
+            status = st.selectbox("Status", list(STATUS_COLORS.keys()))
+            priority = st.selectbox("Priority", list(PRIORITY_COLORS.keys()))
+        with col2:
+            start_date = st.date_input("Start Date", date.today())
+            end_date = st.date_input("End Date", date.today())
+        description = st.text_area("Description", height=100)
 
-def save_tasks(tasks: List[Dict[str, Any]]):
-    """Save tasks to both CSV and JSON (auto-save)"""
-    try:
-        df = pd.DataFrame(tasks)
-        cols = ["id", "title", "description", "start_datetime", "end_datetime",
-                "priority", "category", "status", "created_at"]
-        for c in cols:
-            if c not in df.columns:
-                df[c] = ""
-        df.to_csv(CSV_FILE, index=False)
-        with open(JSON_FILE, "w", encoding="utf-8") as f:
-            json.dump(tasks, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"Erreur en sauvegardant les tâches : {e}")
-
-
-def add_task(task: Dict[str, Any]):
-    tasks = load_tasks()
-    tasks.append(task)
-    save_tasks(tasks)
-
-
-def update_task(task_id: str, updates: Dict[str, Any]):
-    tasks = load_tasks()
-    for t in tasks:
-        if t.get("id") == task_id:
-            t.update(updates)
-            break
-    save_tasks(tasks)
-
-
-def delete_task(task_id: str):
-    tasks = [t for t in load_tasks() if t.get("id") != task_id]
-    save_tasks(tasks)
-
-# -------------------------
-# Utility helpers
-# -------------------------
-def iso_now():
-    return datetime.utcnow().replace(microsecond=0).isoformat()
-
-
-def parse_dt(s: str) -> datetime:
-    if not s:
-        return None
-    try:
-        return datetime.fromisoformat(s)
-    except Exception:
-        try:
-            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-
-def ensure_task_model(t: Dict[str, Any]) -> Dict[str, Any]:
-    model = {
-        "id": t.get("id") or str(uuid.uuid4()),
-        "title": t.get("title") or "Untitled",
-        "description": t.get("description") or "",
-        "start_datetime": t.get("start_datetime") or "",
-        "end_datetime": t.get("end_datetime") or "",
-        "priority": t.get("priority") or "Low",
-        "category": t.get("category") or "Project",
-        "status": t.get("status") or "To Do",
-        "created_at": t.get("created_at") or iso_now()
-    }
-    sd = parse_dt(model["start_datetime"])
-    ed = parse_dt(model["end_datetime"])
-    if sd and not ed:
-        model["end_datetime"] = (sd + timedelta(hours=1)).isoformat()
-    return model
-
-
-def tasks_df(tasks: List[Dict[str, Any]]) -> pd.DataFrame:
-    df = pd.DataFrame([ensure_task_model(t) for t in tasks])
-    if df.empty:
-        df = pd.DataFrame(columns=["id", "title", "description", "start_datetime", "end_datetime",
-                                   "priority", "category", "status", "created_at"])
-    return df
-
-# -------------------------
-# UI Components
-# -------------------------
-def top_bar():
-    st.title("📋 Task Planner — Dashboard (Monday.com style)")
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col1:
-        if st.button("Nouvelle tâche rapide"):
-            st.session_state.setdefault("show_add", True)
-            st.session_state.setdefault("selected_day", date.today().isoformat())
-            st.experimental_rerun()
-    with col2:
-        st.markdown("**Affichage**")
-    with col3:
-        st.write("")
-
-
-def add_task_form(default_date: date):
-    st.markdown("### ➕ Ajouter / Importer une tâche")
-    with st.form("add_task_form"):
-        title = st.text_input("Titre")
-        description = st.text_area("Description")
-        task_date = st.date_input("Date de début", value=default_date)
-        task_time = st.time_input("Heure de début", value=datetime.now().time())
-        start_dt = datetime.combine(task_date, task_time)
-        duration_hours = st.number_input("Durée (heures)", min_value=0.25, max_value=168.0, value=1.0, step=0.25)
-        end_dt = start_dt + timedelta(hours=duration_hours)
-        priority = st.selectbox("Priorité", PRIORITIES, index=1)
-        category = st.selectbox("Catégorie", list(CATEGORY_COLORS.keys()), index=0)
-        status = st.selectbox("Statut", STATUSES, index=0)
-        submitted = st.form_submit_button("Ajouter")
+        submitted = st.form_submit_button("Save Task")
         if submitted:
-            new_task = {
-                "id": str(uuid.uuid4()),
-                "title": title or "Tâche sans titre",
-                "description": description or "",
-                "start_datetime": start_dt.isoformat(),
-                "end_datetime": end_dt.isoformat(),
-                "priority": priority,
-                "category": category,
-                "status": status,
-                "created_at": iso_now()
-            }
-            add_task(new_task)
-            st.success("Tâche ajoutée ✅")
-            st.session_state["show_add"] = False
-            st.experimental_rerun()
+            if not task_name:
+                st.error("⚠️ Please enter a task name.")
+            else:
+                new_task = {
+                    "Task Name": task_name,
+                    "Description": description,
+                    "Status": status,
+                    "Priority": priority,
+                    "Start Date": pd.to_datetime(start_date),
+                    "End Date": pd.to_datetime(end_date)
+                }
 
-# -------------------------
-# Views
-# -------------------------
+                df = load_tasks()
+                df = pd.concat([df, pd.DataFrame([new_task])], ignore_index=True)
+                save_tasks(df)
+                st.success("✅ Task added successfully and saved to CSV!")
+
+# --- GRID VIEW (TABLE) ---
 def grid_view():
-    st.subheader("Grid — Edition rapide")
-    tasks = load_tasks()
-    df = tasks_df(tasks)
+    st.subheader("📋 Grid View (All Tasks)")
+    df = load_tasks()
 
-    if "grid_editor_df" not in st.session_state:
-        st.session_state["grid_editor_df"] = df.copy()
+    if df.empty:
+        st.info("No tasks yet — add your first task above.")
+    else:
+        colored_df = df.copy()
+        colored_df["Status Color"] = colored_df["Status"].map(STATUS_COLORS)
+        st.dataframe(df, use_container_width=True)
 
-    edited = st.experimental_data_editor(
-        st.session_state["grid_editor_df"],
-        num_rows="dynamic",
-        use_container_width=True
-    )
+        with st.expander("📥 Download Tasks CSV"):
+            if os.path.exists(CSV_FILE):
+                with open(CSV_FILE, "rb") as f:
+                    st.download_button("Download CSV", f, file_name="tasks_log.csv", mime="text/csv")
+            else:
+                st.warning("No CSV file found yet.")
 
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("Enregistrer modifications (Grid)"):
-            tasks_out = []
-            for _, row in edited.iterrows():
-                t = ensure_task_model(row.to_dict())
-                tasks_out.append(t)
-            save_tasks(tasks_out)
-            st.success("Modifications sauvegardées ✅")
-            st.session_state["grid_editor_df"] = edited
-            st.experimental_rerun()
+# --- TRELLO BOARD ---
+def trello_view():
+    st.subheader("🗂️ Kanban Board")
 
-    with col2:
-        uploaded = st.file_uploader("Importer un CSV", type=["csv"], key="import_csv")
-        if uploaded:
-            try:
-                df_in = pd.read_csv(uploaded)
-                tasks_out = [ensure_task_model(row.to_dict()) for _, row in df_in.fillna("").iterrows()]
-                save_tasks(tasks_out)
-                st.success("CSV importé ✅")
-                st.experimental_rerun()
-            except Exception as e:
-                st.error(f"Erreur import CSV: {e}")
-
-    with col3:
-        if os.path.exists(CSV_FILE):
-            with open(CSV_FILE, "rb") as f:
-                st.download_button(
-                    "Télécharger CSV",
-                    data=f,
-                    file_name=f"tasks_{date.today().isoformat()}.csv",
-                    mime="text/csv"
-                )
-        else:
-            st.warning("Aucun fichier de tâches à télécharger pour le moment.")
-
-# -------------------------
-# Calendar View
-# -------------------------
-def calendar_view():
-    st.subheader("Calendar — Vue mensuelle")
-    tasks = load_tasks()
-    if "calendar_month" not in st.session_state:
-        today = date.today()
-        st.session_state["calendar_month"] = today.month
-        st.session_state["calendar_year"] = today.year
-
-    ccol1, ccol2, ccol3 = st.columns([1, 3, 1])
-    with ccol1:
-        if st.button("⬅", key="cal_prev"):
-            m, y = st.session_state["calendar_month"], st.session_state["calendar_year"]
-            prev = (date(y, m, 1) - timedelta(days=1)).replace(day=1)
-            st.session_state["calendar_month"], st.session_state["calendar_year"] = prev.month, prev.year
-    with ccol2:
-        st.markdown(f"### {date(st.session_state['calendar_year'], st.session_state['calendar_month'], 1).strftime('%B %Y')}")
-    with ccol3:
-        if st.button("➡", key="cal_next"):
-            m, y = st.session_state["calendar_month"], st.session_state["calendar_year"]
-            nextm = (date(y, m, 28) + timedelta(days=4)).replace(day=1)
-            st.session_state["calendar_month"], st.session_state["calendar_year"] = nextm.month, nextm.year
-
-    month, year = st.session_state["calendar_month"], st.session_state["calendar_year"]
-    cal = calendar.Calendar(firstweekday=0)
-    month_days = cal.monthdatescalendar(year, month)
-
-    cols = st.columns(7)
-    for i, wd in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-        cols[i].markdown(f"**{wd}**")
-
-    tasks_list = tasks_df(tasks).to_dict(orient="records")
-    for week in month_days:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            day_tasks = [t for t in tasks_list if parse_dt(t["start_datetime"]) and parse_dt(t["start_datetime"]).date() == day]
-            bg = CATEGORY_COLORS.get(day_tasks[0]["category"], "#f8f8f8") if day_tasks else "#f8f8f8"
-            border = "3px solid #2b8fff" if day == date.today() else "1px solid #ddd"
-            label_color = "#000" if day.month == month else "#aaa"
-            day_label = f"<div style='font-weight:bold;color:{label_color}'>{day.day}</div>"
-            tasks_html = "".join(
-                f"<div style='font-size:11px;text-align:left;padding:2px 0'>• <b>{t['title']}</b></div>"
-                for t in day_tasks[:4]
-            )
-            html = f"<div style='border:{border};background-color:{bg};border-radius:6px;min-height:100px;padding:6px'>{day_label}{tasks_html}</div>"
-            cols[i].markdown(html, unsafe_allow_html=True)
-
-# -------------------------
-# Kanban View
-# -------------------------
-def kanban_view():
-    st.subheader("Kanban — Vue tableau (Trello style)")
-    tasks = tasks_df(load_tasks())
-    cols = st.columns(len(STATUSES))
-    status_columns = {s: cols[i] for i, s in enumerate(STATUSES)}
-
-    for status, col in status_columns.items():
-        with col:
-            st.markdown(f"### {status}")
-            for _, row in tasks[tasks["status"] == status].iterrows():
-                t = row.to_dict()
-                cat_color = CATEGORY_COLORS.get(t["category"], "#eee")
-                start = parse_dt(t["start_datetime"])
-                when = start.strftime("%Y-%m-%d %H:%M") if start else ""
-                st.markdown(
-                    f"<div style='background-color:#fff;border-radius:8px;padding:8px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08)'>"
-                    f"<div style='font-weight:bold'>{t['title']}</div>"
-                    f"<div style='font-size:12px;color:#444'>{t['category']} • {t['priority']} • {when}</div>"
-                    f"<div style='font-size:12px;margin-top:6px'>{t['description'][:120]}</div>"
-                    "</div>", unsafe_allow_html=True
-                )
-
-# -------------------------
-# Gantt View
-# -------------------------
-def gantt_mini():
-    st.subheader("Gantt — Vue synthétique")
-    tasks = tasks_df(load_tasks())
-    if tasks.empty:
-        st.info("Aucune tâche pour le Gantt.")
+    df = load_tasks()
+    if df.empty:
+        st.info("No tasks available yet.")
         return
-    df = tasks.copy()
-    df["start"] = pd.to_datetime(df["start_datetime"])
-    df["end"] = pd.to_datetime(df["end_datetime"])
-    df["TaskLabel"] = df["title"] + " (" + df["status"] + ")"
-    fig = px.timeline(df, x_start="start", x_end="end", y="TaskLabel", color="category",
-                      color_discrete_map=CATEGORY_COLORS, hover_data=["priority", "description"])
+
+    statuses = list(STATUS_COLORS.keys())
+    cols = st.columns(len(statuses))
+
+    for i, status in enumerate(statuses):
+        with cols[i]:
+            st.markdown(f"### {status}")
+            st.markdown(f'<div style="background-color:{STATUS_COLORS[status]};height:5px;border-radius:4px;margin-bottom:8px;"></div>', unsafe_allow_html=True)
+            tasks = df[df["Status"] == status]
+            for _, task in tasks.iterrows():
+                st.markdown(f"""
+                <div style="background-color:white;border:1px solid #ddd;border-radius:10px;
+                padding:10px;margin-bottom:10px;box-shadow:2px 2px 5px rgba(0,0,0,0.05)">
+                    <b>{task['Task Name']}</b><br>
+                    <small>{task['Description']}</small><br>
+                    <span style="font-size:12px;color:gray;">
+                        ⏱ {task['Start Date'].strftime('%Y-%m-%d')} → {task['End Date'].strftime('%Y-%m-%d')}
+                    </span><br>
+                    <span style="background-color:{PRIORITY_COLORS[task['Priority']]};padding:2px 6px;
+                    border-radius:5px;font-size:12px;">{task['Priority']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+# --- CALENDAR VIEW ---
+def calendar_view():
+    st.subheader("🗓️ Calendar View")
+    df = load_tasks()
+
+    if df.empty:
+        st.info("No tasks yet.")
+        return
+
+    year = st.selectbox("Select Year", sorted(df["Start Date"].dt.year.unique()), index=0)
+    month = st.selectbox("Select Month", list(calendar.month_name)[1:], index=date.today().month - 1)
+
+    month_idx = list(calendar.month_name).index(month)
+    cal = calendar.Calendar()
+
+    days = list(cal.itermonthdates(year, month_idx))
+    grid = ""
+    for i, day in enumerate(days):
+        if i % 7 == 0:
+            grid += "<div style='display:flex;'>"
+        if day.month == month_idx:
+            daily_tasks = df[df["Start Date"].dt.date == day]
+            color = "#f8f9fa"
+            if not daily_tasks.empty:
+                color = STATUS_COLORS.get(daily_tasks.iloc[0]["Status"], "#f8f9fa")
+            grid += f"<div style='flex:1;text-align:center;padding:8px;margin:2px;background-color:{color};border-radius:8px;'>{day.day}</div>"
+        else:
+            grid += "<div style='flex:1;padding:8px;margin:2px;color:#ccc;'> </div>"
+        if i % 7 == 6:
+            grid += "</div>"
+    st.markdown(grid, unsafe_allow_html=True)
+
+# --- GANTT CHART ---
+def gantt_view():
+    st.subheader("📊 Gantt Chart")
+    df = load_tasks()
+
+    if df.empty:
+        st.info("No tasks available yet.")
+        return
+
+    fig = px.timeline(
+        df,
+        x_start="Start Date",
+        x_end="End Date",
+        y="Task Name",
+        color="Status",
+        color_discrete_map=STATUS_COLORS,
+        hover_data=["Priority", "Description"]
+    )
     fig.update_yaxes(autorange="reversed")
+    fig.update_layout(height=500, margin=dict(l=0, r=0, t=30, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-# -------------------------
-# Main UI
-# -------------------------
+# --- MAIN RENDER FUNCTION ---
 def render_task_planner():
-    top_bar()
+    st.title("🧭 Project Task Planner")
+    st.markdown("A Monday.com-style dashboard to manage your projects — with calendar, Gantt chart, and Kanban board.")
 
-    st.sidebar.markdown("### Vue / Filtres")
-    view = st.sidebar.radio("Choisir une vue", ["Grid", "Calendar", "Kanban"], index=0)
+    add_task_form()
 
-    selected_day = parse_dt(st.session_state.get("selected_day", date.today().isoformat()))
-    default_date = selected_day.date() if selected_day else date.today()
-    if st.session_state.get("show_add", False):
-        add_task_form(default_date)
+    st.markdown("---")
+    view = st.radio(
+        "Choose your view:",
+        ["Grid", "Kanban Board", "Calendar", "Gantt Chart"],
+        horizontal=True
+    )
 
     if view == "Grid":
         grid_view()
+    elif view == "Kanban Board":
+        trello_view()
     elif view == "Calendar":
         calendar_view()
-    elif view == "Kanban":
-        kanban_view()
-
-    st.markdown("---")
-    st.markdown("### Statistiques & Gantt")
-    all_tasks = tasks_df(load_tasks())
-    total = len(all_tasks)
-    done = sum(1 for t in all_tasks.to_dict(orient="records") if t.get("status") == "Done")
-    pending = total - done
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total tâches", total)
-    c2.metric("Terminées", done)
-    c3.metric("En attente", pending)
-
-    gantt_mini()
-
-# -------------------------
-# Run App
-# -------------------------
-if __name__ == "__main__":
-    render_task_planner()
+    elif view == "Gantt Chart":
+        gantt_view()
