@@ -3609,3 +3609,5 @@ timestamp,asset,predicted_price,volatility,risk
 2025-11-10 18:22:23,Bitcoin,111224.18,0.011,Low
 2025-11-10 19:13:09,Gold,3318.33,0.017,Low
 2025-11-10 19:13:09,Bitcoin,111224.18,0.022,Medium
+2025-11-10 20:18:39,Gold,3318.33,0.0166,Low
+2025-11-10 20:18:39,Bitcoin,111224.18,0.0317,Medium
