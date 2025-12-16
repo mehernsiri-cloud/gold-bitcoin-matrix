@@ -6,11 +6,11 @@ bitcoin:
   equity_flows: 0.360346
   geopolitics: -0.020000000000000004
   inflation: 0.0013333333333333346
-  liquidity: -0.0984
+  liquidity: -0.09040000000000001
   real_rates: -0.03400000000000008
   recession_probability: 0.048458
-  regulation: 0.0246
-  tail_risk_event: -0.0154
+  regulation: 0.022600000000000002
+  tail_risk_event: -0.0148
   usd_strength: -0.061614900000000014
 gold:
   adoption: 0.0
@@ -20,9 +20,9 @@ gold:
   equity_flows: 0.102956
   geopolitics: -0.12
   inflation: 0.006666666666666672
-  liquidity: -0.0615
+  liquidity: -0.0565
   real_rates: -0.17000000000000037
   recession_probability: 0.121145
   regulation: -0.0
-  tail_risk_event: -0.10779999999999999
+  tail_risk_event: -0.10359999999999998
   usd_strength: -0.16430640000000007
