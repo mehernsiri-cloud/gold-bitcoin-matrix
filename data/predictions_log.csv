@@ -7847,3 +7847,5 @@ timestamp,asset,predicted_price,volatility,risk
 2026-02-16 23:24:55,Bitcoin,110714.15,0.0204,Medium
 2026-02-17 01:43:13,Gold,3197.82,0.0468,High
 2026-02-17 01:43:13,Bitcoin,110714.15,0.0342,Medium
+2026-02-17 04:14:54,Gold,3197.82,0.0463,High
+2026-02-17 04:14:54,Bitcoin,110714.15,0.0395,Medium
