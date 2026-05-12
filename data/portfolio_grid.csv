@@ -1,0 +1,11 @@
+Asset,Company,Ticker,Base_Allocation,Current_Price,Signal,Now_Pct,Next_Pct,Dip_Pct,Status,Notes,Bucket
+Oil,TotalEnergies,TTE,12.5,,,60,25,15,Active,Core position,ENERGY
+Oil,ExxonMobil,XOM,12.5,,,60,25,15,Active,USD hedge,ENERGY
+Tankers,Euronav,EURN,6,,,0,60,40,Watch,Volatile,GEO
+Tankers,Frontline,FRO,6,,,0,60,40,Watch,High beta,GEO
+Aviation,FTAI Aviation,FTAI,7.5,,,0,50,50,Watch,Travel sensitivity,SPECIAL
+Defense,Thales,HO.PA,6,,,100,0,0,Active,EU exposure,DEFENSE
+Defense,Lockheed Martin,LMT,6,,,100,0,0,Active,US exposure,DEFENSE
+Gold,GLD,GLD,15,,,80,20,0,Active,Hedge,DEFENSIVE
+Defensive,Air Liquide,AI.PA,10,,,50,50,0,Active,Stabilizer,DEFENSIVE
+Cash,Cash,CASH,14.5,,,100,0,0,Active,Liquidity,CASH
