@@ -170,6 +170,49 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
     except Exception as e:
         st.warning(f"Could not append to log {path}: {e}")
 
+# -------------------------------------------------------------------
+# PORTFOLIO ENGINE
+# -------------------------------------------------------------------
+
+PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_grid.csv")
+
+
+def load_portfolio():
+    return pd.read_csv(PORTFOLIO_FILE)
+
+
+def dynamic_portfolio_adjustment(df, btc_df, gold_df):
+
+    btc_signal = btc_df["signal"].iloc[-1] if not btc_df.empty else "Hold"
+    gold_signal = gold_df["signal"].iloc[-1] if not gold_df.empty else "Hold"
+    vix = st.session_state.vix_adj
+
+    adjusted = df.copy()
+
+    # High stress mode
+    if vix > 40:
+        adjusted.loc[adjusted["Bucket"] == "DEFENSIVE", "Base_Allocation"] *= 1.20
+        adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 1.25
+        adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 0.75
+
+    # Gold bullish
+    if gold_signal == "Buy":
+        adjusted.loc[adjusted["Ticker"] == "GLD", "Base_Allocation"] *= 1.15
+
+    # Bitcoin bullish
+    if btc_signal == "Buy":
+        adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 1.10
+
+    # Normalize to 100%
+    total = adjusted["Base_Allocation"].sum()
+    adjusted["Dynamic_Allocation"] = (
+        adjusted["Base_Allocation"] / total * 100
+    ).round(2)
+
+    return adjusted
+
+
+
 
 # -------------------------------------------------------------------
 # LOAD DATA
@@ -516,7 +559,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "Task Planner"]
+    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Portfolio Strategy", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "Task Planner"]
 )
 
 
@@ -725,6 +768,41 @@ elif menu == "Real Estate Bot":
 # -------------------------------------------------------------------
 elif menu == "Task Planner":
     render_task_planner()
+
+# -------------------------------------------------------------------
+# Portfolio Strategy
+# -------------------------------------------------------------------
+elif menu == "Portfolio Strategy":
+
+    st.title("📈 Dynamic Portfolio Allocation")
+
+    portfolio_df = load_portfolio()
+    portfolio_dynamic = dynamic_portfolio_adjustment(
+        portfolio_df,
+        btc_df_adj,
+        gold_df_adj
+    )
+
+    st.dataframe(
+        portfolio_dynamic.style.highlight_max(
+            subset=["Dynamic_Allocation"],
+            color="lightgreen"
+        )
+    )
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Pie(
+        labels=portfolio_dynamic["Company"],
+        values=portfolio_dynamic["Dynamic_Allocation"],
+        hole=0.35
+    ))
+
+    fig.update_layout(
+        title="Dynamic Portfolio Allocation"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------------------------------------------
 # FOOTER: diagnostics and downloads
