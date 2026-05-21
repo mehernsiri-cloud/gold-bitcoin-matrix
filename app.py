@@ -175,42 +175,228 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
 # -------------------------------------------------------------------
 
 PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_grid.csv")
+DYNAMIC_PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_dynamic.csv")
 
 
 def load_portfolio():
-    return pd.read_csv(PORTFOLIO_FILE)
+    """
+    Load strategic/base portfolio allocation.
+    """
+    try:
+        df = pd.read_csv(PORTFOLIO_FILE)
+
+        # Ensure numeric columns
+        numeric_cols = [
+            "Base_Allocation",
+            "Now_Pct",
+            "Next_Pct",
+            "Dip_Pct"
+        ]
+
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        return df
+
+    except Exception as e:
+        st.error(f"Error loading portfolio file: {e}")
+        return pd.DataFrame()
+
+
+def save_dynamic_portfolio(df):
+    """
+    Save dynamic portfolio allocation separately
+    without overwriting the strategic allocation.
+    """
+    try:
+        df.to_csv(DYNAMIC_PORTFOLIO_FILE, index=False)
+    except Exception as e:
+        st.warning(f"Failed saving dynamic portfolio: {e}")
 
 
 def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
-    btc_signal = btc_df["signal"].iloc[-1] if not btc_df.empty else "Hold"
-    gold_signal = gold_df["signal"].iloc[-1] if not gold_df.empty else "Hold"
-    vix = st.session_state.vix_adj
+    if df.empty:
+        return df
 
     adjusted = df.copy()
 
-    # High stress mode
-    if vix > 40:
-        adjusted.loc[adjusted["Bucket"] == "DEFENSIVE", "Base_Allocation"] *= 1.20
-        adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 1.25
-        adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 0.75
+    # ---------------------------------------------------------------
+    # SIGNAL EXTRACTION
+    # ---------------------------------------------------------------
 
-    # Gold bullish
+    btc_signal = (
+        btc_df["signal"].iloc[-1]
+        if not btc_df.empty and "signal" in btc_df.columns
+        else "Hold"
+    )
+
+    gold_signal = (
+        gold_df["signal"].iloc[-1]
+        if not gold_df.empty and "signal" in gold_df.columns
+        else "Hold"
+    )
+
+    vix = st.session_state.get("vix_adj", 20)
+
+    inflation = st.session_state.get("inflation_adj", 2.5)
+
+    oil_scenario = st.session_state.get("oil_adj", 0)
+
+    # ---------------------------------------------------------------
+    # DEFENSIVE / STRESS MODE
+    # ---------------------------------------------------------------
+
+    if vix >= 40:
+
+        # Increase defensive assets
+        adjusted.loc[
+            adjusted["Bucket"].isin(["DEFENSIVE"]),
+            "Base_Allocation"
+        ] *= 1.20
+
+        # Increase cash reserve
+        adjusted.loc[
+            adjusted["Bucket"] == "CASH",
+            "Base_Allocation"
+        ] *= 1.30
+
+        # Reduce cyclical/travel exposure
+        adjusted.loc[
+            adjusted["Bucket"].isin(["SPECIAL", "GEO"]),
+            "Base_Allocation"
+        ] *= 0.80
+
+    # ---------------------------------------------------------------
+    # GOLD BULLISH MODE
+    # ---------------------------------------------------------------
+
     if gold_signal == "Buy":
-        adjusted.loc[adjusted["Ticker"] == "GLD", "Base_Allocation"] *= 1.15
 
-    # Bitcoin bullish
+        adjusted.loc[
+            adjusted["Ticker"] == "GLD",
+            "Base_Allocation"
+        ] *= 1.15
+
+    elif gold_signal == "Sell":
+
+        adjusted.loc[
+            adjusted["Ticker"] == "GLD",
+            "Base_Allocation"
+        ] *= 0.90
+
+    # ---------------------------------------------------------------
+    # BITCOIN RISK-ON MODE
+    # ---------------------------------------------------------------
+
     if btc_signal == "Buy":
-        adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 1.10
 
-    # Normalize to 100%
+        adjusted.loc[
+            adjusted["Bucket"] == "SPECIAL",
+            "Base_Allocation"
+        ] *= 1.10
+
+        adjusted.loc[
+            adjusted["Bucket"] == "CASH",
+            "Base_Allocation"
+        ] *= 0.92
+
+    elif btc_signal == "Sell":
+
+        adjusted.loc[
+            adjusted["Bucket"] == "CASH",
+            "Base_Allocation"
+        ] *= 1.10
+
+    # ---------------------------------------------------------------
+    # INFLATION / OIL REGIME
+    # ---------------------------------------------------------------
+
+    if inflation >= 5:
+
+        # Favor energy
+        adjusted.loc[
+            adjusted["Bucket"] == "ENERGY",
+            "Base_Allocation"
+        ] *= 1.12
+
+        # Favor gold
+        adjusted.loc[
+            adjusted["Ticker"] == "GLD",
+            "Base_Allocation"
+        ] *= 1.08
+
+    if oil_scenario >= 15:
+
+        adjusted.loc[
+            adjusted["Bucket"] == "ENERGY",
+            "Base_Allocation"
+        ] *= 1.08
+
+    elif oil_scenario <= -15:
+
+        adjusted.loc[
+            adjusted["Bucket"] == "ENERGY",
+            "Base_Allocation"
+        ] *= 0.92
+
+    # ---------------------------------------------------------------
+    # MIN/MAX ALLOCATION SAFETY LIMITS
+    # ---------------------------------------------------------------
+
+    adjusted["Base_Allocation"] = adjusted["Base_Allocation"].clip(
+        lower=3,
+        upper=25
+    )
+
+    # ---------------------------------------------------------------
+    # NORMALIZATION TO 100%
+    # ---------------------------------------------------------------
+
     total = adjusted["Base_Allocation"].sum()
+
     adjusted["Dynamic_Allocation"] = (
         adjusted["Base_Allocation"] / total * 100
     ).round(2)
 
-    return adjusted
+    # ---------------------------------------------------------------
+    # PORTFOLIO DRIFT TRACKER
+    # ---------------------------------------------------------------
 
+    adjusted["Allocation_Drift"] = (
+        adjusted["Dynamic_Allocation"]
+        - adjusted["Base_Allocation"]
+    ).round(2)
+
+    # ---------------------------------------------------------------
+    # RISK MODE LABEL
+    # ---------------------------------------------------------------
+
+    if vix >= 40:
+        risk_mode = "HIGH STRESS"
+    elif vix >= 28:
+        risk_mode = "ELEVATED RISK"
+    else:
+        risk_mode = "NORMAL"
+
+    adjusted["Risk_Mode"] = risk_mode
+
+    # ---------------------------------------------------------------
+    # LAST UPDATE
+    # ---------------------------------------------------------------
+
+    adjusted["Last_Update"] = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    # ---------------------------------------------------------------
+    # SAVE DYNAMIC VERSION
+    # ---------------------------------------------------------------
+
+    save_dynamic_portfolio(adjusted)
+
+    return adjusted
 
 
 
