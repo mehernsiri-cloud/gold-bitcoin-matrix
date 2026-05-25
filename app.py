@@ -653,19 +653,51 @@ def render_eur_aed_monitor():
             {}
         )
 
-        history_3m = pd.DataFrame([
-            {
-                "timestamp": pd.to_datetime(
-                    date
-                ),
-                "eur_aed": value["AED"]
-            }
-            for date, value in rates.items()
-        ])
+# ---------------------------------------------------------------
+# SAFE FX HISTORY PARSING
+# ---------------------------------------------------------------
 
-        history_3m = history_3m.sort_values(
-            "timestamp"
-        )
+history_rows = []
+
+for date, value in rates.items():
+
+    try:
+
+        if (
+            isinstance(value, dict)
+            and "AED" in value
+        ):
+
+            history_rows.append({
+                "timestamp": pd.to_datetime(date),
+                "eur_aed": float(value["AED"])
+            })
+
+    except Exception:
+        continue
+
+history_3m = pd.DataFrame(history_rows)
+
+# Safety check
+required_cols = ["timestamp", "eur_aed"]
+
+if (
+    history_3m.empty
+    or not all(
+        col in history_3m.columns
+        for col in required_cols
+    )
+):
+
+    st.error(
+        "EUR/AED historical data unavailable."
+    )
+
+    return
+
+history_3m = history_3m.sort_values(
+    by="timestamp"
+)
 
     except Exception as e:
 
