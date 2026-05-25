@@ -172,10 +172,21 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
 
 # -------------------------------------------------------------------
 # PORTFOLIO ENGINE + EUR/AED MONITORING
+# CLEAN / STABLE VERSION
 # -------------------------------------------------------------------
 
+import os
 import requests
 import numpy as np
+import pandas as pd
+import streamlit as st
+import plotly.graph_objects as go
+
+from datetime import datetime, timedelta
+
+# -------------------------------------------------------------------
+# FILES
+# -------------------------------------------------------------------
 
 PORTFOLIO_FILE = os.path.join(
     DATA_DIR,
@@ -198,7 +209,7 @@ FX_HISTORY_FILE = os.path.join(
 
 def get_eur_aed_rate():
     """
-    Fetch live EUR/AED exchange rate.
+    Live EUR/AED rate.
     """
 
     try:
@@ -212,9 +223,9 @@ def get_eur_aed_rate():
 
         data = response.json()
 
-        aed_rate = data["rates"]["AED"]
+        rate = data["rates"]["AED"]
 
-        return round(aed_rate, 4)
+        return round(float(rate), 4)
 
     except Exception as e:
 
@@ -225,19 +236,27 @@ def get_eur_aed_rate():
         return None
 
 
+# -------------------------------------------------------------------
+# SAVE FX HISTORY
+# -------------------------------------------------------------------
+
 def save_fx_history(rate):
 
     if rate is None:
         return
 
-    row = pd.DataFrame([
-        {
-            "timestamp": datetime.now(),
-            "eur_aed": rate
-        }
-    ])
-
     try:
+
+        new_row = pd.DataFrame([
+            {
+                "timestamp": datetime.now(),
+                "eur_aed": rate
+            }
+        ])
+
+        # -----------------------------------------------------------
+        # LOAD EXISTING
+        # -----------------------------------------------------------
 
         if os.path.exists(FX_HISTORY_FILE):
 
@@ -245,19 +264,51 @@ def save_fx_history(rate):
                 FX_HISTORY_FILE
             )
 
+            # FIX BROKEN FILES
+            if "timestamp" not in existing.columns:
+                existing["timestamp"] = pd.Timestamp.now()
+
+            if "eur_aed" not in existing.columns:
+                existing["eur_aed"] = rate
+
             combined = pd.concat(
-                [existing, row],
+                [existing, new_row],
                 ignore_index=True
             )
 
         else:
 
-            combined = row
+            combined = new_row
+
+        # -----------------------------------------------------------
+        # CLEAN
+        # -----------------------------------------------------------
+
+        combined["timestamp"] = pd.to_datetime(
+            combined["timestamp"],
+            errors="coerce"
+        )
+
+        combined["eur_aed"] = pd.to_numeric(
+            combined["eur_aed"],
+            errors="coerce"
+        )
+
+        combined.dropna(inplace=True)
 
         combined.drop_duplicates(
             subset=["timestamp", "eur_aed"],
             inplace=True
         )
+
+        combined.sort_values(
+            by="timestamp",
+            inplace=True
+        )
+
+        # -----------------------------------------------------------
+        # SAVE
+        # -----------------------------------------------------------
 
         combined.to_csv(
             FX_HISTORY_FILE,
@@ -271,28 +322,50 @@ def save_fx_history(rate):
         )
 
 
+# -------------------------------------------------------------------
+# LOAD FX HISTORY
+# -------------------------------------------------------------------
+
 def load_fx_history():
 
     try:
 
-        if os.path.exists(FX_HISTORY_FILE):
+        if not os.path.exists(
+            FX_HISTORY_FILE
+        ):
+            return pd.DataFrame()
 
-            df = pd.read_csv(
-                FX_HISTORY_FILE
-            )
+        df = pd.read_csv(
+            FX_HISTORY_FILE
+        )
 
-            df["timestamp"] = pd.to_datetime(
-                df["timestamp"],
-                errors="coerce"
-            )
+        # -----------------------------------------------------------
+        # SAFETY CHECKS
+        # -----------------------------------------------------------
 
-            df = df.sort_values(
-                "timestamp"
-            )
+        if "timestamp" not in df.columns:
+            return pd.DataFrame()
 
-            return df
+        if "eur_aed" not in df.columns:
+            return pd.DataFrame()
 
-        return pd.DataFrame()
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
+            errors="coerce"
+        )
+
+        df["eur_aed"] = pd.to_numeric(
+            df["eur_aed"],
+            errors="coerce"
+        )
+
+        df.dropna(inplace=True)
+
+        df = df.sort_values(
+            by="timestamp"
+        )
+
+        return df
 
     except Exception as e:
 
@@ -363,7 +436,7 @@ def save_dynamic_portfolio(df):
 
 
 # -------------------------------------------------------------------
-# DYNAMIC PORTFOLIO ADJUSTMENT
+# DYNAMIC PORTFOLIO ENGINE
 # -------------------------------------------------------------------
 
 def dynamic_portfolio_adjustment(
@@ -383,15 +456,19 @@ def dynamic_portfolio_adjustment(
 
     btc_signal = (
         btc_df["signal"].iloc[-1]
-        if not btc_df.empty
-        and "signal" in btc_df.columns
+        if (
+            not btc_df.empty
+            and "signal" in btc_df.columns
+        )
         else "Hold"
     )
 
     gold_signal = (
         gold_df["signal"].iloc[-1]
-        if not gold_df.empty
-        and "signal" in gold_df.columns
+        if (
+            not gold_df.empty
+            and "signal" in gold_df.columns
+        )
         else "Hold"
     )
 
@@ -411,7 +488,7 @@ def dynamic_portfolio_adjustment(
     )
 
     # ---------------------------------------------------------------
-    # HIGH STRESS REGIME
+    # HIGH STRESS
     # ---------------------------------------------------------------
 
     if vix >= 40:
@@ -452,7 +529,7 @@ def dynamic_portfolio_adjustment(
         ] *= 0.90
 
     # ---------------------------------------------------------------
-    # BITCOIN REGIME
+    # BTC REGIME
     # ---------------------------------------------------------------
 
     if btc_signal == "Buy":
@@ -505,24 +582,25 @@ def dynamic_portfolio_adjustment(
         ] *= 0.92
 
     # ---------------------------------------------------------------
-    # EUR / AED FX REGIME
+    # EUR/AED FX REGIME
     # ---------------------------------------------------------------
 
     eur_aed_rate = get_eur_aed_rate()
 
     adjusted["EUR_AED"] = eur_aed_rate
 
-    # AED stronger = danger for Dubai payments
     if eur_aed_rate is not None:
 
-        if eur_aed_rate <= 3.70:
+        # AED strengthening danger zone
+        if eur_aed_rate <= 3.90:
 
             adjusted.loc[
                 adjusted["Bucket"] == "CASH",
                 "Base_Allocation"
             ] *= 1.15
 
-        elif eur_aed_rate >= 4.30:
+        # EUR stronger
+        elif eur_aed_rate >= 4.20:
 
             adjusted.loc[
                 adjusted["Bucket"] == "SPECIAL",
@@ -582,7 +660,7 @@ def dynamic_portfolio_adjustment(
     )
 
     # ---------------------------------------------------------------
-    # SAVE DYNAMIC VERSION
+    # SAVE
     # ---------------------------------------------------------------
 
     save_dynamic_portfolio(
@@ -593,7 +671,7 @@ def dynamic_portfolio_adjustment(
 
 
 # -------------------------------------------------------------------
-# EUR / AED DASHBOARD SECTION
+# EUR/AED MONITOR
 # -------------------------------------------------------------------
 
 def render_eur_aed_monitor():
@@ -611,7 +689,7 @@ def render_eur_aed_monitor():
     if current_rate is None:
 
         st.error(
-            "Unable to load EUR/AED rate"
+            "Unable to load EUR/AED rate."
         )
 
         return
@@ -621,7 +699,7 @@ def render_eur_aed_monitor():
     )
 
     # ---------------------------------------------------------------
-    # FETCH REAL 90 DAYS HISTORY
+    # FETCH REAL DAILY HISTORY
     # ---------------------------------------------------------------
 
     try:
@@ -638,7 +716,7 @@ def render_eur_aed_monitor():
         history_url = (
             f"https://api.frankfurter.app/"
             f"{start_date}..{end_date}"
-            "?from=EUR&to=AED"
+            f"?from=EUR&to=AED"
         )
 
         response = requests.get(
@@ -652,47 +730,6 @@ def render_eur_aed_monitor():
             "rates",
             {}
         )
-
-# ---------------------------------------------------------------
-# SAFE FX HISTORY PARSING
-# ---------------------------------------------------------------
-
-history_rows = []
-
-for date, value in rates.items():
-
-    try:
-
-        start_date = (
-            datetime.now()
-            - timedelta(days=90)
-        ).strftime("%Y-%m-%d")
-
-        end_date = datetime.now().strftime(
-            "%Y-%m-%d"
-        )
-
-        history_url = (
-            f"https://api.frankfurter.app/"
-            f"{start_date}..{end_date}"
-            "?from=EUR&to=AED"
-        )
-
-        response = requests.get(
-            history_url,
-            timeout=15
-        )
-
-        fx_data = response.json()
-
-        rates = fx_data.get(
-            "rates",
-            {}
-        )
-
-        # -------------------------------------------------------
-        # SAFE FX HISTORY PARSING
-        # -------------------------------------------------------
 
         history_rows = []
 
@@ -705,10 +742,12 @@ for date, value in rates.items():
                     and "AED" in value
                 ):
 
-                    history_rows.append({
-                        "timestamp": pd.to_datetime(date),
-                        "eur_aed": float(value["AED"])
-                    })
+                    history_rows.append(
+                        {
+                            "timestamp": pd.to_datetime(date),
+                            "eur_aed": float(value["AED"])
+                        }
+                    )
 
             except Exception:
                 continue
@@ -717,21 +756,10 @@ for date, value in rates.items():
             history_rows
         )
 
-        required_cols = [
-            "timestamp",
-            "eur_aed"
-        ]
+        if history_3m.empty:
 
-        if (
-            history_3m.empty
-            or not all(
-                col in history_3m.columns
-                for col in required_cols
-            )
-        ):
-
-            st.error(
-                "EUR/AED historical data unavailable."
+            st.warning(
+                "No EUR/AED historical data."
             )
 
             return
@@ -744,21 +772,6 @@ for date, value in rates.items():
 
         st.error(
             f"Failed loading FX history: {e}"
-        )
-
-        return
-    except Exception as e:
-
-        st.error(
-            f"Failed loading FX history: {e}"
-        )
-
-        return
-
-    if history_3m.empty:
-
-        st.warning(
-            "No FX history available."
         )
 
         return
@@ -796,7 +809,7 @@ for date, value in rates.items():
     ].mean()
 
     # ---------------------------------------------------------------
-    # ALERT COLORS
+    # COLOR LOGIC
     # ---------------------------------------------------------------
 
     if pct_change <= -10:
@@ -819,10 +832,7 @@ for date, value in rates.items():
 
         st.error(
             f"""
-            🚨 ALERT:
-            EUR weakened by
-            {pct_change:.2f}%
-            vs AED over 90 days.
+            🚨 EUR weakened by {pct_change:.2f}% over 90 days.
 
             Dubai off-plan payments are becoming
             MORE expensive in EUR.
@@ -833,10 +843,7 @@ for date, value in rates.items():
 
         st.success(
             f"""
-            ✅ ALERT:
-            EUR strengthened by
-            {pct_change:.2f}%
-            vs AED over 90 days.
+            ✅ EUR strengthened by {pct_change:.2f}% over 90 days.
 
             Dubai payments becoming cheaper.
             """
@@ -846,9 +853,7 @@ for date, value in rates.items():
 
         st.warning(
             f"""
-            ⚠️ EUR/AED variation:
-            {pct_change:.2f}%
-            over 90 days.
+            ⚠️ EUR/AED moved {pct_change:.2f}% over 90 days.
             """
         )
 
@@ -907,7 +912,7 @@ for date, value in rates.items():
     )
 
     # ---------------------------------------------------------------
-    # ALERT LINES
+    # ALERT LEVELS
     # ---------------------------------------------------------------
 
     upper_alert = initial_rate * 1.10
@@ -948,6 +953,12 @@ for date, value in rates.items():
         fig,
         use_container_width=True
     )
+
+
+
+
+
+
 # -------------------------------------------------------------------
 # LOAD DATA
 # -------------------------------------------------------------------
