@@ -563,201 +563,91 @@ def dynamic_portfolio_adjustment(
 
 def render_eur_aed_monitor():
 
-    st.subheader(
-        "💱 EUR / AED Dubai Payment Risk Monitor"
+# ---------------------------------------------------------------
+# REAL DAILY EUR/AED HISTORY (LAST 3 MONTHS)
+# ---------------------------------------------------------------
+
+st.markdown(
+    "### 🏙️ Dubai Payment Risk — Real Daily EUR/AED (90 Days)"
+)
+
+try:
+
+    # -----------------------------------------------------------
+    # FETCH REAL DAILY FX HISTORY
+    # -----------------------------------------------------------
+
+    history_url = (
+        "https://api.frankfurter.app/"
+        f"{(datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')}.."
+        f"{datetime.now().strftime('%Y-%m-%d')}"
+        "?from=EUR&to=AED"
     )
 
-    # ---------------------------------------------------------------
-    # LIVE RATE
-    # ---------------------------------------------------------------
+    response = requests.get(
+        history_url,
+        timeout=15
+    )
 
-    rate = get_eur_aed_rate()
+    fx_data = response.json()
 
-    if rate is None:
+    rates = fx_data.get("rates", {})
 
-        st.error(
-            "Unable to load EUR/AED rate"
-        )
+    history_3m = pd.DataFrame([
+        {
+            "timestamp": pd.to_datetime(date),
+            "eur_aed": value["AED"]
+        }
+        for date, value in rates.items()
+    ])
 
-        return
+    history_3m = history_3m.sort_values(
+        "timestamp"
+    )
 
-    save_fx_history(rate)
+    if history_3m.empty:
 
-    history = load_fx_history()
-
-    if history.empty:
-
-        st.info("No FX history yet")
-
-        return
-
-    # ---------------------------------------------------------------
-    # MAIN METRICS
-    # ---------------------------------------------------------------
-
-    current_rate = history["eur_aed"].iloc[-1]
-
-    initial_rate = history["eur_aed"].iloc[0]
-
-    pct_change = (
-        (current_rate - initial_rate)
-        / initial_rate
-    ) * 100
-
-    # ---------------------------------------------------------------
-    # ALERTS
-    # ---------------------------------------------------------------
-
-    if pct_change <= -10:
-
-        st.error(
-            f"""
-            🚨 ALERT
-
-            EUR dropped {pct_change:.2f}% vs AED.
-
-            Dubai off-plan payments are becoming
-            MORE expensive in EUR.
-            """
-        )
-
-    elif pct_change >= 10:
-
-        st.success(
-            f"""
-            ✅ ALERT
-
-            EUR gained {pct_change:.2f}% vs AED.
-
-            Dubai payments are becoming cheaper
-            in EUR terms.
-            """
+        st.warning(
+            "No 3-month FX history available."
         )
 
     else:
 
-        st.warning(
-            f"""
-            ⚠️ EUR/AED variation:
-            {pct_change:.2f}%
-            """
-        )
+        # -------------------------------------------------------
+        # CALCULATIONS
+        # -------------------------------------------------------
 
-    # ---------------------------------------------------------------
-    # METRICS
-    # ---------------------------------------------------------------
+        rate_3m_start = history_3m[
+            "eur_aed"
+        ].iloc[0]
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            "EUR/AED",
-            f"{current_rate:.4f}"
-        )
-
-    with col2:
-
-        st.metric(
-            "Variation %",
-            f"{pct_change:.2f}%"
-        )
-
-    with col3:
-
-        if pct_change < 0:
-
-            regime = "AED Strength Risk"
-
-        else:
-
-            regime = "EUR Strength"
-
-        st.metric(
-            "FX Regime",
-            regime
-        )
-
-    # ---------------------------------------------------------------
-    # FULL HISTORY CHART
-    # ---------------------------------------------------------------
-
-    st.markdown(
-        "### 📈 Full EUR/AED History"
-    )
-
-    full_color = (
-        "red"
-        if pct_change < -10
-        else "green"
-        if pct_change > 10
-        else "orange"
-    )
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=history["timestamp"],
-            y=history["eur_aed"],
-            mode="lines+markers",
-            line=dict(
-                color=full_color,
-                width=3
-            ),
-            name="EUR/AED"
-        )
-    )
-
-    fig.update_layout(
-        title="EUR / AED Monitoring (Full History)",
-        xaxis_title="Date",
-        yaxis_title="EUR/AED",
-        height=420,
-        plot_bgcolor="#FAFAFA",
-        paper_bgcolor="#FAFAFA"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    # ---------------------------------------------------------------
-    # LAST 3 MONTHS CHART
-    # ---------------------------------------------------------------
-
-    st.markdown(
-        "### 🏙️ Dubai Payment Risk — Last 3 Months"
-    )
-
-    three_months_ago = (
-        datetime.now()
-        - timedelta(days=90)
-    )
-
-    history_3m = history[
-        history["timestamp"] >= three_months_ago
-    ].copy()
-
-    if not history_3m.empty:
-
-        rate_3m_start = (
-            history_3m["eur_aed"].iloc[0]
-        )
-
-        rate_3m_current = (
-            history_3m["eur_aed"].iloc[-1]
-        )
+        rate_3m_current = history_3m[
+            "eur_aed"
+        ].iloc[-1]
 
         pct_3m = (
-            (rate_3m_current - rate_3m_start)
+            (
+                rate_3m_current
+                - rate_3m_start
+            )
             / rate_3m_start
         ) * 100
 
-        # -----------------------------------------------------------
-        # DYNAMIC COLOR
-        # -----------------------------------------------------------
+        highest_rate = history_3m[
+            "eur_aed"
+        ].max()
+
+        lowest_rate = history_3m[
+            "eur_aed"
+        ].min()
+
+        avg_rate = history_3m[
+            "eur_aed"
+        ].mean()
+
+        # -------------------------------------------------------
+        # DYNAMIC COLORS
+        # -------------------------------------------------------
 
         if pct_3m <= -10:
 
@@ -771,9 +661,43 @@ def render_eur_aed_monitor():
 
             color_3m = "#f5a623"
 
-        # -----------------------------------------------------------
-        # CHART
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
+        # METRICS
+        # -------------------------------------------------------
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        with c1:
+
+            st.metric(
+                "Current",
+                f"{rate_3m_current:.4f}"
+            )
+
+        with c2:
+
+            st.metric(
+                "90D Change",
+                f"{pct_3m:.2f}%"
+            )
+
+        with c3:
+
+            st.metric(
+                "90D High",
+                f"{highest_rate:.4f}"
+            )
+
+        with c4:
+
+            st.metric(
+                "90D Low",
+                f"{lowest_rate:.4f}"
+            )
+
+        # -------------------------------------------------------
+        # REAL DAILY CHART
+        # -------------------------------------------------------
 
         fig_3m = go.Figure()
 
@@ -781,19 +705,19 @@ def render_eur_aed_monitor():
             go.Scatter(
                 x=history_3m["timestamp"],
                 y=history_3m["eur_aed"],
-                mode="lines+markers",
+                mode="lines",
                 line=dict(
                     color=color_3m,
                     width=4
                 ),
                 fill="tozeroy",
-                name="EUR/AED 3M"
+                name="EUR/AED Daily"
             )
         )
 
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
         # ALERT THRESHOLDS
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
 
         upper_alert = rate_3m_start * 1.10
         lower_alert = rate_3m_start * 0.90
@@ -812,11 +736,19 @@ def render_eur_aed_monitor():
             annotation_text="-10%"
         )
 
+        fig_3m.add_hline(
+            y=avg_rate,
+            line_dash="dot",
+            line_color="blue",
+            annotation_text="90D Avg"
+        )
+
         fig_3m.update_layout(
-            title="EUR/AED — Last 3 Months",
+            title="Real Daily EUR/AED — Last 90 Days",
             xaxis_title="Date",
             yaxis_title="EUR/AED",
-            height=500,
+            height=550,
+            hovermode="x unified",
             plot_bgcolor="#FAFAFA",
             paper_bgcolor="#FAFAFA"
         )
@@ -826,9 +758,9 @@ def render_eur_aed_monitor():
             use_container_width=True
         )
 
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
         # INTERPRETATION
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
 
         if pct_3m <= -10:
 
@@ -836,10 +768,10 @@ def render_eur_aed_monitor():
                 f"""
                 🚨 EUR weakened by
                 {pct_3m:.2f}%
-                over 3 months.
+                over the last 90 days.
 
-                Dubai payments are becoming
-                significantly MORE expensive.
+                Dubai off-plan payments are becoming
+                significantly MORE expensive in EUR.
                 """
             )
 
@@ -849,10 +781,10 @@ def render_eur_aed_monitor():
                 f"""
                 ✅ EUR strengthened by
                 {pct_3m:.2f}%
-                over 3 months.
+                over the last 90 days.
 
-                Dubai payments are becoming
-                cheaper in EUR.
+                Dubai payments are becoming cheaper
+                in EUR terms.
                 """
             )
 
@@ -862,17 +794,17 @@ def render_eur_aed_monitor():
                 f"""
                 ℹ️ EUR/AED moved
                 {pct_3m:.2f}%
-                over 3 months.
+                over the last 90 days.
 
                 No major FX stress currently.
                 """
             )
 
-    else:
+except Exception as e:
 
-        st.warning(
-            "Not enough EUR/AED history yet."
-        )
+    st.error(
+        f"Failed to load real EUR/AED history: {e}"
+    )
 
 # -------------------------------------------------------------------
 # LOAD DATA
