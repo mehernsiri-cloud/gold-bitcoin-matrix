@@ -189,13 +189,17 @@ FX_HISTORY_FILE = os.path.join(DATA_DIR, "eur_aed_history.csv")
 def get_eur_aed_rate():
     """
     Fetch live EUR/AED exchange rate.
-    Free API endpoint.
     """
 
     try:
+
         url = "https://open.er-api.com/v6/latest/EUR"
 
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            url,
+            timeout=10
+        )
+
         data = response.json()
 
         aed_rate = data["rates"]["AED"]
@@ -203,7 +207,9 @@ def get_eur_aed_rate():
         return round(aed_rate, 4)
 
     except Exception as e:
+
         st.warning(f"EUR/AED API error: {e}")
+
         return None
 
 
@@ -229,11 +235,22 @@ def save_fx_history(rate):
             )
 
         else:
+
             combined = row
 
-        combined.to_csv(FX_HISTORY_FILE, index=False)
+        # Remove duplicates
+        combined.drop_duplicates(
+            subset=["timestamp", "eur_aed"],
+            inplace=True
+        )
+
+        combined.to_csv(
+            FX_HISTORY_FILE,
+            index=False
+        )
 
     except Exception as e:
+
         st.warning(f"FX history save failed: {e}")
 
 
@@ -250,12 +267,16 @@ def load_fx_history():
                 errors="coerce"
             )
 
+            df = df.sort_values("timestamp")
+
             return df
 
         return pd.DataFrame()
 
     except Exception as e:
+
         st.warning(f"FX history load failed: {e}")
+
         return pd.DataFrame()
 
 
@@ -279,6 +300,7 @@ def load_portfolio():
         for col in numeric_cols:
 
             if col in df.columns:
+
                 df[col] = pd.to_numeric(
                     df[col],
                     errors="coerce"
@@ -287,7 +309,9 @@ def load_portfolio():
         return df
 
     except Exception as e:
+
         st.error(f"Portfolio loading error: {e}")
+
         return pd.DataFrame()
 
 
@@ -298,12 +322,14 @@ def load_portfolio():
 def save_dynamic_portfolio(df):
 
     try:
+
         df.to_csv(
             DYNAMIC_PORTFOLIO_FILE,
             index=False
         )
 
     except Exception as e:
+
         st.warning(f"Portfolio save error: {e}")
 
 
@@ -311,7 +337,11 @@ def save_dynamic_portfolio(df):
 # DYNAMIC PORTFOLIO ADJUSTMENT
 # -------------------------------------------------------------------
 
-def dynamic_portfolio_adjustment(df, btc_df, gold_df):
+def dynamic_portfolio_adjustment(
+    df,
+    btc_df,
+    gold_df
+):
 
     if df.empty:
         return df
@@ -324,17 +354,22 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
     btc_signal = (
         btc_df["signal"].iloc[-1]
-        if not btc_df.empty and "signal" in btc_df.columns
+        if not btc_df.empty
+        and "signal" in btc_df.columns
         else "Hold"
     )
 
     gold_signal = (
         gold_df["signal"].iloc[-1]
-        if not gold_df.empty and "signal" in gold_df.columns
+        if not gold_df.empty
+        and "signal" in gold_df.columns
         else "Hold"
     )
 
-    vix = st.session_state.get("vix_adj", 20)
+    vix = st.session_state.get(
+        "vix_adj",
+        20
+    )
 
     inflation = st.session_state.get(
         "inflation_adj",
@@ -347,7 +382,7 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
     )
 
     # ---------------------------------------------------------------
-    # STRESS MODE
+    # HIGH STRESS REGIME
     # ---------------------------------------------------------------
 
     if vix >= 40:
@@ -363,12 +398,14 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
         ] *= 1.30
 
         adjusted.loc[
-            adjusted["Bucket"].isin(["SPECIAL", "GEO"]),
+            adjusted["Bucket"].isin(
+                ["SPECIAL", "GEO"]
+            ),
             "Base_Allocation"
         ] *= 0.80
 
     # ---------------------------------------------------------------
-    # GOLD SIGNAL
+    # GOLD REGIME
     # ---------------------------------------------------------------
 
     if gold_signal == "Buy":
@@ -386,7 +423,7 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
         ] *= 0.90
 
     # ---------------------------------------------------------------
-    # BTC SIGNAL
+    # BITCOIN REGIME
     # ---------------------------------------------------------------
 
     if btc_signal == "Buy":
@@ -439,14 +476,14 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
         ] *= 0.92
 
     # ---------------------------------------------------------------
-    # FX RISK MODE (EUR/AED)
+    # EUR / AED FX REGIME
     # ---------------------------------------------------------------
 
     eur_aed_rate = get_eur_aed_rate()
 
     adjusted["EUR_AED"] = eur_aed_rate
 
-    # AED stronger = danger for Dubai payments
+    # AED stronger = danger
     if eur_aed_rate is not None:
 
         if eur_aed_rate <= 3.70:
@@ -490,16 +527,19 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
     ).round(2)
 
     # ---------------------------------------------------------------
-    # RISK MODE LABEL
+    # RISK LABEL
     # ---------------------------------------------------------------
 
     if vix >= 40:
+
         risk_mode = "HIGH STRESS"
 
     elif vix >= 28:
+
         risk_mode = "ELEVATED RISK"
 
     else:
+
         risk_mode = "NORMAL"
 
     adjusted["Risk_Mode"] = risk_mode
@@ -509,7 +549,7 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
     )
 
     # ---------------------------------------------------------------
-    # SAVE
+    # SAVE DYNAMIC VERSION
     # ---------------------------------------------------------------
 
     save_dynamic_portfolio(adjusted)
@@ -518,17 +558,27 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
 
 # -------------------------------------------------------------------
-# EUR/AED DASHBOARD SECTION
+# EUR / AED DASHBOARD SECTION
 # -------------------------------------------------------------------
 
 def render_eur_aed_monitor():
 
-    st.subheader("💱 EUR / AED Dubai Payment Risk Monitor")
+    st.subheader(
+        "💱 EUR / AED Dubai Payment Risk Monitor"
+    )
+
+    # ---------------------------------------------------------------
+    # LIVE RATE
+    # ---------------------------------------------------------------
 
     rate = get_eur_aed_rate()
 
     if rate is None:
-        st.error("Unable to load EUR/AED rate")
+
+        st.error(
+            "Unable to load EUR/AED rate"
+        )
+
         return
 
     save_fx_history(rate)
@@ -536,8 +586,14 @@ def render_eur_aed_monitor():
     history = load_fx_history()
 
     if history.empty:
+
         st.info("No FX history yet")
+
         return
+
+    # ---------------------------------------------------------------
+    # MAIN METRICS
+    # ---------------------------------------------------------------
 
     current_rate = history["eur_aed"].iloc[-1]
 
@@ -555,21 +611,36 @@ def render_eur_aed_monitor():
     if pct_change <= -10:
 
         st.error(
-            f"🚨 ALERT: EUR dropped {pct_change:.2f}% vs AED\n"
-            "Dubai payments becoming MORE expensive."
+            f"""
+            🚨 ALERT
+
+            EUR dropped {pct_change:.2f}% vs AED.
+
+            Dubai off-plan payments are becoming
+            MORE expensive in EUR.
+            """
         )
 
     elif pct_change >= 10:
 
         st.success(
-            f"✅ ALERT: EUR gained {pct_change:.2f}% vs AED\n"
-            "Dubai payments becoming CHEAPER."
+            f"""
+            ✅ ALERT
+
+            EUR gained {pct_change:.2f}% vs AED.
+
+            Dubai payments are becoming cheaper
+            in EUR terms.
+            """
         )
 
     else:
 
         st.warning(
-            f"⚠️ EUR/AED variation: {pct_change:.2f}%"
+            f"""
+            ⚠️ EUR/AED variation:
+            {pct_change:.2f}%
+            """
         )
 
     # ---------------------------------------------------------------
@@ -579,12 +650,14 @@ def render_eur_aed_monitor():
     col1, col2, col3 = st.columns(3)
 
     with col1:
+
         st.metric(
             "EUR/AED",
             f"{current_rate:.4f}"
         )
 
     with col2:
+
         st.metric(
             "Variation %",
             f"{pct_change:.2f}%"
@@ -593,23 +666,27 @@ def render_eur_aed_monitor():
     with col3:
 
         if pct_change < 0:
-            risk_text = "AED Strength Risk"
+
+            regime = "AED Strength Risk"
 
         else:
-            risk_text = "EUR Strength"
+
+            regime = "EUR Strength"
 
         st.metric(
             "FX Regime",
-            risk_text
+            regime
         )
 
     # ---------------------------------------------------------------
-    # CHART
+    # FULL HISTORY CHART
     # ---------------------------------------------------------------
 
-    fig = go.Figure()
+    st.markdown(
+        "### 📈 Full EUR/AED History"
+    )
 
-    chart_color = (
+    full_color = (
         "red"
         if pct_change < -10
         else "green"
@@ -617,13 +694,15 @@ def render_eur_aed_monitor():
         else "orange"
     )
 
+    fig = go.Figure()
+
     fig.add_trace(
         go.Scatter(
             x=history["timestamp"],
             y=history["eur_aed"],
             mode="lines+markers",
             line=dict(
-                color=chart_color,
+                color=full_color,
                 width=3
             ),
             name="EUR/AED"
@@ -631,10 +710,10 @@ def render_eur_aed_monitor():
     )
 
     fig.update_layout(
-        title="EUR / AED Monitoring (Dubai Off-Plan Risk)",
+        title="EUR / AED Monitoring (Full History)",
         xaxis_title="Date",
         yaxis_title="EUR/AED",
-        height=450,
+        height=420,
         plot_bgcolor="#FAFAFA",
         paper_bgcolor="#FAFAFA"
     )
@@ -644,6 +723,156 @@ def render_eur_aed_monitor():
         use_container_width=True
     )
 
+    # ---------------------------------------------------------------
+    # LAST 3 MONTHS CHART
+    # ---------------------------------------------------------------
+
+    st.markdown(
+        "### 🏙️ Dubai Payment Risk — Last 3 Months"
+    )
+
+    three_months_ago = (
+        datetime.now()
+        - timedelta(days=90)
+    )
+
+    history_3m = history[
+        history["timestamp"] >= three_months_ago
+    ].copy()
+
+    if not history_3m.empty:
+
+        rate_3m_start = (
+            history_3m["eur_aed"].iloc[0]
+        )
+
+        rate_3m_current = (
+            history_3m["eur_aed"].iloc[-1]
+        )
+
+        pct_3m = (
+            (rate_3m_current - rate_3m_start)
+            / rate_3m_start
+        ) * 100
+
+        # -----------------------------------------------------------
+        # DYNAMIC COLOR
+        # -----------------------------------------------------------
+
+        if pct_3m <= -10:
+
+            color_3m = "red"
+
+        elif pct_3m >= 10:
+
+            color_3m = "green"
+
+        else:
+
+            color_3m = "#f5a623"
+
+        # -----------------------------------------------------------
+        # CHART
+        # -----------------------------------------------------------
+
+        fig_3m = go.Figure()
+
+        fig_3m.add_trace(
+            go.Scatter(
+                x=history_3m["timestamp"],
+                y=history_3m["eur_aed"],
+                mode="lines+markers",
+                line=dict(
+                    color=color_3m,
+                    width=4
+                ),
+                fill="tozeroy",
+                name="EUR/AED 3M"
+            )
+        )
+
+        # -----------------------------------------------------------
+        # ALERT THRESHOLDS
+        # -----------------------------------------------------------
+
+        upper_alert = rate_3m_start * 1.10
+        lower_alert = rate_3m_start * 0.90
+
+        fig_3m.add_hline(
+            y=upper_alert,
+            line_dash="dash",
+            line_color="green",
+            annotation_text="+10%"
+        )
+
+        fig_3m.add_hline(
+            y=lower_alert,
+            line_dash="dash",
+            line_color="red",
+            annotation_text="-10%"
+        )
+
+        fig_3m.update_layout(
+            title="EUR/AED — Last 3 Months",
+            xaxis_title="Date",
+            yaxis_title="EUR/AED",
+            height=500,
+            plot_bgcolor="#FAFAFA",
+            paper_bgcolor="#FAFAFA"
+        )
+
+        st.plotly_chart(
+            fig_3m,
+            use_container_width=True
+        )
+
+        # -----------------------------------------------------------
+        # INTERPRETATION
+        # -----------------------------------------------------------
+
+        if pct_3m <= -10:
+
+            st.error(
+                f"""
+                🚨 EUR weakened by
+                {pct_3m:.2f}%
+                over 3 months.
+
+                Dubai payments are becoming
+                significantly MORE expensive.
+                """
+            )
+
+        elif pct_3m >= 10:
+
+            st.success(
+                f"""
+                ✅ EUR strengthened by
+                {pct_3m:.2f}%
+                over 3 months.
+
+                Dubai payments are becoming
+                cheaper in EUR.
+                """
+            )
+
+        else:
+
+            st.info(
+                f"""
+                ℹ️ EUR/AED moved
+                {pct_3m:.2f}%
+                over 3 months.
+
+                No major FX stress currently.
+                """
+            )
+
+    else:
+
+        st.warning(
+            "Not enough EUR/AED history yet."
+        )
 
 # -------------------------------------------------------------------
 # LOAD DATA
