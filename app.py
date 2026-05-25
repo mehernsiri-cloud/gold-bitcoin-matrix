@@ -663,42 +663,90 @@ for date, value in rates.items():
 
     try:
 
+        start_date = (
+            datetime.now()
+            - timedelta(days=90)
+        ).strftime("%Y-%m-%d")
+
+        end_date = datetime.now().strftime(
+            "%Y-%m-%d"
+        )
+
+        history_url = (
+            f"https://api.frankfurter.app/"
+            f"{start_date}..{end_date}"
+            "?from=EUR&to=AED"
+        )
+
+        response = requests.get(
+            history_url,
+            timeout=15
+        )
+
+        fx_data = response.json()
+
+        rates = fx_data.get(
+            "rates",
+            {}
+        )
+
+        # -------------------------------------------------------
+        # SAFE FX HISTORY PARSING
+        # -------------------------------------------------------
+
+        history_rows = []
+
+        for date, value in rates.items():
+
+            try:
+
+                if (
+                    isinstance(value, dict)
+                    and "AED" in value
+                ):
+
+                    history_rows.append({
+                        "timestamp": pd.to_datetime(date),
+                        "eur_aed": float(value["AED"])
+                    })
+
+            except Exception:
+                continue
+
+        history_3m = pd.DataFrame(
+            history_rows
+        )
+
+        required_cols = [
+            "timestamp",
+            "eur_aed"
+        ]
+
         if (
-            isinstance(value, dict)
-            and "AED" in value
+            history_3m.empty
+            or not all(
+                col in history_3m.columns
+                for col in required_cols
+            )
         ):
 
-            history_rows.append({
-                "timestamp": pd.to_datetime(date),
-                "eur_aed": float(value["AED"])
-            })
+            st.error(
+                "EUR/AED historical data unavailable."
+            )
 
-    except Exception:
-        continue
+            return
 
-history_3m = pd.DataFrame(history_rows)
+        history_3m = history_3m.sort_values(
+            by="timestamp"
+        )
 
-# Safety check
-required_cols = ["timestamp", "eur_aed"]
+    except Exception as e:
 
-if (
-    history_3m.empty
-    or not all(
-        col in history_3m.columns
-        for col in required_cols
-    )
-):
+        st.error(
+            f"Failed loading FX history: {e}"
+        )
 
-    st.error(
-        "EUR/AED historical data unavailable."
-    )
-
-    return
-
-history_3m = history_3m.sort_values(
-    by="timestamp"
-)
-
+        return
     except Exception as e:
 
         st.error(
