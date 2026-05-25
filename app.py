@@ -171,8 +171,7 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
         st.warning(f"Could not append to log {path}: {e}")
 
 # -------------------------------------------------------------------
-# PORTFOLIO ENGINE + EUR/AED MONITORING
-# CLEAN / STABLE VERSION
+# PORTFOLIO ENGINE + EUR/AED MONITORING (ROBUST VERSION)
 # -------------------------------------------------------------------
 
 import os
@@ -185,194 +184,83 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # -------------------------------------------------------------------
-# FILES
+# FILE PATHS
 # -------------------------------------------------------------------
 
-PORTFOLIO_FILE = os.path.join(
-    DATA_DIR,
-    "portfolio_grid.csv"
-)
-
-DYNAMIC_PORTFOLIO_FILE = os.path.join(
-    DATA_DIR,
-    "portfolio_dynamic.csv"
-)
-
-FX_HISTORY_FILE = os.path.join(
-    DATA_DIR,
-    "eur_aed_history.csv"
-)
+PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_grid.csv")
+DYNAMIC_PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_dynamic.csv")
+FX_HISTORY_FILE = os.path.join(DATA_DIR, "eur_aed_history.csv")
 
 # -------------------------------------------------------------------
-# FX UTILITIES
+# FX LIVE RATE
 # -------------------------------------------------------------------
 
 def get_eur_aed_rate():
-    """
-    Live EUR/AED rate.
-    """
-
     try:
-
         url = "https://open.er-api.com/v6/latest/EUR"
+        r = requests.get(url, timeout=10)
+        data = r.json()
 
-        response = requests.get(
-            url,
-            timeout=10
-        )
-
-        data = response.json()
-
-        rate = data["rates"]["AED"]
-
-        return round(float(rate), 4)
+        return round(float(data["rates"]["AED"]), 4)
 
     except Exception as e:
-
-        st.warning(
-            f"EUR/AED API error: {e}"
-        )
-
+        st.warning(f"EUR/AED API error: {e}")
         return None
 
 
 # -------------------------------------------------------------------
-# SAVE FX HISTORY
+# SAVE FX HISTORY (LOCAL STORAGE)
 # -------------------------------------------------------------------
 
 def save_fx_history(rate):
-
     if rate is None:
         return
 
     try:
-
-        new_row = pd.DataFrame([
-            {
-                "timestamp": datetime.now(),
-                "eur_aed": rate
-            }
-        ])
-
-        # -----------------------------------------------------------
-        # LOAD EXISTING
-        # -----------------------------------------------------------
+        new_row = pd.DataFrame([{
+            "timestamp": datetime.now(),
+            "eur_aed": rate
+        }])
 
         if os.path.exists(FX_HISTORY_FILE):
-
-            existing = pd.read_csv(
-                FX_HISTORY_FILE
-            )
-
-            # FIX BROKEN FILES
-            if "timestamp" not in existing.columns:
-                existing["timestamp"] = pd.Timestamp.now()
-
-            if "eur_aed" not in existing.columns:
-                existing["eur_aed"] = rate
-
-            combined = pd.concat(
-                [existing, new_row],
-                ignore_index=True
-            )
-
+            old = pd.read_csv(FX_HISTORY_FILE)
         else:
+            old = pd.DataFrame(columns=["timestamp", "eur_aed"])
 
-            combined = new_row
+        combined = pd.concat([old, new_row], ignore_index=True)
 
-        # -----------------------------------------------------------
-        # CLEAN
-        # -----------------------------------------------------------
+        combined["timestamp"] = pd.to_datetime(combined["timestamp"], errors="coerce")
+        combined["eur_aed"] = pd.to_numeric(combined["eur_aed"], errors="coerce")
+        combined = combined.dropna().drop_duplicates()
 
-        combined["timestamp"] = pd.to_datetime(
-            combined["timestamp"],
-            errors="coerce"
-        )
-
-        combined["eur_aed"] = pd.to_numeric(
-            combined["eur_aed"],
-            errors="coerce"
-        )
-
-        combined.dropna(inplace=True)
-
-        combined.drop_duplicates(
-            subset=["timestamp", "eur_aed"],
-            inplace=True
-        )
-
-        combined.sort_values(
-            by="timestamp",
-            inplace=True
-        )
-
-        # -----------------------------------------------------------
-        # SAVE
-        # -----------------------------------------------------------
-
-        combined.to_csv(
-            FX_HISTORY_FILE,
-            index=False
-        )
+        combined.sort_values("timestamp", inplace=True)
+        combined.to_csv(FX_HISTORY_FILE, index=False)
 
     except Exception as e:
-
-        st.warning(
-            f"FX history save failed: {e}"
-        )
+        st.warning(f"FX history save failed: {e}")
 
 
 # -------------------------------------------------------------------
-# LOAD FX HISTORY
+# LOAD FX HISTORY (SAFE)
 # -------------------------------------------------------------------
 
 def load_fx_history():
-
     try:
-
-        if not os.path.exists(
-            FX_HISTORY_FILE
-        ):
+        if not os.path.exists(FX_HISTORY_FILE):
             return pd.DataFrame()
 
-        df = pd.read_csv(
-            FX_HISTORY_FILE
-        )
+        df = pd.read_csv(FX_HISTORY_FILE)
 
-        # -----------------------------------------------------------
-        # SAFETY CHECKS
-        # -----------------------------------------------------------
-
-        if "timestamp" not in df.columns:
+        if df.empty or "timestamp" not in df.columns or "eur_aed" not in df.columns:
             return pd.DataFrame()
 
-        if "eur_aed" not in df.columns:
-            return pd.DataFrame()
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df["eur_aed"] = pd.to_numeric(df["eur_aed"], errors="coerce")
 
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"],
-            errors="coerce"
-        )
-
-        df["eur_aed"] = pd.to_numeric(
-            df["eur_aed"],
-            errors="coerce"
-        )
-
-        df.dropna(inplace=True)
-
-        df = df.sort_values(
-            by="timestamp"
-        )
-
+        df = df.dropna().sort_values("timestamp")
         return df
 
-    except Exception as e:
-
-        st.warning(
-            f"FX history load failed: {e}"
-        )
-
+    except Exception:
         return pd.DataFrame()
 
 
@@ -381,37 +269,17 @@ def load_fx_history():
 # -------------------------------------------------------------------
 
 def load_portfolio():
-
     try:
+        df = pd.read_csv(PORTFOLIO_FILE)
 
-        df = pd.read_csv(
-            PORTFOLIO_FILE
-        )
-
-        numeric_cols = [
-            "Base_Allocation",
-            "Now_Pct",
-            "Next_Pct",
-            "Dip_Pct"
-        ]
-
-        for col in numeric_cols:
-
+        for col in ["Base_Allocation", "Now_Pct", "Next_Pct", "Dip_Pct"]:
             if col in df.columns:
-
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="coerce"
-                )
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
         return df
 
     except Exception as e:
-
-        st.error(
-            f"Portfolio loading error: {e}"
-        )
-
+        st.error(f"Portfolio loading error: {e}")
         return pd.DataFrame()
 
 
@@ -420,540 +288,198 @@ def load_portfolio():
 # -------------------------------------------------------------------
 
 def save_dynamic_portfolio(df):
-
     try:
-
-        df.to_csv(
-            DYNAMIC_PORTFOLIO_FILE,
-            index=False
-        )
-
+        df.to_csv(DYNAMIC_PORTFOLIO_FILE, index=False)
     except Exception as e:
-
-        st.warning(
-            f"Portfolio save error: {e}"
-        )
+        st.warning(f"Portfolio save error: {e}")
 
 
 # -------------------------------------------------------------------
-# DYNAMIC PORTFOLIO ENGINE
+# PORTFOLIO ENGINE
 # -------------------------------------------------------------------
 
-def dynamic_portfolio_adjustment(
-    df,
-    btc_df,
-    gold_df
-):
+def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
     if df.empty:
         return df
 
     adjusted = df.copy()
 
-    # ---------------------------------------------------------------
-    # SIGNALS
-    # ---------------------------------------------------------------
+    btc_signal = btc_df["signal"].iloc[-1] if not btc_df.empty else "Hold"
+    gold_signal = gold_df["signal"].iloc[-1] if not gold_df.empty else "Hold"
 
-    btc_signal = (
-        btc_df["signal"].iloc[-1]
-        if (
-            not btc_df.empty
-            and "signal" in btc_df.columns
-        )
-        else "Hold"
-    )
+    vix = st.session_state.get("vix_adj", 20)
+    inflation = st.session_state.get("inflation_adj", 2.5)
+    oil = st.session_state.get("oil_adj", 0)
 
-    gold_signal = (
-        gold_df["signal"].iloc[-1]
-        if (
-            not gold_df.empty
-            and "signal" in gold_df.columns
-        )
-        else "Hold"
-    )
-
-    vix = st.session_state.get(
-        "vix_adj",
-        20
-    )
-
-    inflation = st.session_state.get(
-        "inflation_adj",
-        2.5
-    )
-
-    oil_scenario = st.session_state.get(
-        "oil_adj",
-        0
-    )
-
-    # ---------------------------------------------------------------
-    # HIGH STRESS
-    # ---------------------------------------------------------------
-
+    # -------------------------
+    # STRESS MODE
+    # -------------------------
     if vix >= 40:
+        adjusted.loc[adjusted["Bucket"] == "DEFENSIVE", "Base_Allocation"] *= 1.20
+        adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 1.30
+        adjusted.loc[adjusted["Bucket"].isin(["SPECIAL", "GEO"]), "Base_Allocation"] *= 0.80
 
-        adjusted.loc[
-            adjusted["Bucket"] == "DEFENSIVE",
-            "Base_Allocation"
-        ] *= 1.20
-
-        adjusted.loc[
-            adjusted["Bucket"] == "CASH",
-            "Base_Allocation"
-        ] *= 1.30
-
-        adjusted.loc[
-            adjusted["Bucket"].isin(
-                ["SPECIAL", "GEO"]
-            ),
-            "Base_Allocation"
-        ] *= 0.80
-
-    # ---------------------------------------------------------------
-    # GOLD REGIME
-    # ---------------------------------------------------------------
-
+    # -------------------------
+    # GOLD
+    # -------------------------
     if gold_signal == "Buy":
-
-        adjusted.loc[
-            adjusted["Ticker"] == "GLD",
-            "Base_Allocation"
-        ] *= 1.15
+        adjusted.loc[adjusted["Ticker"] == "GLD", "Base_Allocation"] *= 1.15
 
     elif gold_signal == "Sell":
+        adjusted.loc[adjusted["Ticker"] == "GLD", "Base_Allocation"] *= 0.90
 
-        adjusted.loc[
-            adjusted["Ticker"] == "GLD",
-            "Base_Allocation"
-        ] *= 0.90
-
-    # ---------------------------------------------------------------
-    # BTC REGIME
-    # ---------------------------------------------------------------
-
+    # -------------------------
+    # BTC
+    # -------------------------
     if btc_signal == "Buy":
-
-        adjusted.loc[
-            adjusted["Bucket"] == "SPECIAL",
-            "Base_Allocation"
-        ] *= 1.10
-
-        adjusted.loc[
-            adjusted["Bucket"] == "CASH",
-            "Base_Allocation"
-        ] *= 0.92
+        adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 1.10
+        adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 0.92
 
     elif btc_signal == "Sell":
+        adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 1.10
 
-        adjusted.loc[
-            adjusted["Bucket"] == "CASH",
-            "Base_Allocation"
-        ] *= 1.10
-
-    # ---------------------------------------------------------------
-    # INFLATION / OIL REGIME
-    # ---------------------------------------------------------------
-
+    # -------------------------
+    # INFLATION / OIL
+    # -------------------------
     if inflation >= 5:
+        adjusted.loc[adjusted["Bucket"] == "ENERGY", "Base_Allocation"] *= 1.12
 
-        adjusted.loc[
-            adjusted["Bucket"] == "ENERGY",
-            "Base_Allocation"
-        ] *= 1.12
+    if oil >= 15:
+        adjusted.loc[adjusted["Bucket"] == "ENERGY", "Base_Allocation"] *= 1.08
+    elif oil <= -15:
+        adjusted.loc[adjusted["Bucket"] == "ENERGY", "Base_Allocation"] *= 0.92
 
-        adjusted.loc[
-            adjusted["Ticker"] == "GLD",
-            "Base_Allocation"
-        ] *= 1.08
+    # -------------------------
+    # FX SIGNAL
+    # -------------------------
+    eur_aed = get_eur_aed_rate()
+    adjusted["EUR_AED"] = eur_aed
 
-    if oil_scenario >= 15:
+    if eur_aed is not None:
+        if eur_aed <= 3.80:
+            adjusted.loc[adjusted["Bucket"] == "CASH", "Base_Allocation"] *= 1.10
 
-        adjusted.loc[
-            adjusted["Bucket"] == "ENERGY",
-            "Base_Allocation"
-        ] *= 1.08
+        elif eur_aed >= 4.20:
+            adjusted.loc[adjusted["Bucket"] == "SPECIAL", "Base_Allocation"] *= 1.05
 
-    elif oil_scenario <= -15:
+    # -------------------------
+    # SAFETY
+    # -------------------------
+    adjusted["Base_Allocation"] = adjusted["Base_Allocation"].clip(3, 25)
 
-        adjusted.loc[
-            adjusted["Bucket"] == "ENERGY",
-            "Base_Allocation"
-        ] *= 0.92
+    total = adjusted["Base_Allocation"].sum()
+    adjusted["Dynamic_Allocation"] = (adjusted["Base_Allocation"] / total * 100).round(2)
 
-    # ---------------------------------------------------------------
-    # EUR/AED FX REGIME
-    # ---------------------------------------------------------------
+    adjusted["Allocation_Drift"] = adjusted["Dynamic_Allocation"] - adjusted["Base_Allocation"]
 
-    eur_aed_rate = get_eur_aed_rate()
+    adjusted["Last_Update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    adjusted["EUR_AED"] = eur_aed_rate
-
-    if eur_aed_rate is not None:
-
-        # AED strengthening danger zone
-        if eur_aed_rate <= 3.90:
-
-            adjusted.loc[
-                adjusted["Bucket"] == "CASH",
-                "Base_Allocation"
-            ] *= 1.15
-
-        # EUR stronger
-        elif eur_aed_rate >= 4.20:
-
-            adjusted.loc[
-                adjusted["Bucket"] == "SPECIAL",
-                "Base_Allocation"
-            ] *= 1.08
-
-    # ---------------------------------------------------------------
-    # SAFETY LIMITS
-    # ---------------------------------------------------------------
-
-    adjusted["Base_Allocation"] = adjusted[
-        "Base_Allocation"
-    ].clip(
-        lower=3,
-        upper=25
-    )
-
-    # ---------------------------------------------------------------
-    # NORMALIZATION
-    # ---------------------------------------------------------------
-
-    total = adjusted[
-        "Base_Allocation"
-    ].sum()
-
-    adjusted["Dynamic_Allocation"] = (
-        adjusted["Base_Allocation"]
-        / total
-        * 100
-    ).round(2)
-
-    adjusted["Allocation_Drift"] = (
-        adjusted["Dynamic_Allocation"]
-        - adjusted["Base_Allocation"]
-    ).round(2)
-
-    # ---------------------------------------------------------------
-    # RISK LABEL
-    # ---------------------------------------------------------------
-
-    if vix >= 40:
-
-        risk_mode = "HIGH STRESS"
-
-    elif vix >= 28:
-
-        risk_mode = "ELEVATED RISK"
-
-    else:
-
-        risk_mode = "NORMAL"
-
-    adjusted["Risk_Mode"] = risk_mode
-
-    adjusted["Last_Update"] = datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    # ---------------------------------------------------------------
-    # SAVE
-    # ---------------------------------------------------------------
-
-    save_dynamic_portfolio(
-        adjusted
-    )
+    save_dynamic_portfolio(adjusted)
 
     return adjusted
 
 
 # -------------------------------------------------------------------
-# EUR/AED MONITOR
+# EUR/AED MONITOR (FIXED + ROBUST)
 # -------------------------------------------------------------------
 
 def render_eur_aed_monitor():
 
-    st.subheader(
-        "💱 EUR / AED Dubai Payment Risk Monitor"
-    )
+    st.subheader("💱 EUR / AED — Dubai Payment Risk Monitor")
 
-    # ---------------------------------------------------------------
+    # =========================
     # LIVE RATE
-    # ---------------------------------------------------------------
-
+    # =========================
     current_rate = get_eur_aed_rate()
 
     if current_rate is None:
-
-        st.error(
-            "Unable to load EUR/AED rate."
-        )
-
+        st.error("Cannot fetch EUR/AED live rate")
         return
 
-    save_fx_history(
-        current_rate
-    )
+    save_fx_history(current_rate)
 
-    # ---------------------------------------------------------------
-    # FETCH REAL DAILY HISTORY
-    # ---------------------------------------------------------------
+    # =========================
+    # LOAD HISTORY
+    # =========================
+    history = load_fx_history()
 
-    try:
+    # fallback if no file
+    if history.empty:
+        st.warning("No historical FX data yet — building live series...")
+        history = pd.DataFrame([{
+            "timestamp": datetime.now(),
+            "eur_aed": current_rate
+        }])
 
-        start_date = (
-            datetime.now()
-            - timedelta(days=90)
-        ).strftime("%Y-%m-%d")
+    # =========================
+    # LAST 90 DAYS FILTER
+    # =========================
+    cutoff = datetime.now() - timedelta(days=90)
 
-        end_date = datetime.now().strftime(
-            "%Y-%m-%d"
-        )
+    history = history[history["timestamp"] >= cutoff]
+    history = history.sort_values("timestamp")
 
-        history_url = (
-            f"https://api.frankfurter.app/"
-            f"{start_date}..{end_date}"
-            f"?from=EUR&to=AED"
-        )
-
-        response = requests.get(
-            history_url,
-            timeout=15
-        )
-
-        fx_data = response.json()
-
-        rates = fx_data.get(
-            "rates",
-            {}
-        )
-
-        history_rows = []
-
-        for date, value in rates.items():
-
-            try:
-
-                if (
-                    isinstance(value, dict)
-                    and "AED" in value
-                ):
-
-                    history_rows.append(
-                        {
-                            "timestamp": pd.to_datetime(date),
-                            "eur_aed": float(value["AED"])
-                        }
-                    )
-
-            except Exception:
-                continue
-
-        history_3m = pd.DataFrame(
-            history_rows
-        )
-
-        if history_3m.empty:
-
-            st.warning(
-                "No EUR/AED historical data."
-            )
-
-            return
-
-        history_3m = history_3m.sort_values(
-            by="timestamp"
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Failed loading FX history: {e}"
-        )
-
-        return
-
-    # ---------------------------------------------------------------
-    # CALCULATIONS
-    # ---------------------------------------------------------------
-
-    initial_rate = history_3m[
-        "eur_aed"
-    ].iloc[0]
-
-    latest_rate = history_3m[
-        "eur_aed"
-    ].iloc[-1]
-
-    pct_change = (
-        (
-            latest_rate
-            - initial_rate
-        )
-        / initial_rate
-    ) * 100
-
-    high_rate = history_3m[
-        "eur_aed"
-    ].max()
-
-    low_rate = history_3m[
-        "eur_aed"
-    ].min()
-
-    avg_rate = history_3m[
-        "eur_aed"
-    ].mean()
-
-    # ---------------------------------------------------------------
-    # COLOR LOGIC
-    # ---------------------------------------------------------------
-
-    if pct_change <= -10:
-
-        chart_color = "red"
-
-    elif pct_change >= 10:
-
-        chart_color = "green"
-
-    else:
-
-        chart_color = "orange"
-
-    # ---------------------------------------------------------------
-    # ALERTS
-    # ---------------------------------------------------------------
-
-    if pct_change <= -10:
-
-        st.error(
-            f"""
-            🚨 EUR weakened by {pct_change:.2f}% over 90 days.
-
-            Dubai off-plan payments are becoming
-            MORE expensive in EUR.
-            """
-        )
-
-    elif pct_change >= 10:
-
-        st.success(
-            f"""
-            ✅ EUR strengthened by {pct_change:.2f}% over 90 days.
-
-            Dubai payments becoming cheaper.
-            """
-        )
-
-    else:
-
-        st.warning(
-            f"""
-            ⚠️ EUR/AED moved {pct_change:.2f}% over 90 days.
-            """
-        )
-
-    # ---------------------------------------------------------------
+    # =========================
     # METRICS
-    # ---------------------------------------------------------------
+    # =========================
+    start = history["eur_aed"].iloc[0]
+    last = history["eur_aed"].iloc[-1]
 
-    c1, c2, c3, c4 = st.columns(4)
+    pct = ((last - start) / start) * 100
 
-    with c1:
+    high = history["eur_aed"].max()
+    low = history["eur_aed"].min()
 
-        st.metric(
-            "Current",
-            f"{latest_rate:.4f}"
-        )
+    # =========================
+    # ALERTS
+    # =========================
+    if pct <= -10:
+        st.error(f"🚨 EUR down {pct:.2f}% → Dubai payments MORE expensive")
 
-    with c2:
+    elif pct >= 10:
+        st.success(f"✅ EUR up {pct:.2f}% → Dubai payments CHEAPER")
 
-        st.metric(
-            "90D Change",
-            f"{pct_change:.2f}%"
-        )
+    else:
+        st.warning(f"⚠️ EUR/AED variation: {pct:.2f}%")
 
-    with c3:
+    # =========================
+    # METRICS UI
+    # =========================
+    c1, c2, c3 = st.columns(3)
 
-        st.metric(
-            "90D High",
-            f"{high_rate:.4f}"
-        )
+    c1.metric("EUR/AED", f"{last:.4f}")
+    c2.metric("90D Change", f"{pct:.2f}%")
+    c3.metric("Range", f"{low:.4f} → {high:.4f}")
 
-    with c4:
-
-        st.metric(
-            "90D Low",
-            f"{low_rate:.4f}"
-        )
-
-    # ---------------------------------------------------------------
+    # =========================
     # CHART
-    # ---------------------------------------------------------------
+    # =========================
+    color = "red" if pct <= -10 else "green" if pct >= 10 else "orange"
 
     fig = go.Figure()
 
-    fig.add_trace(
-        go.Scatter(
-            x=history_3m["timestamp"],
-            y=history_3m["eur_aed"],
-            mode="lines",
-            line=dict(
-                color=chart_color,
-                width=4
-            ),
-            fill="tozeroy",
-            name="EUR/AED"
-        )
-    )
+    fig.add_trace(go.Scatter(
+        x=history["timestamp"],
+        y=history["eur_aed"],
+        mode="lines",
+        line=dict(color=color, width=3),
+        fill="tozeroy",
+        name="EUR/AED"
+    ))
 
-    # ---------------------------------------------------------------
-    # ALERT LEVELS
-    # ---------------------------------------------------------------
-
-    upper_alert = initial_rate * 1.10
-    lower_alert = initial_rate * 0.90
-
-    fig.add_hline(
-        y=upper_alert,
-        line_dash="dash",
-        line_color="green",
-        annotation_text="+10%"
-    )
-
-    fig.add_hline(
-        y=lower_alert,
-        line_dash="dash",
-        line_color="red",
-        annotation_text="-10%"
-    )
-
-    fig.add_hline(
-        y=avg_rate,
-        line_dash="dot",
-        line_color="blue",
-        annotation_text="90D Avg"
-    )
+    fig.add_hline(y=start * 1.10, line_dash="dash", line_color="green")
+    fig.add_hline(y=start * 0.90, line_dash="dash", line_color="red")
 
     fig.update_layout(
-        title="Real Daily EUR/AED — Last 90 Days",
-        xaxis_title="Date",
-        yaxis_title="EUR/AED",
-        hovermode="x unified",
+        title="EUR/AED (Last 90 Days)",
         height=550,
-        plot_bgcolor="#FAFAFA",
-        paper_bgcolor="#FAFAFA"
+        hovermode="x unified",
+        plot_bgcolor="#fafafa",
+        paper_bgcolor="#fafafa"
     )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
+    st.plotly_chart(fig, use_container_width=True)
 
 
 
