@@ -171,21 +171,104 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
         st.warning(f"Could not append to log {path}: {e}")
 
 # -------------------------------------------------------------------
-# PORTFOLIO ENGINE
+# PORTFOLIO ENGINE + EUR/AED MONITORING
 # -------------------------------------------------------------------
+
+import requests
+import numpy as np
 
 PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_grid.csv")
 DYNAMIC_PORTFOLIO_FILE = os.path.join(DATA_DIR, "portfolio_dynamic.csv")
 
+FX_HISTORY_FILE = os.path.join(DATA_DIR, "eur_aed_history.csv")
+
+# -------------------------------------------------------------------
+# FX UTILITIES
+# -------------------------------------------------------------------
+
+def get_eur_aed_rate():
+    """
+    Fetch live EUR/AED exchange rate.
+    Free API endpoint.
+    """
+
+    try:
+        url = "https://open.er-api.com/v6/latest/EUR"
+
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        aed_rate = data["rates"]["AED"]
+
+        return round(aed_rate, 4)
+
+    except Exception as e:
+        st.warning(f"EUR/AED API error: {e}")
+        return None
+
+
+def save_fx_history(rate):
+
+    if rate is None:
+        return
+
+    row = pd.DataFrame([{
+        "timestamp": datetime.now(),
+        "eur_aed": rate
+    }])
+
+    try:
+
+        if os.path.exists(FX_HISTORY_FILE):
+
+            existing = pd.read_csv(FX_HISTORY_FILE)
+
+            combined = pd.concat(
+                [existing, row],
+                ignore_index=True
+            )
+
+        else:
+            combined = row
+
+        combined.to_csv(FX_HISTORY_FILE, index=False)
+
+    except Exception as e:
+        st.warning(f"FX history save failed: {e}")
+
+
+def load_fx_history():
+
+    try:
+
+        if os.path.exists(FX_HISTORY_FILE):
+
+            df = pd.read_csv(FX_HISTORY_FILE)
+
+            df["timestamp"] = pd.to_datetime(
+                df["timestamp"],
+                errors="coerce"
+            )
+
+            return df
+
+        return pd.DataFrame()
+
+    except Exception as e:
+        st.warning(f"FX history load failed: {e}")
+        return pd.DataFrame()
+
+
+# -------------------------------------------------------------------
+# LOAD PORTFOLIO
+# -------------------------------------------------------------------
 
 def load_portfolio():
-    """
-    Load strategic/base portfolio allocation.
-    """
+
     try:
+
         df = pd.read_csv(PORTFOLIO_FILE)
 
-        # Ensure numeric columns
         numeric_cols = [
             "Base_Allocation",
             "Now_Pct",
@@ -194,26 +277,39 @@ def load_portfolio():
         ]
 
         for col in numeric_cols:
+
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+                df[col] = pd.to_numeric(
+                    df[col],
+                    errors="coerce"
+                )
 
         return df
 
     except Exception as e:
-        st.error(f"Error loading portfolio file: {e}")
+        st.error(f"Portfolio loading error: {e}")
         return pd.DataFrame()
 
 
-def save_dynamic_portfolio(df):
-    """
-    Save dynamic portfolio allocation separately
-    without overwriting the strategic allocation.
-    """
-    try:
-        df.to_csv(DYNAMIC_PORTFOLIO_FILE, index=False)
-    except Exception as e:
-        st.warning(f"Failed saving dynamic portfolio: {e}")
+# -------------------------------------------------------------------
+# SAVE DYNAMIC PORTFOLIO
+# -------------------------------------------------------------------
 
+def save_dynamic_portfolio(df):
+
+    try:
+        df.to_csv(
+            DYNAMIC_PORTFOLIO_FILE,
+            index=False
+        )
+
+    except Exception as e:
+        st.warning(f"Portfolio save error: {e}")
+
+
+# -------------------------------------------------------------------
+# DYNAMIC PORTFOLIO ADJUSTMENT
+# -------------------------------------------------------------------
 
 def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
@@ -223,7 +319,7 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
     adjusted = df.copy()
 
     # ---------------------------------------------------------------
-    # SIGNAL EXTRACTION
+    # SIGNALS
     # ---------------------------------------------------------------
 
     btc_signal = (
@@ -240,36 +336,39 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
     vix = st.session_state.get("vix_adj", 20)
 
-    inflation = st.session_state.get("inflation_adj", 2.5)
+    inflation = st.session_state.get(
+        "inflation_adj",
+        2.5
+    )
 
-    oil_scenario = st.session_state.get("oil_adj", 0)
+    oil_scenario = st.session_state.get(
+        "oil_adj",
+        0
+    )
 
     # ---------------------------------------------------------------
-    # DEFENSIVE / STRESS MODE
+    # STRESS MODE
     # ---------------------------------------------------------------
 
     if vix >= 40:
 
-        # Increase defensive assets
         adjusted.loc[
-            adjusted["Bucket"].isin(["DEFENSIVE"]),
+            adjusted["Bucket"] == "DEFENSIVE",
             "Base_Allocation"
         ] *= 1.20
 
-        # Increase cash reserve
         adjusted.loc[
             adjusted["Bucket"] == "CASH",
             "Base_Allocation"
         ] *= 1.30
 
-        # Reduce cyclical/travel exposure
         adjusted.loc[
             adjusted["Bucket"].isin(["SPECIAL", "GEO"]),
             "Base_Allocation"
         ] *= 0.80
 
     # ---------------------------------------------------------------
-    # GOLD BULLISH MODE
+    # GOLD SIGNAL
     # ---------------------------------------------------------------
 
     if gold_signal == "Buy":
@@ -287,7 +386,7 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
         ] *= 0.90
 
     # ---------------------------------------------------------------
-    # BITCOIN RISK-ON MODE
+    # BTC SIGNAL
     # ---------------------------------------------------------------
 
     if btc_signal == "Buy":
@@ -315,13 +414,11 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
     if inflation >= 5:
 
-        # Favor energy
         adjusted.loc[
             adjusted["Bucket"] == "ENERGY",
             "Base_Allocation"
         ] *= 1.12
 
-        # Favor gold
         adjusted.loc[
             adjusted["Ticker"] == "GLD",
             "Base_Allocation"
@@ -342,16 +439,43 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
         ] *= 0.92
 
     # ---------------------------------------------------------------
-    # MIN/MAX ALLOCATION SAFETY LIMITS
+    # FX RISK MODE (EUR/AED)
     # ---------------------------------------------------------------
 
-    adjusted["Base_Allocation"] = adjusted["Base_Allocation"].clip(
+    eur_aed_rate = get_eur_aed_rate()
+
+    adjusted["EUR_AED"] = eur_aed_rate
+
+    # AED stronger = danger for Dubai payments
+    if eur_aed_rate is not None:
+
+        if eur_aed_rate <= 3.70:
+
+            adjusted.loc[
+                adjusted["Bucket"] == "CASH",
+                "Base_Allocation"
+            ] *= 1.15
+
+        elif eur_aed_rate >= 4.30:
+
+            adjusted.loc[
+                adjusted["Bucket"] == "SPECIAL",
+                "Base_Allocation"
+            ] *= 1.08
+
+    # ---------------------------------------------------------------
+    # SAFETY LIMITS
+    # ---------------------------------------------------------------
+
+    adjusted["Base_Allocation"] = adjusted[
+        "Base_Allocation"
+    ].clip(
         lower=3,
         upper=25
     )
 
     # ---------------------------------------------------------------
-    # NORMALIZATION TO 100%
+    # NORMALIZATION
     # ---------------------------------------------------------------
 
     total = adjusted["Base_Allocation"].sum()
@@ -359,10 +483,6 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
     adjusted["Dynamic_Allocation"] = (
         adjusted["Base_Allocation"] / total * 100
     ).round(2)
-
-    # ---------------------------------------------------------------
-    # PORTFOLIO DRIFT TRACKER
-    # ---------------------------------------------------------------
 
     adjusted["Allocation_Drift"] = (
         adjusted["Dynamic_Allocation"]
@@ -375,29 +495,154 @@ def dynamic_portfolio_adjustment(df, btc_df, gold_df):
 
     if vix >= 40:
         risk_mode = "HIGH STRESS"
+
     elif vix >= 28:
         risk_mode = "ELEVATED RISK"
+
     else:
         risk_mode = "NORMAL"
 
     adjusted["Risk_Mode"] = risk_mode
-
-    # ---------------------------------------------------------------
-    # LAST UPDATE
-    # ---------------------------------------------------------------
 
     adjusted["Last_Update"] = datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
     # ---------------------------------------------------------------
-    # SAVE DYNAMIC VERSION
+    # SAVE
     # ---------------------------------------------------------------
 
     save_dynamic_portfolio(adjusted)
 
     return adjusted
 
+
+# -------------------------------------------------------------------
+# EUR/AED DASHBOARD SECTION
+# -------------------------------------------------------------------
+
+def render_eur_aed_monitor():
+
+    st.subheader("💱 EUR / AED Dubai Payment Risk Monitor")
+
+    rate = get_eur_aed_rate()
+
+    if rate is None:
+        st.error("Unable to load EUR/AED rate")
+        return
+
+    save_fx_history(rate)
+
+    history = load_fx_history()
+
+    if history.empty:
+        st.info("No FX history yet")
+        return
+
+    current_rate = history["eur_aed"].iloc[-1]
+
+    initial_rate = history["eur_aed"].iloc[0]
+
+    pct_change = (
+        (current_rate - initial_rate)
+        / initial_rate
+    ) * 100
+
+    # ---------------------------------------------------------------
+    # ALERTS
+    # ---------------------------------------------------------------
+
+    if pct_change <= -10:
+
+        st.error(
+            f"🚨 ALERT: EUR dropped {pct_change:.2f}% vs AED\n"
+            "Dubai payments becoming MORE expensive."
+        )
+
+    elif pct_change >= 10:
+
+        st.success(
+            f"✅ ALERT: EUR gained {pct_change:.2f}% vs AED\n"
+            "Dubai payments becoming CHEAPER."
+        )
+
+    else:
+
+        st.warning(
+            f"⚠️ EUR/AED variation: {pct_change:.2f}%"
+        )
+
+    # ---------------------------------------------------------------
+    # METRICS
+    # ---------------------------------------------------------------
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "EUR/AED",
+            f"{current_rate:.4f}"
+        )
+
+    with col2:
+        st.metric(
+            "Variation %",
+            f"{pct_change:.2f}%"
+        )
+
+    with col3:
+
+        if pct_change < 0:
+            risk_text = "AED Strength Risk"
+
+        else:
+            risk_text = "EUR Strength"
+
+        st.metric(
+            "FX Regime",
+            risk_text
+        )
+
+    # ---------------------------------------------------------------
+    # CHART
+    # ---------------------------------------------------------------
+
+    fig = go.Figure()
+
+    chart_color = (
+        "red"
+        if pct_change < -10
+        else "green"
+        if pct_change > 10
+        else "orange"
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=history["timestamp"],
+            y=history["eur_aed"],
+            mode="lines+markers",
+            line=dict(
+                color=chart_color,
+                width=3
+            ),
+            name="EUR/AED"
+        )
+    )
+
+    fig.update_layout(
+        title="EUR / AED Monitoring (Dubai Off-Plan Risk)",
+        xaxis_title="Date",
+        yaxis_title="EUR/AED",
+        height=450,
+        plot_bgcolor="#FAFAFA",
+        paper_bgcolor="#FAFAFA"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 # -------------------------------------------------------------------
@@ -989,7 +1234,7 @@ elif menu == "Portfolio Strategy":
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
+    render_eur_aed_monitor()
 # -------------------------------------------------------------------
 # FOOTER: diagnostics and downloads
 # -------------------------------------------------------------------
