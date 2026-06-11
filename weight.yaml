@@ -3,26 +3,26 @@ bitcoin:
   bond_yields: -0.0
   currency_instability: -0.0
   energy_prices: 0.016666666666666666
-  equity_flows: 0.44903444444444435
+  equity_flows: 0.43042066666666656
   geopolitics: 0.0
   inflation: 0.078
-  liquidity: -0.054400000000000004
+  liquidity: -0.0296
   real_rates: 0.434
-  recession_probability: 0.059977777777777776
-  regulation: 0.013600000000000001
-  tail_risk_event: -0.0121
+  recession_probability: 0.057318666666666664
+  regulation: 0.0074
+  tail_risk_event: -0.0102
   usd_strength: -0.0
 gold:
   adoption: 0.0
   bond_yields: -0.0
   currency_instability: -0.0
   energy_prices: 0.049999999999999996
-  equity_flows: 0.12829555555555555
+  equity_flows: 0.12297733333333333
   geopolitics: 0.0
   inflation: 0.38999999999999996
-  liquidity: -0.034
+  liquidity: -0.0185
   real_rates: 2.17
-  recession_probability: 0.14994444444444444
+  recession_probability: 0.14329666666666666
   regulation: -0.0
-  tail_risk_event: -0.0847
+  tail_risk_event: -0.07139999999999999
   usd_strength: -0.0
