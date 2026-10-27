@@ -72,7 +72,7 @@ except Exception:
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
 
 from tasks_planner import render_task_planner
-from Newsletter import render_newsletter
+from Newsletter import newsletter_dashboard()
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
 
 # -------------------------------------------------------------------
@@ -1048,11 +1048,11 @@ elif menu == "Real Estate Bot":
 # Task planner MENU
 # -------------------------------------------------------------------
 elif menu == "Task Planner":
-    newsletter_dashboard()
+    render_task_planner()
 # Newesletter
 # -------------------------------------------------------------------
 elif menu == "Newsletter":
-    render_newsletter()
+    newsletter_dashboard()
 # -------------------------------------------------------------------
 # Portfolio Strategy
 # -------------------------------------------------------------------
