@@ -72,7 +72,7 @@ except Exception:
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
 
 from tasks_planner import render_task_planner
-from Newsletter import newsletter_dashboard
+from newsletter_app import newsletter_dashboard
 
 newsletter_dashboard()
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
