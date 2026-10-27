@@ -18,3 +18,10 @@ xgboost>=1.7.6
 
 # Streamlit for the dashboard
 streamlit==1.36.0
+
+streamlit
+pandas
+requests
+plotly
+feedparser
+yfinance
