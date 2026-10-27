@@ -757,15 +757,15 @@ def newsletter_dashboard():
     st.sidebar.title("WELS Actions")
 
     page = st.sidebar.radio(
-        "Navigation",
-        [
-            "Newsletter du jour",
-            "Marches et portefeuille",
-            "Change EUR/CHF et EUR/AED",
-            "Sources et risques",
-        ],
+    "Navigation",
+    [
+        "📰 Newsletter",
+        "📈 Marchés & portefeuille",
+        "💱 Devises",
+        "⚠️ Sources & risques",
+    ],
+    key="wels_newsletter_navigation",
     )
-
     if st.sidebar.button("🔄 Vider le cache"):
 
         fetch_news.clear()
