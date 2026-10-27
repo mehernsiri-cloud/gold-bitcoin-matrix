@@ -74,7 +74,7 @@ except Exception:
 from tasks_planner import render_task_planner
 from newsletter_app import newsletter_dashboard
 
-newsletter_dashboard()
+
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
 
 # -------------------------------------------------------------------
