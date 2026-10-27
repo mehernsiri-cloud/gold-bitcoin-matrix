@@ -372,7 +372,7 @@ def home_page():
     st.info("Pour lire davantage, utilisez « Newsletter ». Pour comparer les performances, ouvrez « Marchés & portefeuille ».")
 
 
-def main():
+def newsletter_dashboard():
     st.set_page_config(page_title=APP_TITLE, page_icon="📰", layout="wide")
     st.title("📰 WELS Actions")
     st.caption("Newsletter financière, suivi des marchés et veille des risques patrimoniaux")
@@ -399,5 +399,5 @@ def main():
         sources_page()
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__newsletter_dashboard__":
+    newsletter_dashboard()
