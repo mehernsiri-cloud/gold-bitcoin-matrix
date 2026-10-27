@@ -1048,7 +1048,7 @@ elif menu == "Real Estate Bot":
 # Task planner MENU
 # -------------------------------------------------------------------
 elif menu == "Task Planner":
-    render_task_planner()
+    newsletter_dashboard()
 # Newesletter
 # -------------------------------------------------------------------
 elif menu == "Newsletter":
