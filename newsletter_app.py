@@ -311,6 +311,57 @@ def currencies_page():
 
 
 
+WAR_TERMS = ["war", "invasion", "airstrike", "missile", "drone attack", "armed conflict",
+             "ceasefire", "nato", "otan", "sanction", "strait of hormuz", "red sea",
+             "ukraine", "iran", "israel", "gaza", "taiwan", "russia", "guerre",
+             "conflit", "attaque", "escalade", "blocus"]
+SUPPLY_TERMS = ["shortage", "stockout", "rationing", "blockade", "strike", "fuel shortage",
+                "power outage", "blackout", "gas supply", "medicine shortage", "supply disruption",
+                "pénurie", "rupture de stock", "rationnement", "blocage", "grève",
+                "carburant", "approvisionnement", "coupure", "médicament"]
+CHF_TERMS = ["swiss", "switzerland", "suisse", "franc suisse", "chf", "snb",
+             "banque nationale suisse", "eur/chf"]
+
+def classify_tags(title, summary, source):
+    text = f"{title} {summary} {source}".lower()
+    tags = []
+    if any(w in text for w in WAR_TERMS):
+        tags.append("Géopolitique / conflit")
+    if any(w in text for w in SUPPLY_TERMS):
+        tags.append("Approvisionnement")
+    if any(w in text for w in CHF_TERMS):
+        tags.append("Suisse / CHF")
+    if any(w in text for w in TOPICS["Marchés et économie"]):
+        tags.append("Marchés")
+    return tags or ["Autres"]
+
+def triage_priority(tags, title, summary):
+    text = f"{title} {summary}".lower()
+    priority_words = ["invasion", "missile attack", "airstrike", "strait of hormuz closed",
+                      "national emergency", "rationing", "pénurie nationale", "national shortage"]
+    watch_words = ["escalation", "sanctions", "strike", "blockade", "shortage", "disruption",
+                   "escalade", "grève", "blocage", "rupture de stock"]
+    if any(w in text for w in priority_words):
+        return "À examiner en priorité"
+    if any(w in text for w in watch_words) or "Géopolitique / conflit" in tags:
+        return "À surveiller"
+    return "Information"
+
+def enrich_news_frame(df):
+    if df.empty:
+        return df
+    df = df.copy()
+    df["Thèmes"] = df.apply(
+        lambda x: classify_tags(x.get("Titre", ""), x.get("Résumé", ""), x.get("Source", "")),
+        axis=1
+    )
+    df["Priorité"] = df.apply(
+        lambda x: triage_priority(x["Thèmes"], x.get("Titre", ""), x.get("Résumé", "")),
+        axis=1
+    )
+    return df
+
+
 def market_watch_page():
     st.header("📈 Marchés & portefeuille suivi")
     st.caption("Cours indicatifs via Yahoo Finance ; possibles retards, indisponibilités et erreurs de symbole.")
