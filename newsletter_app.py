@@ -804,6 +804,8 @@ def geopolitics_supply_dashboard(df):
         summary = str(row.get("Résumé", "") or "")
         matches = qualify_situation(title, summary)
         if not matches:
+            if len(unqualified) < 20:
+                unqualified.append(row)
             continue
         date_value = row.get("Date")
         date_label = date_value.strftime("%d/%m/%Y %H:%M UTC") if isinstance(date_value, datetime) else "Date non précisée"
@@ -817,9 +819,6 @@ def geopolitics_supply_dashboard(df):
                 "date": date_label,
                 "region": ("France" if "france" in str(row.get("Source", "")).lower() else "Dubaï / Émirats" if "émirats" in str(row.get("Source", "")).lower() else "Europe" if "europe" in str(row.get("Source", "")).lower() else "Moyen-Orient" if "moyen-orient" in str(row.get("Source", "")).lower() else "International"),
             })
-        if len(unqualified) < 12:
-            unqualified.append(row)
-
     # Collapse repeated articles describing the same event family; retain the strongest instance.
     unique_events = {}
     for event in events:
@@ -885,6 +884,18 @@ def geopolitics_supply_dashboard(df):
         st.markdown("### Signaux qui peuvent réduire la tension")
         for event in positive_events:
             st.success(f"**{event['event']}** — {event['impact']}")
+
+    if unqualified:
+        with st.expander(f"Articles non qualifiés automatiquement — à examiner ({len(unqualified)})", expanded=False):
+            st.caption("Ces articles ont bien été récupérés, mais aucune règle actuelle ne permet de leur attribuer un signal fiable. Cette liste sert à repérer les angles morts ; absence de signal ne signifie pas absence d'impact.")
+            for row in unqualified:
+                st.markdown(f"**{str(row.get('Titre', 'Titre indisponible'))}**")
+                summary = str(row.get("Résumé", "") or "").strip()
+                if summary:
+                    st.caption(summary[:400] + ("…" if len(summary) > 400 else ""))
+                url = str(row.get("Lien", "") or "")
+                if url.startswith("http"):
+                    st.markdown(f"[Consulter la source]({url})")
 
     if negative_events:
         st.markdown("### Plan d'action prioritaire")
