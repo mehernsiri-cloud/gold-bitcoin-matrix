@@ -96,6 +96,17 @@ def parse_date(value):
             return None
 
 
+ENGLISH_STOPWORDS = {"the", "and", "of", "to", "in", "for", "on", "by", "from", "with", "after", "over", "as", "at", "is", "are", "was", "were", "says", "said", "will", "its"}
+FRENCH_STOPWORDS = {"le", "la", "les", "des", "du", "de", "un", "une", "et", "pour", "dans", "sur", "par", "avec", "après", "contre", "selon", "est", "sont", "au", "aux", "en"}
+
+def supported_news_language(title, summary=""):
+    """Keep French/English reporting; reject unrelated language noise and uncertain short titles."""
+    text = f"{title} {summary}".lower()
+    if re.search(r"[\\u4e00-\\u9fff\\u3040-\\u30ff\\uac00-\\ud7af\\u0370-\\u03ff\\u0400-\\u04ff]", text):
+        return False
+    words = set(re.findall(r"[a-zà-ÿ']+", text))
+    return max(len(words & ENGLISH_STOPWORDS), len(words & FRENCH_STOPWORDS)) >= 2
+
 def topic_for(text):
     text = (text or "").lower()
     for topic, words in TOPICS.items():
@@ -114,17 +125,26 @@ def fetch_news(max_per_feed=25):
         if feed_index:
             time.sleep(5.2)
         try:
-            response = requests.get(url, headers=REQUEST_HEADERS, timeout=20)
+            # GDELT can return multilingual matches. Restrict at source where supported,
+            # then apply a conservative French/English check before displaying anything.
+            request_url = url.replace("&mode=", "%20(sourcelang:english%20OR%20sourcelang:french)&mode=", 1)
+            response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=20)
             response.raise_for_status()
             parsed = feedparser.parse(response.content)
             if not parsed.entries:
-                errors.append(f"{source} : flux vide ou format non reconnu.")
-            for item in parsed.entries[:max_per_feed]:
+                errors.append(f"{source} : aucun article francophone/anglophone retourné.")
+            accepted_for_feed = 0
+            for item in parsed.entries:
                 title = clean_html(item.get("title", ""))
                 link = item.get("link", "")
                 if not title or not link:
                     continue
                 summary = clean_html(item.get("summary", item.get("description", "")))
+                if not supported_news_language(title, summary):
+                    continue
+                accepted_for_feed += 1
+                if accepted_for_feed > max_per_feed:
+                    break
                 published = item.get("published", item.get("updated", ""))
                 articles.append({
                     "Date": parse_date(published),
@@ -622,7 +642,7 @@ def qualify_situation(title, summary):
         },
         {
             "id": "war_escalation",
-            "terms": ["invasion", "missile attack", "airstrike", "military escalation", "escalade militaire", "frappes aériennes", "attaque de missiles", "offensive militaire", "mobilisation militaire"],
+            "terms": ["invasion", "missile attack", "missile strike", "missile strikes", "airstrike", "air strike", "military strike", "military attack", "military escalation", "attack on iran", "attack on israel", "iran attack", "israel attack", "escalade militaire", "frappes aériennes", "frappe militaire", "attaque de missiles", "attaque militaire", "offensive militaire", "mobilisation militaire"],
             "event": "Escalade militaire ou attaque majeure",
             "impact": "Risque de sanctions, perturbation d'infrastructures ou de routes commerciales, hausse de l'incertitude et réactions de marché.",
             "market": "Possible hausse de la volatilité, demande de valeurs refuges et prime sur l'énergie ; réactions non garanties.",
