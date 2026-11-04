@@ -7,6 +7,7 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 import html
 import re
+import time
 
 import pandas as pd
 import plotly.express as px
@@ -108,9 +109,12 @@ def fetch_news(max_per_feed=25):
     if feedparser is None:
         return pd.DataFrame(), ["Le module feedparser n'est pas installé."]
     articles, errors = [], []
-    for source, url in RSS_FEEDS.items():
+    # GDELT applies a global rate limit: keep at least 5 seconds between requests.
+    for feed_index, (source, url) in enumerate(RSS_FEEDS.items()):
+        if feed_index:
+            time.sleep(5.2)
         try:
-            response = requests.get(url, headers=REQUEST_HEADERS, timeout=12)
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=20)
             response.raise_for_status()
             parsed = feedparser.parse(response.content)
             if not parsed.entries:
