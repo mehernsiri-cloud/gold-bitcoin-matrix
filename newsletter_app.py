@@ -549,108 +549,248 @@ def france_supply_page(df):
     st.markdown("**Précautions**")
     st.markdown("- Confirmer la zone, la durée et l'opérateur auprès de la préfecture ou de l'autorité compétente.\n- Pour les médicaments, suivre les conseils du pharmacien ; éviter le stockage spéculatif.\n- Garder des réserves domestiques raisonnables et tournantes, sans stockage dangereux de carburants.")
 
-def geopolitics_supply_dashboard(df):
-    """Vue synthétique des signaux géopolitiques et d'approvisionnement."""
-    st.header("🌍 Géopolitique & approvisionnement")
-    st.caption(
-        "Un tableau de bord de veille pour repérer rapidement les signaux. "
-        "Le volume d'articles ne mesure pas directement la gravité d'un événement "
-        "ni les stocks réellement disponibles en France."
-    )
-    days = st.selectbox("Période d'analyse", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
-    keyword = st.text_input("Zone ou mot-clé (facultatif)", placeholder="Ukraine, Iran, mer Rouge, carburant, médicaments…", key="wels_geo_supply_keyword")
+def qualify_situation(title, summary):
+    """Rule-based event qualification. It explains plausible pathways, not confirmed outcomes."""
+    text = f"{title} {summary}".lower()
+    rules = [
+        {
+            "id": "fuel_logistics_strike",
+            "terms": ["fuel tanker strike", "fuel transport strike", "fuel truck strike", "grève des transporteurs de carburant", "grève des chauffeurs", "blocage des dépôts", "blocage dépôt pétrolier", "raffinerie en grève", "fuel depot blockade", "fuel distribution strike", "oil refinery strike"],
+            "event": "Perturbation du transport ou de la distribution de carburants",
+            "impact": "Risque de retards de livraison et de tensions locales dans les stations. Une pénurie nationale n'est pas automatique : elle dépend de la durée, des dépôts touchés et des stocks disponibles.",
+            "market": "Possible prime de risque sur les produits raffinés et les coûts logistiques ; effet sur le pétrole brut incertain.",
+            "action": "Vérifier les dépôts, régions et durée concernés ; suivre les communications préfectorales et opérateurs. Pour le foyer : garder un niveau de carburant raisonnable, sans achats de panique ni stockage dangereux.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "À confirmer selon la zone et la durée"
+        },
+        {
+            "id": "strategic_reserves_release",
+            "terms": ["release of strategic reserves", "strategic petroleum reserve release", "release oil reserves", "drawdown of reserves", "mobilisation des réserves stratégiques", "mobilisation des stocks stratégiques", "déblocage des réserves pétrolières", "libération des stocks stratégiques"],
+            "event": "Mobilisation de réserves stratégiques de pétrole",
+            "impact": "Augmente temporairement l'offre disponible et peut réduire la prime de pénurie ou calmer les prix. L'effet reste limité si la perturbation physique dure ou si les volumes libérés sont faibles.",
+            "market": "Signal potentiellement baissier à court terme pour le pétrole, mais pas une garantie de baisse à la pompe.",
+            "action": "Vérifier les volumes, le calendrier et les pays participants ; comparer avec l'évolution du Brent et des prix des carburants avant toute décision.",
+            "level": "ATTÉNUATION", "score": 0, "polarity": "positive", "confidence": "Effet dépendant des volumes et de la durée"
+        },
+        {
+            "id": "fuel_shortage",
+            "terms": ["fuel shortage", "fuel shortages", "petrol shortage", "diesel shortage", "pénurie de carburant", "pénurie d'essence", "pénurie de diesel", "rationnement du carburant", "fuel rationing"],
+            "event": "Tension ou pénurie de carburants signalée",
+            "impact": "Risque de files d'attente, restrictions locales et difficultés pour les déplacements et la logistique. Distinguer annonce nationale, tension régionale et stations isolées.",
+            "market": "Risque de hausse des prix locaux et de tensions sur les produits raffinés.",
+            "action": "Vérifier les cartes officielles et annonces préfectorales ; différer les déplacements non essentiels si la zone est touchée ; ne pas constituer de stock de carburant à domicile.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Portée géographique à vérifier"
+        },
+        {
+            "id": "refinery_outage",
+            "terms": ["refinery outage", "refinery shutdown", "raffinerie à l'arrêt", "arrêt de raffinerie", "incendie raffinerie", "refinery fire", "refinery disruption"],
+            "event": "Arrêt ou incident dans une raffinerie",
+            "impact": "Peut réduire la production de carburants et tendre l'approvisionnement régional, surtout si plusieurs sites ou dépôts sont touchés.",
+            "market": "Pression possible sur les marges de raffinage et les prix des produits raffinés ; effet variable sur le brut.",
+            "action": "Identifier le site, sa capacité, la durée annoncée et les autres raffineries disponibles dans la zone ; surveiller les communications de l'exploitant.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Impact dépendant de la capacité arrêtée"
+        },
+        {
+            "id": "power_disruption",
+            "terms": ["blackout", "power outage", "electricity outage", "coupure d'électricité", "panne électrique", "réseau électrique", "grid failure", "power grid attack"],
+            "event": "Perturbation de l'alimentation électrique",
+            "impact": "Selon l'étendue et la durée, peut affecter commerces, télécommunications, paiements, eau et chaîne du froid.",
+            "market": "Risque opérationnel pour les entreprises et possible tension sur les prix de l'électricité.",
+            "action": "Vérifier la zone et l'opérateur ; recharger téléphones et batteries, conserver de l'eau potable et suivre les consignes officielles. Ne pas utiliser de générateur thermique en intérieur.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Durée et périmètre à confirmer"
+        },
+        {
+            "id": "shipping_chokepoint",
+            "terms": ["strait of hormuz", "bab el-mandeb", "suez canal", "red sea shipping", "shipping disruption", "maritime blockade", "détroit d'ormuz", "mer rouge", "canal de suez", "blocage maritime", "attaque de navire", "tanker attack"],
+            "event": "Risque sur une route maritime stratégique",
+            "impact": "Détours, délais, hausse des coûts de fret et d'assurance ; risque de perturbation des flux d'énergie et de marchandises si la situation se prolonge.",
+            "market": "Prime de risque potentielle sur pétrole, transport maritime et assurance ; forte volatilité possible.",
+            "action": "Suivre le trafic réel, les avis aux navires et la durée des perturbations. Éviter de conclure à une pénurie immédiate sans preuve de baisse des flux livrés.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Risque de transmission, pas rupture automatique"
+        },
+        {
+            "id": "war_escalation",
+            "terms": ["invasion", "missile attack", "airstrike", "military escalation", "escalade militaire", "frappes aériennes", "attaque de missiles", "offensive militaire", "mobilisation militaire"],
+            "event": "Escalade militaire ou attaque majeure",
+            "impact": "Risque de sanctions, perturbation d'infrastructures ou de routes commerciales, hausse de l'incertitude et réactions de marché.",
+            "market": "Possible hausse de la volatilité, demande de valeurs refuges et prime sur l'énergie ; réactions non garanties.",
+            "action": "Vérifier confirmation et localisation auprès de plusieurs sources fiables ; surveiller sanctions, infrastructures énergétiques et routes commerciales avant d'évaluer l'impact économique.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Événement et conséquences à confirmer"
+        },
+        {
+            "id": "sanctions_energy",
+            "terms": ["oil sanctions", "energy sanctions", "sanctions pétrolières", "sanctions énergétiques", "embargo pétrolier", "oil embargo", "gas embargo"],
+            "event": "Sanctions ou embargo visant l'énergie",
+            "impact": "Peut déplacer les flux commerciaux, réduire l'offre accessible à certains marchés et augmenter les coûts de transport ou de conformité.",
+            "market": "Risque de hausse de la prime de risque énergétique, mais réorientation des flux possible.",
+            "action": "Identifier les pays, produits et dates d'entrée en vigueur ; distinguer annonce politique, texte adopté et mise en œuvre effective.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Effet dépendant de l'application"
+        },
+        {
+            "id": "transport_strike",
+            "terms": ["transport strike", "rail strike", "port strike", "grève des transports", "grève ferroviaire", "grève portuaire", "blocage des ports", "truckers strike"],
+            "event": "Grève ou blocage des transports",
+            "impact": "Peut ralentir l'approvisionnement des commerces, des usines et des dépôts ; l'impact dépend des axes, plateformes et stocks disponibles.",
+            "market": "Risque de coûts logistiques supplémentaires et de retards de production.",
+            "action": "Identifier les réseaux et régions concernés, les dates et les alternatives logistiques ; ne pas extrapoler à une pénurie nationale.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Impact local à documenter"
+        },
+        {
+            "id": "medicine_shortage",
+            "terms": ["medicine shortage", "drug shortage", "pénurie de médicaments", "rupture de stock médicament", "pharmaceutical shortage"],
+            "event": "Tension sur l'approvisionnement en médicaments",
+            "impact": "Peut affecter certains produits ou dosages sans signifier une rupture générale des médicaments.",
+            "market": "Risque principalement opérationnel et sanitaire ; impact boursier sectoriel non déductible d'un signal isolé.",
+            "action": "Demander conseil au pharmacien et au médecin pour une alternative ; suivre l'ANSM. Ne pas constituer de stock spéculatif.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Médicament et zone à préciser"
+        },
+    ]
+    matches = []
+    for rule in rules:
+        if any(term in text for term in rule["terms"]):
+            matches.append(rule)
+    return matches
 
-    if df is None or df.empty or "Thèmes" not in df.columns:
-        st.warning("Données d'actualité indisponibles : impossible d'établir un statut fiable.")
+
+def geopolitics_supply_dashboard(df):
+    """Situation dashboard: event highlights, causal impact chains and immediate actions."""
+    st.header("🌍 Géopolitique, énergie & approvisionnement")
+    st.caption("Objectif : comprendre ce qui se passe, ce que cela peut entraîner et quoi faire. Qualification automatique par mots-clés, à confirmer avec les sources.")
+
+    days = st.selectbox("Fenêtre de veille", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
+    keyword = st.text_input("Filtrer par zone ou sujet (facultatif)", placeholder="France, Iran, carburant, électricité…", key="wels_geo_supply_keyword")
+
+    if df is None or df.empty:
+        st.warning("Aucun flux exploitable. Le statut est indéterminé, pas automatiquement rassurant.")
         return
 
-    selected = df[df["Thèmes"].apply(lambda tags: "Géopolitique / conflit" in tags or "Approvisionnement" in tags)].copy()
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    selected = df.copy()
     if "Date" in selected.columns:
+        cutoff = datetime.utcnow() - timedelta(days=days)
         selected = selected[selected["Date"].isna() | (selected["Date"] >= cutoff)]
     if keyword.strip():
-        titles = selected.get("Titre", pd.Series("", index=selected.index)).fillna("").astype(str)
-        summaries = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
-        selected = selected[(titles + " " + summaries).str.contains(re.escape(keyword.strip()), case=False, na=False)]
+        title_text = selected.get("Titre", pd.Series("", index=selected.index)).fillna("").astype(str)
+        summary_text = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
+        selected = selected[(title_text + " " + summary_text).str.contains(re.escape(keyword.strip()), case=False, na=False)]
 
-    war = selected[selected["Thèmes"].apply(lambda tags: "Géopolitique / conflit" in tags)]
-    supply = selected[selected["Thèmes"].apply(lambda tags: "Approvisionnement" in tags)]
-    priorities = selected.get("Priorité", pd.Series("Information", index=selected.index))
-    priority = selected[priorities.eq("À examiner en priorité")]
-    watch = selected[priorities.eq("À surveiller")]
+    events = []
+    unqualified = []
+    for _, row in selected.iterrows():
+        title = str(row.get("Titre", "") or "")
+        summary = str(row.get("Résumé", "") or "")
+        matches = qualify_situation(title, summary)
+        if not matches:
+            continue
+        date_value = row.get("Date")
+        date_label = date_value.strftime("%d/%m/%Y %H:%M UTC") if isinstance(date_value, datetime) else "Date non précisée"
+        for match in matches:
+            events.append({
+                **match,
+                "title": title,
+                "summary": summary,
+                "source": str(row.get("Source", "Source non précisée")),
+                "url": str(row.get("Lien", "")),
+                "date": date_label,
+            })
+        if len(unqualified) < 12:
+            unqualified.append(row)
 
-    if selected.empty:
-        status, detail = "AUCUN SIGNAL DÉTECTÉ", "Aucun article classé sur la période et les filtres choisis."
-    elif not priority.empty:
-        status, detail = "SIGNAUX PRIORITAIRES", f"{len(priority)} article(s) classé(s) à examiner en priorité."
+    # Collapse repeated articles describing the same event family; retain the strongest instance.
+    unique_events = {}
+    for event in events:
+        key = (event["id"], re.sub(r"[^a-z0-9]+", " ", event["title"].lower())[:90])
+        if key not in unique_events or event["score"] > unique_events[key]["score"]:
+            unique_events[key] = event
+    events = sorted(unique_events.values(), key=lambda item: (item["score"], item["date"]), reverse=True)
+
+    negative_events = [event for event in events if event["polarity"] == "negative"]
+    positive_events = [event for event in events if event["polarity"] == "positive"]
+    high_events = [event for event in negative_events if event["score"] >= 3]
+    medium_events = [event for event in negative_events if event["score"] == 2]
+    distinct_high_families = {event["id"] for event in high_events}
+    if len(distinct_high_families) >= 2 or len(high_events) >= 3:
+        overall = "TENSIONS MULTIPLES"
+        overall_detail = "Plusieurs signaux défavorables distincts sont détectés : vérifier les cumuls et les effets en chaîne."
+    elif high_events:
+        overall = "ALERTE — SIGNAL FORT"
+        overall_detail = "Au moins un événement potentiellement perturbateur nécessite une vérification rapide."
+    elif medium_events:
+        overall = "VIGILANCE RENFORCÉE"
+        overall_detail = "Des perturbations possibles sont signalées, sans preuve suffisante d'une rupture majeure."
+    elif positive_events:
+        overall = "MESURES D'ATTÉNUATION DÉTECTÉES"
+        overall_detail = "Des mesures susceptibles de réduire la tension sont signalées ; leur effet réel reste à vérifier."
+    elif events:
+        overall = "VEILLE"
+        overall_detail = "Des événements sont détectés, sans qualification de risque fort par les règles actuelles."
     else:
-        status, detail = "SIGNAUX À SUIVRE", f"{len(selected)} article(s) détecté(s), sans priorité élevée selon les règles de tri."
+        overall = "SITUATION NON QUALIFIÉE"
+        overall_detail = "Aucun événement couvert par les règles n'a été reconnu. Cela ne signifie pas qu'il n'existe aucun risque."
 
-    st.markdown("""
-        <style>
-        .geo-status{border:1px solid #777;border-radius:14px;padding:14px 18px;margin:6px 0 16px;background:rgba(128,128,128,.08)}
-        .geo-status-label{font-size:12px;letter-spacing:1px;opacity:.8;font-weight:700}
-        .geo-status-value{font-size:24px;font-weight:800;margin:5px 0}
-        .geo-status-detail{font-size:13px;opacity:.85}
-        </style>
-    """, unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="geo-status"><div class="geo-status-label">STATUT DE VEILLE · {days} JOURS</div>'
-        f'<div class="geo-status-value">{status}</div><div class="geo-status-detail">{detail}</div></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Situation générale")
+    st.subheader(overall)
+    st.write(overall_detail)
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Événements qualifiés", len(events))
+    k2.metric("Signaux défavorables", len(negative_events))
+    k3.metric("Signaux forts", len(high_events))
+    k4.metric("Mesures d'atténuation", len(positive_events))
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Signaux détectés", len(selected))
-    m2.metric("Géopolitique", len(war))
-    m3.metric("Approvisionnement", len(supply))
-    m4.metric("Prioritaires", len(priority))
+    if len(distinct_high_families) >= 2:
+        st.error("CUMUL DE RISQUES : plusieurs familles d'événements à impact potentiellement élevé sont présentes. Examiner les dépendances communes : énergie, transport, logistique et disponibilité.")
+    elif high_events:
+        st.warning("Un signal à impact potentiellement élevé est présent. Vérifier sa réalité, son périmètre et sa durée avant d'agir.")
 
-    left, right = st.columns(2)
-    with left:
-        categories = pd.DataFrame({"Catégorie": ["Géopolitique", "Approvisionnement"], "Articles": [len(war), len(supply)]})
-        categories = categories[categories["Articles"] > 0]
-        if not categories.empty:
-            fig = px.pie(categories, names="Catégorie", values="Articles", hole=0.58, title="Répartition des signaux")
-            fig.update_traces(textposition="inside", textinfo="percent+label")
-            fig.update_layout(height=330, margin=dict(t=55, b=15, l=10, r=10))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Pas de signal à répartir sur cette période.")
+    st.markdown("### Highlights — événements et conséquences")
+    if not events:
+        st.info("Aucun événement n'a pu être qualifié automatiquement sur cette période. Les nouvelles non reconnues ne sont pas interprétées comme positives.")
+    for index, event in enumerate(events[:15], start=1):
+        with st.expander(f"{'🟢' if event['polarity'] == 'positive' else ('🔴' if event['score'] >= 3 else '🟠')} {event['event']} — {event['level']}", expanded=(index <= 3)):
+            st.markdown(f"**Actualité :** {event['title']}")
+            st.caption(f"{event['source']} · {event['date']} · Qualification : {event['confidence']}")
+            if event["summary"]:
+                st.write(event["summary"][:700])
+            st.markdown(f"**Ce que cela peut entraîner :** {event['impact']}")
+            st.markdown(f"**Transmission économique / marchés :** {event['market']}")
+            st.markdown(f"**Plan d'action immédiat :** {event['action']}")
+            if event["url"].startswith("http"):
+                st.markdown(f"[Consulter la source]({event['url']})")
 
-    with right:
-        priority_data = pd.DataFrame({
-            "Niveau": ["Prioritaire", "À surveiller", "Information"],
-            "Articles": [len(priority), len(watch), max(0, len(selected) - len(priority) - len(watch))],
-        })
-        fig = px.bar(priority_data, x="Articles", y="Niveau", orientation="h", title="Niveau de priorité des articles", text="Articles")
-        fig.update_layout(height=330, margin=dict(t=55, b=15, l=10, r=10), xaxis_title="Nombre d'articles", yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+    if positive_events:
+        st.markdown("### Signaux qui peuvent réduire la tension")
+        for event in positive_events:
+            st.success(f"**{event['event']}** — {event['impact']}")
 
-    if not selected.empty and "Date" in selected.columns:
-        dated = selected.dropna(subset=["Date"]).copy()
-        if not dated.empty:
-            dated["Jour"] = pd.to_datetime(dated["Date"], errors="coerce").dt.date
-            timeline = dated.groupby("Jour", as_index=False).size().rename(columns={"size": "Articles"})
-            fig = px.bar(timeline, x="Jour", y="Articles", title="Évolution quotidienne des signaux")
-            fig.update_layout(height=280, margin=dict(t=55, b=15, l=10, r=10), xaxis_title="", yaxis_title="Articles")
-            st.plotly_chart(fig, use_container_width=True)
+    if negative_events:
+        st.markdown("### Plan d'action prioritaire")
+        actions = []
+        if any(event["id"] in {"fuel_logistics_strike", "fuel_shortage", "refinery_outage"} for event in negative_events):
+            actions.append("Carburants : vérifier les départements et dépôts réellement touchés, les stocks communiqués et la durée prévue ; maintenir une réserve d'usage normale, sans stockage excessif.")
+        if any(event["id"] in {"power_disruption"} for event in negative_events):
+            actions.append("Électricité : recharger les équipements essentiels, vérifier les informations du gestionnaire de réseau et appliquer les consignes officielles.")
+        if any(event["id"] in {"shipping_chokepoint", "sanctions_energy"} for event in negative_events):
+            actions.append("Énergie et transport : surveiller les flux physiques, les annonces réglementaires et le Brent ; ne pas assimiler une hausse de risque à une pénurie déjà constatée.")
+        if any(event["id"] in {"medicine_shortage"} for event in negative_events):
+            actions.append("Médicaments : vérifier le produit précis avec le pharmacien et les informations de l'ANSM ; ne pas faire de réserves non nécessaires.")
+        if any(event["id"] in {"war_escalation"} for event in negative_events):
+            actions.append("Géopolitique : recouper les faits auprès de sources fiables et suivre les avis officiels ; distinguer risque régional et impact direct en France.")
+        for action in actions:
+            st.markdown(f"- {action}")
+        st.caption("Ces actions sont des mesures de vérification et de préparation proportionnées, pas des consignes d'achat ni des prédictions.")
 
-    st.subheader("Lecture rapide")
-    impact_left, impact_right = st.columns(2)
-    with impact_left:
-        st.markdown("**🌍 Géopolitique**")
-        st.caption("Surveiller l'escalade, les sanctions, les routes maritimes et les infrastructures énergétiques.")
-        st.markdown("Expositions possibles : pétrole et gaz, transport maritime, or, CHF, défense.")
-    with impact_right:
-        st.markdown("**🇫🇷 Approvisionnement**")
-        st.caption("Distinguer une tension nationale d'une rupture locale, temporaire ou sectorielle.")
-        st.markdown("Points sensibles : carburants, électricité, alimentation, médicaments, transport et logistique.")
+    st.markdown("### Signaux à vérifier — non qualifiés")
+    st.caption("Actualités de la période qui n'ont pas déclenché de règle d'impact. Elles restent visibles pour éviter qu'une actualité importante soit ignorée.")
+    qualified_titles = {event["title"] for event in events}
+    remaining = selected[~selected["Titre"].astype(str).isin(qualified_titles)] if "Titre" in selected.columns else selected
+    if remaining.empty:
+        st.info("Aucun autre titre dans les flux sélectionnés.")
+    else:
+        for _, row in remaining.head(12).iterrows():
+            title = str(row.get("Titre", "Titre indisponible"))
+            source = str(row.get("Source", "Source non précisée"))
+            url = str(row.get("Lien", ""))
+            st.markdown(f"- **{title}** — {source}" + (f" · [Source]({url})" if url.startswith("http") else ""))
 
-    st.caption(
-        "Limite méthodologique : les graphiques comptent des articles RSS classés automatiquement. "
-        "Un même événement peut générer plusieurs articles ; l'absence d'article ne prouve pas l'absence de risque."
-    )
+    st.caption("Méthode et limites : qualification par règles de mots-clés sur les titres et résumés RSS, pas une vérification factuelle ni une prévision. Les liens et dates doivent être contrôlés. Un même événement peut apparaître dans plusieurs médias ; les conséquences décrites sont des scénarios plausibles, pas des faits établis.")
 
 
 def enhanced_newsletter_page(df, errors):
