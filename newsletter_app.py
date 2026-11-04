@@ -185,7 +185,7 @@ def show_news_cards(df, limit=30, full_text=False):
         date = article["Date"]
         date_label = date.strftime("%d/%m/%Y %H:%M UTC") if isinstance(date, datetime) else "Date inconnue"
         st.markdown(f"**{article['Titre']}**")
-        st.caption(f"{date_label} · {article['Source']} · {article['Thème']}")
+        st.caption(f"{date_label} · {article['Thème']}")
         summary = article["Résumé"] or "Le flux RSS ne fournit pas de résumé."
         st.write(summary)
         if full_text:
@@ -195,7 +195,7 @@ def show_news_cards(df, limit=30, full_text=False):
                     st.write(article_text[:12000])
                 else:
                     st.info("Le site ne permet pas d'extraire automatiquement le texte intégral. Le résumé RSS ci-dessus reste disponible.")
-        st.markdown(f"[Ouvrir l’article original]({article['Lien']})")
+
         st.divider()
 
 
@@ -344,8 +344,7 @@ def render_alert_articles(df, limit=15):
         st.caption(f"{date_label} · {' / '.join(tags)} · {priority}")
         if summary:
             st.write(summary)
-        if link.startswith(("https://", "http://")):
-            st.markdown(f"[Lire l'article]({link})")
+
         st.divider()
 
 def classify_tags(title, summary, source):
@@ -481,7 +480,7 @@ def fx_chf_page():
 
 def war_risk_page(df):
     st.header("🌍 Guerres & risques géopolitiques")
-    st.caption("Flux médias et GDELT : un titre ou un mot-clé ne confirme pas seul un événement.")
+    st.caption("Indicateurs de veille : un titre ou un mot-clé ne confirme pas seul un événement.")
     war = df[df["Thèmes"].apply(lambda x: "Géopolitique / conflit" in x)].copy() if not df.empty else df
     days = st.selectbox("Période", [1, 3, 7, 14, 30], index=2, key="wels_war_days")
     keyword = st.text_input("Zone / mot-clé", placeholder="Ukraine, Iran, mer Rouge…", key="wels_war_keyword")
