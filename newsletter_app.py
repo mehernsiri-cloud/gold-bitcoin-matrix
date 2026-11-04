@@ -706,10 +706,10 @@ def geopolitics_supply_dashboard(df):
     positive_events = [event for event in events if event["polarity"] == "positive"]
     high_events = [event for event in negative_events if event["score"] >= 3]
     medium_events = [event for event in negative_events if event["score"] == 2]
-    distinct_high_families = {event["id"] for event in high_events}
-    if len(distinct_high_families) >= 2 or len(high_events) >= 3:
+    distinct_negative_families = {event["id"] for event in negative_events}
+    if len(distinct_negative_families) >= 2:
         overall = "TENSIONS MULTIPLES"
-        overall_detail = "Plusieurs signaux défavorables distincts sont détectés : vérifier les cumuls et les effets en chaîne."
+        overall_detail = "Plusieurs types d'événements défavorables sont détectés : vérifier les cumuls et les effets en chaîne."
     elif high_events:
         overall = "ALERTE — SIGNAL FORT"
         overall_detail = "Au moins un événement potentiellement perturbateur nécessite une vérification rapide."
@@ -735,8 +735,8 @@ def geopolitics_supply_dashboard(df):
     k3.metric("Signaux forts", len(high_events))
     k4.metric("Mesures d'atténuation", len(positive_events))
 
-    if len(distinct_high_families) >= 2:
-        st.error("CUMUL DE RISQUES : plusieurs familles d'événements à impact potentiellement élevé sont présentes. Examiner les dépendances communes : énergie, transport, logistique et disponibilité.")
+    if len(distinct_negative_families) >= 2:
+        st.error("CUMUL DE RISQUES : plusieurs familles d'événements défavorables sont présentes. Examiner les dépendances communes : énergie, transport, logistique et disponibilité.")
     elif high_events:
         st.warning("Un signal à impact potentiellement élevé est présent. Vérifier sa réalité, son périmètre et sa durée avant d'agir.")
 
