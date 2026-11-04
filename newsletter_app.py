@@ -680,6 +680,24 @@ def qualify_situation(title, summary):
             "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Transmission aux prix de détail possible, non automatique"
         },
         {
+            "id": "electricity_price_increase",
+            "terms": ["electricity prices rise", "electricity price surge", "power prices rise", "power price spike", "electricity prices increase", "hausse du prix de l'électricité", "hausse des prix de l'électricité", "prix de l'électricité en hausse"],
+            "event": "Hausse des prix de marché de l'électricité",
+            "impact": "Une hausse durable des prix de gros peut se répercuter sur les factures des ménages et les coûts des entreprises, selon les contrats, les mécanismes tarifaires et le calendrier de révision.",
+            "market": "Pression possible sur les coûts industriels et l'inflation ; les prix de gros ne correspondent pas directement à la facture finale.",
+            "action": "Suivre les prix de gros, les annonces tarifaires françaises et les mesures publiques ; distinguer prix spot, contrats à terme et tarifs de détail.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Répercussion sur les factures dépendante des contrats et mécanismes tarifaires"
+        },
+        {
+            "id": "diplomatic_negotiations",
+            "terms": ["mediate talks", "peace talks", "negotiations between", "talks with kyiv", "talks with moscow", "ceasefire talks", "pourparlers", "négociations de paix", "médiation diplomatique"],
+            "event": "Ouverture ou reprise de discussions diplomatiques",
+            "impact": "Une médiation peut ouvrir une voie de désescalade, mais l'annonce de discussions ne signifie ni accord ni cessez-le-feu. Les risques sécuritaires et économiques restent à suivre.",
+            "market": "Effet de marché incertain ; une baisse durable de la prime de risque dépendrait de résultats concrets et vérifiables.",
+            "action": "Suivre la tenue effective des discussions, les déclarations des parties et tout accord formel ; ne pas assimiler une annonce de médiation à une résolution du conflit.",
+            "level": "INFORMATION", "score": 1, "polarity": "neutral", "confidence": "Processus diplomatique annoncé ; résultat non acquis"
+        },
+        {
             "id": "measles_health",
             "terms": ["measles", "morbillo", "rougeole", "morbilli"],
             "event": "Risque sanitaire lié à la rougeole",
