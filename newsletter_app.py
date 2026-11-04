@@ -588,86 +588,112 @@ def enhanced_sources_page():
 
 
 def executive_dashboard(df):
-    """Compact, article-free executive risk dashboard for the Overview page."""
+    """Article-free executive dashboard: risk indicators and four market quotes."""
     st.markdown("""
     <style>
-    .risk-shell {background:#050505;border:1px solid #242424;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
-    .risk-head {display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-    .risk-title {font-size:21px;font-weight:750;letter-spacing:.2px;color:#eee}
-    .risk-sub {font-size:14px;color:#bdbdbd;margin-top:4px}
-    .risk-pill {border-radius:20px;padding:5px 11px;font-size:13px;font-weight:700;background:#321706;color:#ff8a32}
-    .risk-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
-    .risk-card {border-radius:16px;padding:13px 12px 10px;min-height:118px}
-    .risk-card.red {background:#1b0708}.risk-card.amber {background:#1c1507}.risk-card.green {background:#07180e}
-    .risk-icon {font-size:21px}.risk-label {font-size:16px;font-weight:700;color:#eee;margin-top:7px}
-    .risk-level {font-size:21px;font-weight:800;margin-top:7px}
-    .risk-detail {font-size:13px;color:#d0d0d0;margin-top:8px}
-    .risk-divider {border-top:1px solid #242424;margin:18px 0 16px}
+    .risk-shell{background:#050505;border:1px solid #242424;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
+    .risk-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .risk-title{font-size:21px;font-weight:750;color:#eee}
+    .risk-sub{font-size:14px;color:#bdbdbd;margin-top:4px}
+    .risk-pill{border-radius:20px;padding:5px 11px;font-size:13px;font-weight:700}
+    .risk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+    .risk-card{border-radius:16px;padding:13px 12px 10px;min-height:118px}
+    .risk-card.red{background:#1b0708}.risk-card.amber{background:#1c1507}.risk-card.green{background:#07180e}
+    .risk-icon{font-size:21px}.risk-label{font-size:16px;font-weight:700;color:#eee;margin-top:7px}
+    .risk-level{font-size:21px;font-weight:800;margin-top:7px}
+    .risk-detail{font-size:13px;color:#d0d0d0;margin-top:8px}
     @media(max-width:600px){.risk-grid{grid-template-columns:1fr}.risk-card{min-height:95px}}
     </style>
     """, unsafe_allow_html=True)
 
-    def topic_rows(topic):
+    def rows_for(topic):
         if df.empty or "Thèmes" not in df.columns:
             return df
         return df[df["Thèmes"].apply(lambda tags: topic in tags)]
 
-    war = topic_rows("Géopolitique / conflit")
-    supply = topic_rows("Approvisionnement")
-    market = topic_rows("Marchés")
-    chf = topic_rows("Suisse / CHF")
+    war = rows_for("Géopolitique / conflit")
+    supply = rows_for("Approvisionnement")
+    chf = rows_for("Suisse / CHF")
 
-    def level_for(rows, default="MODÉRÉ"):
-        if rows.empty: return default
+    def signal_level(rows):
+        if rows.empty:
+            return "AUCUN SIGNAL"
         if "Priorité" in rows.columns and (rows["Priorité"] == "À examiner en priorité").any():
             return "ÉLEVÉ"
-        if len(rows) >= 5: return "ÉLEVÉ"
-        return "À SURVEILLER" if len(rows) >= 2 else "MODÉRÉ"
+        if len(rows) >= 4:
+            return "ÉLEVÉ"
+        if len(rows) >= 1:
+            return "À SURVEILLER"
+        return "AUCUN SIGNAL"
 
-    war_level = level_for(war, "NON ÉVALUÉ")
-    france_level = level_for(supply, "NON ÉVALUÉ")
-    market_level = "VOLATIL" if len(market) >= 4 else ("À SURVEILLER" if len(market) >= 1 else "CALME")
-    levels = [war_level, france_level]
-    global_level = "RISQUE ÉLEVÉ" if "ÉLEVÉ" in levels else ("VIGILANCE" if any(x == "À SURVEILLER" for x in levels) or market_level == "VOLATIL" else "RISQUE MODÉRÉ")
+    war_level = signal_level(war)
+    france_level = signal_level(supply)
+
+    # Market risk is based on observed daily moves, not the number of news articles.
+    market_moves = {}
+    for label, symbol in [("Brent", "BZ=F"), ("Or", "GC=F"), ("S&P 500", "^GSPC")]:
+        hist = fetch_history(symbol, "1mo")
+        if not hist.empty and len(hist) > 1:
+            last = float(hist["Cours"].iloc[-1])
+            prev = float(hist["Cours"].iloc[-2])
+            market_moves[label] = (last / prev - 1) * 100 if prev else 0.0
+    volatile = any(abs(v) >= 2.0 for v in market_moves.values())
+    market_level = "VOLATILE" if volatile else ("À SURVEILLER" if market_moves else "INDISPONIBLE")
+
+    # A missing feed is not interpreted as a zero-risk situation.
+    global_high = war_level == "ÉLEVÉ" or france_level == "ÉLEVÉ"
+    global_watch = war_level == "À SURVEILLER" or france_level == "À SURVEILLER" or market_level == "VOLATILE"
+    if global_high:
+        global_level, pill_style = "RISQUE ÉLEVÉ", "background:#321706;color:#ff8a32"
+    elif global_watch:
+        global_level, pill_style = "VIGILANCE", "background:#2a2107;color:#ffc04d"
+    elif market_level == "INDISPONIBLE":
+        global_level, pill_style = "DONNÉES INCOMPLÈTES", "background:#252525;color:#ddd"
+    else:
+        global_level, pill_style = "RISQUE MODÉRÉ", "background:#092313;color:#43d17a"
+
     stamp = datetime.now().astimezone().strftime("%d %b %Y")
-    pill_class = "background:#321706;color:#ff8a32" if global_level == "RISQUE ÉLEVÉ" else ("background:#2a2107;color:#ffc04d" if global_level == "VIGILANCE" else "background:#092313;color:#43d17a")
+    def card_class(level):
+        return "red" if level == "ÉLEVÉ" else ("green" if level == "AUCUN SIGNAL" else "amber")
+    def level_color(level):
+        return "#ff5d61" if level == "ÉLEVÉ" else ("#43d17a" if level == "AUCUN SIGNAL" else "#ffad48")
+
     st.markdown(f"""
     <div class="risk-shell">
       <div class="risk-head">
         <div><div class="risk-title">GLOBAL RISK MONITOR</div>
         <div class="risk-sub">Daily Intelligence Dashboard · {stamp}</div></div>
-        <div class="risk-pill" style="{pill_class}">{global_level}</div>
+        <div class="risk-pill" style="{pill_style}">{global_level}</div>
       </div>
       <div class="risk-grid">
-        <div class="risk-card {'red' if war_level == 'ÉLEVÉ' else 'amber'}">
+        <div class="risk-card {card_class(war_level)}">
           <div class="risk-icon">◎</div><div class="risk-label">Géopolitique</div>
-          <div class="risk-level" style="color:{'#ff5d61' if war_level == 'ÉLEVÉ' else '#ffad48'}">{war_level}</div>
-          <div class="risk-detail">{len(war)} signal(aux) détecté(s) · flux presse</div>
+          <div class="risk-level" style="color:{level_color(war_level)}">{war_level}</div>
+          <div class="risk-detail">Conflits · sanctions · routes maritimes</div>
         </div>
-        <div class="risk-card {'amber' if market_level != 'CALME' else 'green'}">
+        <div class="risk-card {'amber' if market_level == 'VOLATILE' else 'green'}">
           <div class="risk-icon">▥</div><div class="risk-label">Marchés</div>
-          <div class="risk-level" style="color:{'#ffad48' if market_level != 'CALME' else '#43d17a'}">{market_level}</div>
-          <div class="risk-detail">{len(market)} actualité(s) marché · volatilité à confirmer par les cours</div>
+          <div class="risk-level" style="color:{'#ffad48' if market_level == 'VOLATILE' else '#43d17a'}">{market_level}</div>
+          <div class="risk-detail">Pétrole · Or · Actions</div>
         </div>
-        <div class="risk-card {'red' if france_level == 'ÉLEVÉ' else 'amber'}">
+        <div class="risk-card {card_class(france_level)}">
           <div class="risk-icon">♧</div><div class="risk-label">France</div>
-          <div class="risk-level" style="color:{'#ff5d61' if france_level == 'ÉLEVÉ' else '#ffad48'}">{france_level}</div>
-          <div class="risk-detail">{len(supply)} signal(aux) approvisionnement · portée locale à confirmer</div>
+          <div class="risk-level" style="color:{level_color(france_level)}">{france_level}</div>
+          <div class="risk-detail">Carburant · Énergie · Approvisionnement</div>
         </div>
       </div>
-      <div class="risk-divider"></div>
     </div>
     """, unsafe_allow_html=True)
 
     st.subheader("Market snapshot")
     instruments = [
-        ("Brent", "BZ=F", "$"),
-        ("Or", "GC=F", "$"),
+        ("Brent", "BZ=F", "USD"),
+        ("Or", "GC=F", "USD"),
         ("EUR / CHF", "EURCHF=X", ""),
         ("EUR / AED", "EURAED=X", ""),
     ]
     cols = st.columns(2)
-    for i, (label, symbol, suffix) in enumerate(instruments):
+    for i, (label, symbol, unit) in enumerate(instruments):
         hist = fetch_history(symbol, "1mo")
         with cols[i % 2]:
             st.caption(label)
@@ -676,18 +702,13 @@ def executive_dashboard(df):
                 continue
             last = float(hist["Cours"].iloc[-1])
             previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-            delta = ((last / previous) - 1) * 100 if previous else 0
-            if label in ("EUR / CHF", "EUR / AED"):
-                value = f"{last:.4f}"
-            else:
-                value = f"{last:,.2f} {suffix}"
+            delta = (last / previous - 1) * 100 if previous else 0
+            value = f"{last:.4f}" if not unit else f"{last:,.2f} {unit}"
             st.metric(label, value, f"{delta:+.2f} %")
+
     if not chf.empty:
-        st.caption(f"Veille CHF : {len(chf)} actualité(s) détectée(s). Le sens de conversion est présenté dans l'onglet « CHF & devises ».")
-    st.caption("Indicateurs issus de flux presse et de cours indicatifs (potentiellement différés). Les niveaux sont des signaux de veille, pas une évaluation officielle du risque.")
-    if not df.empty:
-        with st.expander("État technique des sources"):
-            st.write(f"{len(df)} articles analysés en arrière-plan ; aucun article n'est affiché sur cette page.")
+        st.caption(f"CHF : {len(chf)} signal(aux) de presse détecté(s) — voir l'onglet CHF & devises.")
+    st.caption("Cours indicatifs potentiellement différés. Les niveaux de risque sont des indicateurs de veille, pas une évaluation officielle.")
 
 def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
