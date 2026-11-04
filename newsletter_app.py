@@ -942,17 +942,17 @@ def geopolitics_supply_dashboard(df, errors=None):
                             st.markdown(f"[Ouvrir la source]({event['url']})")
 
     if unqualified:
-        with st.expander(f"Articles à examiner — non qualifiés automatiquement ({len(unqualified)})", expanded=False):
-            st.caption("Articles récupérés mais non reconnus par les règles actuelles. Ils ne sont pas considérés comme sans importance ; cette zone permet de repérer les angles morts.")
-            for row in unqualified:
-                title = str(row.get("Titre", "Titre indisponible"))
-                with st.expander(title[:140], expanded=False):
-                    summary = str(row.get("Résumé", "") or "").strip()
-                    if summary:
-                        st.write(summary[:700])
-                    url = str(row.get("Lien", "") or "")
-                    if url.startswith("http"):
-                        st.markdown(f"[Ouvrir la source]({url})")
+        st.markdown(f"### Articles à examiner — non qualifiés automatiquement ({len(unqualified)})")
+        st.caption("Articles récupérés mais non reconnus par les règles actuelles. Ils ne sont pas considérés comme sans importance ; cette zone permet de repérer les angles morts.")
+        for row in unqualified:
+            title = str(row.get("Titre", "Titre indisponible"))
+            with st.expander(title[:140], expanded=False):
+                summary = str(row.get("Résumé", "") or "").strip()
+                if summary:
+                    st.write(summary[:700])
+                url = str(row.get("Lien", "") or "")
+                if url.startswith("http"):
+                    st.markdown(f"[Ouvrir la source]({url})")
 
     st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
 
