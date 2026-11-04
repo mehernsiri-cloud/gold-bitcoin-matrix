@@ -323,29 +323,11 @@ CHF_TERMS = ["swiss", "switzerland", "suisse", "franc suisse", "chf", "snb",
              "banque nationale suisse", "eur/chf"]
 
 def render_alert_articles(df, limit=15):
-    """Render filtered news cards without exposing source names or diagnostics."""
+    """Do not display article-level content; retain the collected data for risk indicators."""
     if df is None or df.empty:
-        st.info("Aucun article correspondant sur la période sélectionnée.")
+        st.info("Aucun signal détecté sur la période sélectionnée.")
         return
-    for _, article in df.head(limit).iterrows():
-        title = str(article.get("Titre", "Sans titre"))
-        summary = str(article.get("Résumé", "") or "")
-        link = str(article.get("Lien", "") or "")
-        date_value = article.get("Date")
-        try:
-            date_label = pd.to_datetime(date_value).strftime("%d/%m/%Y %H:%M") if pd.notna(date_value) else "Date inconnue"
-        except Exception:
-            date_label = "Date inconnue"
-        tags = article.get("Thèmes", [])
-        if not isinstance(tags, (list, tuple)):
-            tags = []
-        priority = str(article.get("Priorité", "Information"))
-        st.markdown(f"**{title}**")
-        st.caption(f"{date_label} · {' / '.join(tags)} · {priority}")
-        if summary:
-            st.write(summary)
-
-        st.divider()
+    st.info(f"{min(len(df), limit)} élément(s) détecté(s). Les articles individuels sont masqués.")
 
 def classify_tags(title, summary, source):
     text = f"{title} {summary} {source}".lower()
