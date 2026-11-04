@@ -681,16 +681,54 @@ def geopolitics_supply_dashboard(df):
         summary_text = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
         selected = selected[(title_text + " " + summary_text).str.contains(re.escape(keyword.strip()), case=False, na=False)]
 
-    # Diagnostics visibles : distinguer un flux vide d'un filtre trop strict.
-    with st.expander("Diagnostic de la veille — vérifier la collecte", expanded=False):
-        st.write(f"Articles récupérés au total : **{len(df)}**")
-        st.write(f"Articles dans la fenêtre sélectionnée ({days} jour(s)) : **{len(selected)}**")
-        if "Source" in df.columns:
-            st.write("Articles par flux :")
-            st.dataframe(df.groupby("Source").size().rename("Articles").reset_index(), hide_index=True, use_container_width=True)
+    # Diagnostic éditorial : thèmes et sujets, sans exposer les noms des flux.
+    with st.expander("Thèmes et résumés des actualités récupérées", expanded=True):
+        st.write(f"**{len(df)} articles récupérés** · **{len(selected)}** dans la période sélectionnée ({days} jour(s)).")
+        if not selected.empty:
+            theme_terms = {
+                "Sécurité, conflits et tensions militaires": ["missile", "drone", "attack", "war", "military", "conflict", "iran", "israel", "gulf", "hormuz", "red sea", "strike", "attaque", "guerre", "conflit"],
+                "Énergie, pétrole et carburants": ["oil", "fuel", "petrol", "gas", "energy", "refinery", "electricity", "pétrole", "carburant", "gaz", "énergie", "raffinerie", "électricité"],
+                "Eau, alimentation et produits essentiels": ["water", "desalination", "food", "shortage", "supply", "medicine", "eau", "dessal", "alimentation", "pénurie", "approvisionnement", "médicament"],
+                "Transport, ports et aviation": ["airport", "airspace", "port", "shipping", "tanker", "flight", "logistics", "aviation", "aéroport", "espace aérien", "maritime", "transport", "logistique"],
+                "Économie, banques et dette": ["bank", "banking", "financial", "debt", "inflation", "market", "currency", "liquidity", "capital control", "banque", "dette", "inflation", "finance", "liquidité"],
+                "Cyberattaques et infrastructures critiques": ["cyber", "hack", "ransomware", "infrastructure", "power grid", "telecom", "critical", "cyberattaque", "réseau électrique", "infrastructure critique"],
+                "Santé et risques sanitaires": ["health", "hospital", "pandemic", "epidemic", "virus", "disease", "medical", "santé", "hôpital", "pandémie", "épidémie"],
+                "Stabilité sociale et mouvements majeurs": ["protest", "riot", "unrest", "general strike", "national strike", "emergency", "manifestation", "émeute", "troubles", "grève générale", "état d'urgence"],
+            }
+            tagged = []
+            for _, article in selected.iterrows():
+                article_text = f"{article.get('Titre', '')} {article.get('Résumé', '')}".lower()
+                matched_themes = [theme for theme, terms in theme_terms.items() if any(term in article_text for term in terms)]
+                if not matched_themes:
+                    matched_themes = ["Autres sujets à examiner"]
+                for theme in matched_themes:
+                    tagged.append((theme, article))
+            theme_counts = pd.DataFrame([(theme, article) for theme, article in tagged], columns=["Thème", "Article"])
+            counts = theme_counts.groupby("Thème").size().sort_values(ascending=False)
+            st.markdown("**Répartition par thème**")
+            st.dataframe(counts.rename("Articles").reset_index(), hide_index=True, use_container_width=True)
+            st.markdown("**Sujets repérés**")
+            for theme in counts.index:
+                st.markdown(f"**{theme}**")
+                seen_titles = set()
+                shown = 0
+                for _, article in theme_counts[theme_counts["Thème"] == theme]["Article"].items():
+                    title = str(article.get("Titre", "")).strip()
+                    if not title or title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+                    summary = str(article.get("Résumé", "")).strip()
+                    st.markdown(f"- {title}")
+                    if summary:
+                        st.caption(summary[:350] + ("…" if len(summary) > 350 else ""))
+                    shown += 1
+                    if shown >= 3:
+                        break
+        else:
+            st.info("Aucun article dans la période ou les filtres sélectionnés.")
         if "Date" in df.columns and df["Date"].notna().any():
-            st.caption(f"Article le plus récent : {df['Date'].max().strftime('%d/%m/%Y %H:%M UTC')}")
-        st.caption("Si le total est nul, le problème vient de la collecte des flux. Si le total est positif mais qu'aucun événement n'est qualifié, les règles de détection sont trop restrictives ou les articles ne contiennent pas les mots-clés attendus.")
+            st.caption(f"Actualité la plus récente récupérée : {df['Date'].max().strftime('%d/%m/%Y %H:%M UTC')}")
+        st.caption("Les thèmes sont attribués automatiquement à partir des mots-clés des titres et résumés. Ils servent à organiser la veille, pas à confirmer la réalité ou la gravité d'un événement.")
 
     events = []
     unqualified = []
