@@ -3,26 +3,31 @@ name: Hourly Predictions & ROI Update
 on:
   schedule:
     - cron: '0 * * * *'  # every hour at minute 0
-  workflow_dispatch:      # allows manual trigger
+  workflow_dispatch:
+
+# Serialize hourly runs and allow the workflow token to push data updates.
+concurrency:
+  group: hourly-predictions-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   hourly-predictions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      # 1. Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
-          persist-credentials: false  # Use PAT explicitly for push
+          persist-credentials: true
 
-      # 2. Setup Python
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
-      # 3. Install Python dependencies including Playwright
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -31,7 +36,6 @@ jobs:
           pip install playwright
           playwright install chromium
 
-      # 4. Ensure data folder & CSV/JSON files exist
       - name: Create data folder and CSV/JSON files if missing
         run: |
           mkdir -p data
@@ -40,38 +44,33 @@ jobs:
           touch data/ai_predictions_log.csv
           touch data/roi_data.json
 
-      # 5. Update market indicators dynamically
       - name: Update market indicators
         run: python update_weights.py || echo "⚠️ update_weights.py failed, continuing"
 
-      # 6. Fetch actual data
       - name: Fetch actual data
         run: python fetch_data.py || echo "⚠️ fetch_data.py failed, continuing"
 
-      # 7. Generate predictions
       - name: Run headless prediction script
         run: python predict_headless.py || echo "⚠️ predict_headless.py failed, continuing"
 
-      # 8. Generate AI predictions and backtest
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      # 9. Update ROI data safely from Dubai property listings
       - name: Update ROI data safely
         run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, continuing"
 
-      # 10. Commit & push CSV/JSON updates
       - name: Commit & push CSV/JSON updates
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
 
           git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv data/roi_data.json weight.yaml
-          git commit -m "Hourly update with ROI refresh" || echo "No changes to commit"
 
-          # Pull with "theirs" strategy to prefer workflow changes in conflicts
-          git pull --rebase -X theirs https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD || true
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "Hourly update with ROI refresh"
+          fi
 
-          git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
+          git pull --rebase origin main
+          git push origin HEAD:main
