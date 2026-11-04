@@ -742,16 +742,19 @@ def qualify_situation(title, summary):
 
 
 def geopolitics_supply_dashboard(df):
-    """Situation dashboard: event highlights, causal impact chains and immediate actions."""
-    st.header("🌍 Géopolitique, énergie & approvisionnement")
-    st.caption("Veille ciblée sur les événements ayant des conséquences humaines, vitales, sociales, économiques ou logistiques. Priorité : France et Dubaï/Émirats ; puis Europe et Moyen-Orient.")
+    """Regional risk dashboard: compact regional blocks, severity colors and click-to-open details."""
+    st.header("🌍 Regional Risk Monitor")
+    st.caption("Vue synthétique des événements ayant un impact humain, vital, social, économique ou logistique. Les articles non qualifiés ne sont pas assimilés à une absence de risque.")
 
     if st.button("🔄 Actualiser les flux de veille", key="wels_geo_refresh"):
         fetch_news.clear()
         st.rerun()
 
-    days = st.selectbox("Fenêtre de veille", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
-    keyword = st.text_input("Filtrer par zone ou sujet (facultatif)", placeholder="France, Iran, carburant, électricité…", key="wels_geo_supply_keyword")
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        days = st.selectbox("Période", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
+    with c2:
+        keyword = st.text_input("Filtrer (facultatif)", placeholder="Iran, carburant, eau, santé…", key="wels_geo_supply_keyword")
 
     if df is None or df.empty:
         st.warning("Aucun flux exploitable. Le statut est indéterminé, pas automatiquement rassurant.")
@@ -766,57 +769,7 @@ def geopolitics_supply_dashboard(df):
         summary_text = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
         selected = selected[(title_text + " " + summary_text).str.contains(re.escape(keyword.strip()), case=False, na=False)]
 
-    # Diagnostic éditorial : thèmes et sujets, sans exposer les noms des flux.
-    with st.expander("Thèmes et résumés des actualités récupérées", expanded=True):
-        st.write(f"**{len(df)} articles récupérés** · **{len(selected)}** dans la période sélectionnée ({days} jour(s)).")
-        if not selected.empty:
-            theme_terms = {
-                "Sécurité, conflits et tensions militaires": ["missile", "drone", "attack", "war", "military", "conflict", "iran", "israel", "gulf", "hormuz", "red sea", "strike", "attaque", "guerre", "conflit"],
-                "Énergie, pétrole et carburants": ["oil", "fuel", "petrol", "gas", "energy", "refinery", "electricity", "pétrole", "carburant", "gaz", "énergie", "raffinerie", "électricité"],
-                "Eau, alimentation et produits essentiels": ["water", "desalination", "food", "shortage", "supply", "medicine", "eau", "dessal", "alimentation", "pénurie", "approvisionnement", "médicament"],
-                "Transport, ports et aviation": ["airport", "airspace", "port", "shipping", "tanker", "flight", "logistics", "aviation", "aéroport", "espace aérien", "maritime", "transport", "logistique"],
-                "Économie, banques et dette": ["bank", "banking", "financial", "debt", "inflation", "market", "currency", "liquidity", "capital control", "banque", "dette", "inflation", "finance", "liquidité"],
-                "Cyberattaques et infrastructures critiques": ["cyber", "hack", "ransomware", "infrastructure", "power grid", "telecom", "critical", "cyberattaque", "réseau électrique", "infrastructure critique"],
-                "Santé et risques sanitaires": ["health", "hospital", "pandemic", "epidemic", "virus", "disease", "medical", "santé", "hôpital", "pandémie", "épidémie"],
-                "Stabilité sociale et mouvements majeurs": ["protest", "riot", "unrest", "general strike", "national strike", "emergency", "manifestation", "émeute", "troubles", "grève générale", "état d'urgence"],
-            }
-            tagged = []
-            for _, article in selected.iterrows():
-                article_text = f"{article.get('Titre', '')} {article.get('Résumé', '')}".lower()
-                matched_themes = [theme for theme, terms in theme_terms.items() if any(term in article_text for term in terms)]
-                if not matched_themes:
-                    matched_themes = ["Autres sujets à examiner"]
-                for theme in matched_themes:
-                    tagged.append((theme, article))
-            theme_counts = pd.DataFrame([(theme, article) for theme, article in tagged], columns=["Thème", "Article"])
-            counts = theme_counts.groupby("Thème").size().sort_values(ascending=False)
-            st.markdown("**Répartition par thème**")
-            st.dataframe(counts.rename("Articles").reset_index(), hide_index=True, use_container_width=True)
-            st.markdown("**Sujets repérés**")
-            for theme in counts.index:
-                st.markdown(f"**{theme}**")
-                seen_titles = set()
-                shown = 0
-                for _, article in theme_counts[theme_counts["Thème"] == theme]["Article"].items():
-                    title = str(article.get("Titre", "")).strip()
-                    if not title or title in seen_titles:
-                        continue
-                    seen_titles.add(title)
-                    summary = str(article.get("Résumé", "")).strip()
-                    st.markdown(f"- {title}")
-                    if summary:
-                        st.caption(summary[:350] + ("…" if len(summary) > 350 else ""))
-                    shown += 1
-                    if shown >= 3:
-                        break
-        else:
-            st.info("Aucun article dans la période ou les filtres sélectionnés.")
-        if "Date" in df.columns and df["Date"].notna().any():
-            st.caption(f"Actualité la plus récente récupérée : {df['Date'].max().strftime('%d/%m/%Y %H:%M UTC')}")
-        st.caption("Les thèmes sont attribués automatiquement à partir des mots-clés des titres et résumés. Ils servent à organiser la veille, pas à confirmer la réalité ou la gravité d'un événement.")
-
-    events = []
-    unqualified = []
+    events, unqualified = [], []
     for _, row in selected.iterrows():
         title = str(row.get("Titre", "") or "")
         summary = str(row.get("Résumé", "") or "")
@@ -825,8 +778,34 @@ def geopolitics_supply_dashboard(df):
             if len(unqualified) < 20:
                 unqualified.append(row)
             continue
+
         date_value = row.get("Date")
         date_label = date_value.strftime("%d/%m/%Y %H:%M UTC") if isinstance(date_value, datetime) else "Date non précisée"
+        article_text = f"{title} {summary}".lower()
+        source_text = str(row.get("Source", "")).lower()
+
+        # Affectation géographique à partir du contenu de l'article, puis du flux RSS.
+        if any(term in article_text for term in ["france", "french", "paris", "lyon", "marseille", "français", "française"]):
+            region = "France"
+        elif any(term in article_text for term in ["dubai", "dubaï", "uae", "united arab emirates", "emirates", "abu dhabi", "jebel ali", "émirats"]):
+            region = "Dubaï / EAU"
+        elif any(term in article_text for term in ["europe", "european union", "eu member", "eurozone", "européen", "européenne", "cyprus", "italy", "germany", "poland", "ukraine", "united kingdom"]):
+            region = "Europe"
+        elif any(term in article_text for term in ["middle east", "iran", "iraq", "israel", "palestine", "gaza", "west bank", "yemen", "lebanon", "syria", "saudi", "qatar", "bahrain", "oman", "hormuz", "red sea"]):
+            region = "Moyen-Orient"
+        elif any(term in article_text for term in ["global", "worldwide", "international", "world economy", "global supply", "across countries", "pandemic"]):
+            region = "International"
+        elif "france" in source_text:
+            region = "France"
+        elif "émirats" in source_text or "dubai" in source_text:
+            region = "Dubaï / EAU"
+        elif "europe" in source_text:
+            region = "Europe"
+        elif "moyen-orient" in source_text:
+            region = "Moyen-Orient"
+        else:
+            region = "International"
+
         for match in matches:
             events.append({
                 **match,
@@ -835,117 +814,124 @@ def geopolitics_supply_dashboard(df):
                 "source": str(row.get("Source", "Source non précisée")),
                 "url": str(row.get("Lien", "")),
                 "date": date_label,
-                "region": ("France" if "france" in str(row.get("Source", "")).lower() else "Dubaï / Émirats" if "émirats" in str(row.get("Source", "")).lower() else "Europe" if "europe" in str(row.get("Source", "")).lower() else "Moyen-Orient" if "moyen-orient" in str(row.get("Source", "")).lower() else "International"),
+                "region": region,
             })
-    # Collapse repeated articles describing the same event family; retain the strongest instance.
+
+    # Dédupliquer les mêmes événements et conserver la qualification la plus forte.
     unique_events = {}
     for event in events:
-        key = (event["id"], re.sub(r"[^a-z0-9]+", " ", event["title"].lower())[:90])
+        key = (event["id"], re.sub(r"[^a-z0-9]+", " ", event["title"].lower())[:100])
         if key not in unique_events or event["score"] > unique_events[key]["score"]:
             unique_events[key] = event
-    events = sorted(unique_events.values(), key=lambda item: (item["score"], item["date"]), reverse=True)
+    events = list(unique_events.values())
 
-    negative_events = [event for event in events if event["polarity"] == "negative"]
-    positive_events = [event for event in events if event["polarity"] == "positive"]
-    high_events = [event for event in negative_events if event["score"] >= 3]
-    medium_events = [event for event in negative_events if event["score"] == 2]
-    distinct_negative_families = {event["id"] for event in negative_events}
-    if len(distinct_negative_families) >= 2:
-        overall = "TENSIONS MULTIPLES"
-        overall_detail = "Plusieurs types d'événements défavorables sont détectés : vérifier les cumuls et les effets en chaîne."
-    elif high_events:
-        overall = "ALERTE — SIGNAL FORT"
-        overall_detail = "Au moins un événement potentiellement perturbateur nécessite une vérification rapide."
-    elif medium_events:
-        overall = "VIGILANCE RENFORCÉE"
-        overall_detail = "Des perturbations possibles sont signalées, sans preuve suffisante d'une rupture majeure."
-    elif positive_events:
-        overall = "MESURES D'ATTÉNUATION DÉTECTÉES"
-        overall_detail = "Des mesures susceptibles de réduire la tension sont signalées ; leur effet réel reste à vérifier."
-    elif events:
-        overall = "VEILLE"
-        overall_detail = "Des événements sont détectés, sans qualification de risque fort par les règles actuelles."
-    else:
-        overall = "SITUATION NON QUALIFIÉE"
-        overall_detail = "Aucun événement couvert par les règles n'a été reconnu. Cela ne signifie pas qu'il n'existe aucun risque."
+    # International ne conserve que les événements qualifiés par une règle d'impact ;
+    # les articles mondiaux sans lien concret restent dans la file de revue.
+    severity_order = ["CRITIQUE", "ÉLEVÉ", "VIGILANCE", "INFORMATION", "ATTÉNUATION"]
+    severity_meta = {
+        "CRITIQUE": ("🔴", "#dc2626", "Impact majeur / rupture confirmée à vérifier"),
+        "ÉLEVÉ": ("🟠", "#ea580c", "Perturbation potentiellement importante"),
+        "VIGILANCE": ("🟡", "#ca8a04", "Pression émergente ou impact indirect possible"),
+        "INFORMATION": ("🔵", "#2563eb", "Évolution à suivre, impact encore limité ou incertain"),
+        "ATTÉNUATION": ("🟢", "#16a34a", "Évolution pouvant réduire les tensions"),
+    }
 
-    st.markdown("### Situation générale")
-    st.subheader(overall)
-    st.write(overall_detail)
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Événements qualifiés", len(events))
-    k2.metric("Signaux défavorables", len(negative_events))
-    k3.metric("Signaux forts", len(high_events))
-    k4.metric("Mesures d'atténuation", len(positive_events))
+    def severity(event):
+        if event["polarity"] == "positive":
+            return "ATTÉNUATION"
+        score = int(event.get("score", 0))
+        if score >= 4:
+            return "CRITIQUE"
+        if score >= 3:
+            return "ÉLEVÉ"
+        if score == 2:
+            return "VIGILANCE"
+        return "INFORMATION"
 
-    if len(distinct_negative_families) >= 2:
-        st.error("CUMUL DE RISQUES : plusieurs familles d'événements défavorables sont présentes. Examiner les dépendances communes : énergie, transport, logistique et disponibilité.")
-    elif high_events:
-        st.warning("Un signal à impact potentiellement élevé est présent. Vérifier sa réalité, son périmètre et sa durée avant d'agir.")
+    for event in events:
+        event["severity"] = severity(event)
 
-    st.markdown("### Événements à impact concret — faits et conséquences")
-    if not events:
-        st.info("Aucun événement n'a pu être qualifié automatiquement sur cette période. Les nouvelles non reconnues ne sont pas interprétées comme positives.")
-    for index, event in enumerate(events[:15], start=1):
-        with st.expander(f"{'🟢' if event['polarity'] == 'positive' else ('🔴' if event['score'] >= 3 else '🟠')} {event['event']} — {event['level']}", expanded=(index <= 3)):
-            st.markdown(f"**Actualité :** {event['title']}")
-            st.caption(f"{event.get('region', 'Zone à confirmer')} · {event['source']} · {event['date']} · Qualification : {event['confidence']}")
-            if event["summary"]:
-                st.write(event["summary"][:700])
-            st.markdown(f"**Ce que cela peut entraîner :** {event['impact']}")
-            st.markdown(f"**Transmission économique / marchés :** {event['market']}")
-            st.markdown(f"**Plan d'action immédiat :** {event['action']}")
-            if event["url"].startswith("http"):
-                st.markdown(f"[Consulter la source]({event['url']})")
+    regions = ["France", "Dubaï / EAU", "Europe", "Moyen-Orient", "International"]
+    st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · fenêtre de {days} jour(s)")
+    st.caption("CRITIQUE = événement majeur à vérifier ; ÉLEVÉ = risque important ; VIGILANCE = pression émergente ; INFORMATION = suivi ; ATTÉNUATION = signal positif.")
 
-    if positive_events:
-        st.markdown("### Signaux qui peuvent réduire la tension")
-        for event in positive_events:
-            st.success(f"**{event['event']}** — {event['impact']}")
+    # Synthèse globale par niveau, sans dérouler les titres à ce stade.
+    summary_cols = st.columns(5)
+    for col, level in zip(summary_cols, severity_order):
+        count = sum(1 for event in events if event["severity"] == level)
+        icon, color, _ = severity_meta[level]
+        col.markdown(
+            f"<div style='border:1px solid {color};border-radius:10px;padding:10px 6px;text-align:center'>"
+            f"<div style='font-size:20px'>{icon}</div><div style='font-size:12px;color:{color};font-weight:700'>{level}</div>"
+            f"<div style='font-size:23px;font-weight:800'>{count}</div></div>",
+            unsafe_allow_html=True
+        )
+
+    for region in regions:
+        regional = [event for event in events if event["region"] == region]
+        counts = {level: sum(1 for event in regional if event["severity"] == level) for level in severity_order}
+        active_levels = [level for level in severity_order if counts[level] > 0]
+        highest = next((level for level in severity_order if counts[level] > 0), None)
+        if highest:
+            icon, color, _ = severity_meta[highest]
+            region_label = f"{icon} {region} · {len(regional)} signal(aux) · {highest}"
+        else:
+            color = "#64748b"
+            region_label = f"⚪ {region} · Aucun signal qualifié"
+
+        with st.expander(region_label, expanded=(region in ["France", "Dubaï / EAU"] and bool(regional))):
+            if not regional:
+                st.caption("Aucun événement qualifié dans cette zone sur la période. Cela ne garantit pas l'absence de risque.")
+                continue
+
+            # Les niveaux sont affichés comme de petites briques colorées.
+            level_cols = st.columns(5)
+            for col, level in zip(level_cols, severity_order):
+                icon, level_color, _ = severity_meta[level]
+                col.markdown(
+                    f"<div style='background:{level_color}18;border-left:4px solid {level_color};padding:7px 5px;border-radius:5px'>"
+                    f"<div style='font-size:10px;color:{level_color};font-weight:700'>{level}</div>"
+                    f"<div style='font-size:18px;font-weight:800'>{counts[level]}</div></div>",
+                    unsafe_allow_html=True
+                )
+
+            # Une ligne courte par sujet ; le détail complet s'ouvre au clic.
+            for level in active_levels:
+                level_events = sorted(
+                    [event for event in regional if event["severity"] == level],
+                    key=lambda item: (item["date"], item["score"]),
+                    reverse=True
+                )
+                icon, level_color, description = severity_meta[level]
+                st.markdown(f"<div style='color:{level_color};font-weight:700;margin:12px 0 5px'>{icon} {level} — {description}</div>", unsafe_allow_html=True)
+                for index, event in enumerate(level_events):
+                    short_title = event["title"]
+                    if len(short_title) > 115:
+                        short_title = short_title[:112].rstrip() + "…"
+                    with st.expander(short_title, expanded=False):
+                        st.caption(f"{event['event']} · {event['date']} · {event['source']} · Fiabilité : {event['confidence']}")
+                        if event["summary"]:
+                            st.write(event["summary"][:900])
+                        st.markdown(f"**Impact humain / quotidien :** {event['impact']}")
+                        st.markdown(f"**Transmission économique / marchés :** {event['market']}")
+                        st.markdown(f"**À faire / à vérifier :** {event['action']}")
+                        if event["url"].startswith("http"):
+                            st.markdown(f"[Ouvrir la source]({event['url']})")
 
     if unqualified:
-        with st.expander(f"Articles non qualifiés automatiquement — à examiner ({len(unqualified)})", expanded=False):
-            st.caption("Ces articles ont bien été récupérés, mais aucune règle actuelle ne permet de leur attribuer un signal fiable. Cette liste sert à repérer les angles morts ; absence de signal ne signifie pas absence d'impact.")
+        with st.expander(f"Articles à examiner — non qualifiés automatiquement ({len(unqualified)})", expanded=False):
+            st.caption("Articles récupérés mais non reconnus par les règles actuelles. Ils ne sont pas considérés comme sans importance ; cette zone permet de repérer les angles morts.")
             for row in unqualified:
-                st.markdown(f"**{str(row.get('Titre', 'Titre indisponible'))}**")
-                summary = str(row.get("Résumé", "") or "").strip()
-                if summary:
-                    st.caption(summary[:400] + ("…" if len(summary) > 400 else ""))
-                url = str(row.get("Lien", "") or "")
-                if url.startswith("http"):
-                    st.markdown(f"[Consulter la source]({url})")
+                title = str(row.get("Titre", "Titre indisponible"))
+                with st.expander(title[:140], expanded=False):
+                    summary = str(row.get("Résumé", "") or "").strip()
+                    if summary:
+                        st.write(summary[:700])
+                    url = str(row.get("Lien", "") or "")
+                    if url.startswith("http"):
+                        st.markdown(f"[Ouvrir la source]({url})")
 
-    if negative_events:
-        st.markdown("### Plan d'action prioritaire")
-        actions = []
-        if any(event["id"] in {"fuel_logistics_strike", "fuel_shortage", "refinery_outage"} for event in negative_events):
-            actions.append("Carburants : vérifier les départements et dépôts réellement touchés, les stocks communiqués et la durée prévue ; maintenir une réserve d'usage normale, sans stockage excessif.")
-        if any(event["id"] in {"power_disruption"} for event in negative_events):
-            actions.append("Électricité : recharger les équipements essentiels, vérifier les informations du gestionnaire de réseau et appliquer les consignes officielles.")
-        if any(event["id"] in {"shipping_chokepoint", "sanctions_energy"} for event in negative_events):
-            actions.append("Énergie et transport : surveiller les flux physiques, les annonces réglementaires et le Brent ; ne pas assimiler une hausse de risque à une pénurie déjà constatée.")
-        if any(event["id"] in {"medicine_shortage"} for event in negative_events):
-            actions.append("Médicaments : vérifier le produit précis avec le pharmacien et les informations de l'ANSM ; ne pas faire de réserves non nécessaires.")
-        if any(event["id"] in {"water_desalination"} for event in negative_events):
-            actions.append("Eau potable : vérifier les consignes de l'opérateur et des autorités locales ; appliquer les recommandations officielles de réserve si une perturbation est confirmée.")
-        if any(event["id"] in {"airspace_airport"} for event in negative_events):
-            actions.append("Voyages : contrôler les statuts de vol et les avis des aéroports/compagnies avant tout déplacement, en particulier dans le Golfe.")
-        if any(event["id"] in {"cyber_critical"} for event in negative_events):
-            actions.append("Services essentiels : identifier les opérateurs touchés et les services indisponibles ; suivre les canaux officiels, sans relayer de rumeurs.")
-        if any(event["id"] in {"banking_capital", "sovereign_financial"} for event in negative_events):
-            actions.append("Banques et liquidités : distinguer rumeurs, tensions de marché et mesures officielles ; vérifier les communications des autorités financières.")
-        if any(event["id"] in {"food_supply"} for event in negative_events):
-            actions.append("Alimentation : vérifier les produits et zones réellement touchés ; conserver des réserves domestiques raisonnables, sans achats de panique.")
-        if any(event["id"] in {"mass_social_disruption"} for event in negative_events):
-            actions.append("Continuité quotidienne : vérifier les transports, écoles, services de santé et consignes locales avant les déplacements.")
-        if any(event["id"] in {"war_escalation", "military_direct_threat"} for event in negative_events):
-            actions.append("Géopolitique : recouper les faits auprès de sources fiables et suivre les avis officiels ; distinguer risque régional et impact direct en France.")
-        for action in actions:
-            st.markdown(f"- {action}")
-        st.caption("Ces actions sont des mesures de vérification et de préparation proportionnées, pas des consignes d'achat ni des prédictions.")
-
-    st.caption("Les articles hors périmètre sont volontairement exclus de cette page afin de limiter le bruit. Une absence d'événement qualifié ne signifie pas une absence de risque : les flux et les règles de détection ont des limites.")
-
+    st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
 
 def enhanced_newsletter_page(df, errors):
     st.header("📰 Newsletter — veille filtrée")
