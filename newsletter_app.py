@@ -741,7 +741,7 @@ def qualify_situation(title, summary):
     return matches
 
 
-def geopolitics_supply_dashboard(df):
+def geopolitics_supply_dashboard(df, errors=None):
     """Regional risk dashboard: compact regional blocks, severity colors and click-to-open details."""
     st.header("🌍 Regional Risk Monitor")
     st.caption("Vue synthétique des événements ayant un impact humain, vital, social, économique ou logistique. Les articles non qualifiés ne sont pas assimilés à une absence de risque.")
@@ -757,7 +757,14 @@ def geopolitics_supply_dashboard(df):
         keyword = st.text_input("Filtrer (facultatif)", placeholder="Iran, carburant, eau, santé…", key="wels_geo_supply_keyword")
 
     if df is None or df.empty:
-        st.warning("Aucun flux exploitable. Le statut est indéterminé, pas automatiquement rassurant.")
+        st.error("Aucun article n'a été récupéré : la collecte des flux a échoué ou les flux sont vides.")
+        st.warning("Le statut de risque est INCONNU. Ne pas interpréter cette absence de données comme une situation normale.")
+        if errors:
+            with st.expander("Diagnostic de la collecte — erreurs des flux", expanded=True):
+                for error in errors:
+                    st.write(f"- {error}")
+        else:
+            st.caption("Aucun détail d'erreur n'a été transmis par la collecte. Réessayez l'actualisation.")
         return
 
     selected = df.copy()
@@ -1098,7 +1105,7 @@ def main():
     if page == "Vue d'ensemble":
         executive_dashboard(df)
     elif page == "Marchés & portefeuille": market_watch_page()
-    elif page == "Géopolitique & approvisionnement": geopolitics_supply_dashboard(df)
+    elif page == "Géopolitique & approvisionnement": geopolitics_supply_dashboard(df, errors)
     elif page == "CHF & devises": fx_chf_page()
 
 def newsletter_dashboard():
