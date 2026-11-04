@@ -945,7 +945,8 @@ def geopolitics_supply_dashboard(df, errors=None):
             color = "#64748b"
             region_label = f"⚪ {region} · Aucun signal qualifié"
 
-        with st.expander(region_label, expanded=(region in ["France", "Dubaï / EAU"] and bool(regional))):
+        st.markdown(f"### {region_label}")
+        with st.container():
             if not regional:
                 st.caption("Aucun événement qualifié dans cette zone sur la période. Cela ne garantit pas l'absence de risque.")
                 continue
