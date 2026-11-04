@@ -9,6 +9,8 @@ import os
 import json
 import re
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from collections import defaultdict
 
 # ------------------------------
@@ -24,6 +26,19 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 }
+
+# Retry transient Bayut/network errors (including HTTP 503) before giving up.
+SESSION = requests.Session()
+RETRY_POLICY = Retry(
+    total=4,
+    connect=4,
+    read=4,
+    status=4,
+    backoff_factor=1.5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"],
+)
+SESSION.mount("https://", HTTPAdapter(max_retries=RETRY_POLICY))
 
 MAX_LISTINGS_PER_TYPE = 100
 PLACEHOLDER_ROI = 6.0  # %
@@ -43,7 +58,7 @@ def get_build_id():
     """Fetch main Bayut page and extract current BUILD_ID."""
     url = "https://www.bayut.com/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp = SESSION.get(url, headers=HEADERS, timeout=20)
         resp.raise_for_status()
         match = re.search(r'"BUILD_ID":"([a-zA-Z0-9]+)"', resp.text)
         if match:
@@ -59,7 +74,7 @@ def fetch_json_listings(build_id, category_url):
     try:
         category_path = category_url.replace("https://www.bayut.com/", "")
         json_url = f"https://www.bayut.com/_next/data/{build_id}/{category_path}.json"
-        resp = requests.get(json_url, headers=HEADERS, timeout=15)
+        resp = SESSION.get(json_url, headers=HEADERS, timeout=20)
         resp.raise_for_status()
         data = resp.json()
         # Traverse to listings array
