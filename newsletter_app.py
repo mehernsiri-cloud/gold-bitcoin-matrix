@@ -637,7 +637,7 @@ def executive_dashboard(df):
         st.caption(f"CHF : {len(chf)} signal(aux) de presse détecté(s) — voir l'onglet CHF & devises.")
     st.caption("Cours indicatifs potentiellement différés. Les niveaux de risque sont des indicateurs de veille, pas une évaluation officielle.")
 
-def main():
+def main(portfolio_strategy_renderer=None):
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
     st.title("📰 WELS Actions — Market, War & CHF Monitor")
     st.caption("Briefing financier et veille des risques patrimoniaux · cache des données : 15 minutes")
@@ -657,16 +657,27 @@ def main():
         st.caption("Actualités et cours : cache 15 min")
     if page == "Vue d'ensemble":
         executive_dashboard(df)
-    elif page == "Marchés & portefeuille": market_watch_page()
+    elif page == "Marchés & portefeuille":
+        market_section = st.sidebar.radio(
+            "Sous-menu — Marchés & portefeuille",
+            ["Marchés & suivi", "Portfolio Strategy"],
+            key="wels_market_subnav_v1"
+        )
+        if market_section == "Marchés & suivi":
+            market_watch_page()
+        elif portfolio_strategy_renderer is not None:
+            portfolio_strategy_renderer()
+        else:
+            st.warning("La vue Portfolio Strategy n'est pas disponible depuis ce point d'entrée.")
     elif page == "Guerres & géopolitique": war_risk_page(df)
     elif page == "CHF & devises": fx_chf_page()
     elif page == "France — approvisionnement": france_supply_page(df)
     elif page == "Newsletter": enhanced_newsletter_page(df, errors)
     else: enhanced_newsletter_page(df, errors)
 
-def newsletter_dashboard():
+def newsletter_dashboard(portfolio_strategy_renderer=None):
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
-    main()
+    main(portfolio_strategy_renderer=portfolio_strategy_renderer)
 
 
 if __name__ == "__main__":
