@@ -102,7 +102,7 @@ FRENCH_STOPWORDS = {"le", "la", "les", "des", "du", "de", "un", "une", "et", "po
 def supported_news_language(title, summary=""):
     """Keep French/English reporting; reject unrelated language noise and uncertain short titles."""
     text = f"{title} {summary}".lower()
-    if re.search(r"[\\u4e00-\\u9fff\\u3040-\\u30ff\\uac00-\\ud7af\\u0370-\\u03ff\\u0400-\\u04ff]", text):
+    if re.search(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u0370-\u03ff\u0400-\u04ff]", text):
         return False
     words = set(re.findall(r"[a-zà-ÿ']+", text))
     return max(len(words & ENGLISH_STOPWORDS), len(words & FRENCH_STOPWORDS)) >= 2
