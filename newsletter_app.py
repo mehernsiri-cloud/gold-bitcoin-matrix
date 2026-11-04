@@ -38,8 +38,10 @@ RSS_FEEDS = {
     "France Info Société": "https://www.francetvinfo.fr/societe.rss",
     "Boursorama": "https://www.boursorama.com/rss/actualites/",
     # Reuters' legacy feeds can be unavailable; failures are handled per source.
-    "Reuters World": "https://feeds.reuters.com/Reuters/worldNews",
-    "Reuters Business": "https://feeds.reuters.com/reuters/businessNews",
+    "BBC World": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "BBC Business": "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "GDELT — conflits": "https://api.gdeltproject.org/api/v2/doc/doc?query=(war%20OR%20conflict%20OR%20missile%20OR%20sanctions%20OR%20ceasefire)&mode=artlist&format=rss&maxrecords=40&sort=datedesc",
+    "GDELT — France approvisionnement": "https://api.gdeltproject.org/api/v2/doc/doc?query=(France%20AND%20(shortage%20OR%20strike%20OR%20blockade%20OR%20fuel%20OR%20electricity%20OR%20supply))&mode=artlist&format=rss&maxrecords=30&sort=datedesc",
 }
 
 TOPICS = {
@@ -372,32 +374,256 @@ def home_page():
     st.info("Pour lire davantage, utilisez « Newsletter ». Pour comparer les performances, ouvrez « Marchés & portefeuille ».")
 
 
+
+# -------------------------------------------------------------------
+# WELS Actions — extensions Market / War / CHF / supply risk
+# -------------------------------------------------------------------
+WAR_TERMS = ["war", "invasion", "airstrike", "missile", "drone attack", "armed conflict",
+             "ceasefire", "nato", "otan", "sanction", "strait of hormuz", "red sea",
+             "ukraine", "iran", "israel", "gaza", "taiwan", "russia", "guerre",
+             "conflit", "attaque", "escalade", "blocus"]
+SUPPLY_TERMS = ["shortage", "stockout", "rationing", "blockade", "strike", "fuel shortage",
+                "power outage", "blackout", "gas supply", "medicine shortage", "supply disruption",
+                "pénurie", "rupture de stock", "rationnement", "blocage", "grève",
+                "carburant", "approvisionnement", "coupure", "médicament"]
+CHF_TERMS = ["swiss", "switzerland", "suisse", "franc suisse", "chf", "snb",
+             "banque nationale suisse", "eur/chf"]
+
+def classify_tags(title, summary, source):
+    text = f"{title} {summary} {source}".lower()
+    tags = []
+    if any(w in text for w in WAR_TERMS): tags.append("Géopolitique / conflit")
+    if any(w in text for w in SUPPLY_TERMS): tags.append("Approvisionnement")
+    if any(w in text for w in CHF_TERMS): tags.append("Suisse / CHF")
+    if any(w in text for w in TOPICS["Marchés et économie"]): tags.append("Marchés")
+    return tags or ["Autres"]
+
+def triage_priority(tags, title, summary):
+    text = f"{title} {summary}".lower()
+    priority_words = ["invasion", "missile attack", "airstrike", "strait of hormuz closed",
+                      "national emergency", "rationing", "pénurie nationale", "national shortage"]
+    watch_words = ["escalation", "sanctions", "strike", "blockade", "shortage", "disruption",
+                   "escalade", "grève", "blocage", "rupture de stock"]
+    if any(w in text for w in priority_words): return "À examiner en priorité"
+    if any(w in text for w in watch_words) or "Géopolitique / conflit" in tags: return "À surveiller"
+    return "Information"
+
+def enrich_news_frame(df):
+    if df.empty: return df
+    df = df.copy()
+    df["Thèmes"] = df.apply(lambda x: classify_tags(x.get("Titre", ""), x.get("Résumé", ""), x.get("Source", "")), axis=1)
+    df["Priorité"] = df.apply(lambda x: triage_priority(x["Thèmes"], x.get("Titre", ""), x.get("Résumé", "")), axis=1)
+    return df
+
+def render_alert_articles(df, limit=15):
+    if df.empty:
+        st.info("Aucun article correspondant sur la période.")
+        return
+    for _, article in df.head(limit).iterrows():
+        dt = article.get("Date")
+        date_label = dt.strftime("%d/%m/%Y %H:%M UTC") if isinstance(dt, datetime) else "Date inconnue"
+        tags = article.get("Thèmes", [])
+        st.markdown(f"**{article.get('Titre', '')}**")
+        st.caption(f"{date_label} · {article.get('Source', '')} · {' / '.join(tags)} · {article.get('Priorité', '')}")
+        if article.get("Résumé"): st.write(article["Résumé"])
+        st.markdown(f"[Lire la source originale]({article.get('Lien', '')})")
+        st.divider()
+
+def market_watch_page():
+    st.header("📈 Marchés & portefeuille suivi")
+    st.caption("Cours indicatifs via Yahoo Finance ; possibles retards, indisponibilités et erreurs de symbole.")
+    period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
+    period = PERIODS[period_label]
+    watch = dict(MARKET_SYMBOLS)
+    watch.update({"Schneider Electric": "SU.PA", "Siemens": "SIE.DE"})
+    selected = st.multiselect("Actifs suivis", list(watch), default=[
+        "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World (VWRL)",
+        "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
+        "Schneider Electric", "Siemens"
+    ], key="wels_market_assets")
+    summary, curves = [], []
+    progress = st.progress(0, text="Chargement des cours…")
+    for i, name in enumerate(selected):
+        hist = fetch_history(watch[name], period)
+        progress.progress((i + 1) / max(len(selected), 1), text=f"Chargement : {name}")
+        if hist.empty: continue
+        first, last = float(hist["Cours"].iloc[0]), float(hist["Cours"].iloc[-1])
+        prev = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        summary.append({"Actif": name, "Symbole": watch[name], "Dernier cours": round(last, 4),
+                        "Variation séance (%)": round((last / prev - 1) * 100, 2) if prev else None,
+                        "Variation période (%)": round((last / first - 1) * 100, 2) if first else None,
+                        "Date": hist["Date"].iloc[-1]})
+        if first:
+            chart = hist.copy()
+            chart["Performance (%)"] = (chart["Cours"] / first - 1) * 100
+            chart["Actif"] = name
+            curves.append(chart[["Date", "Performance (%)", "Actif"]])
+    progress.empty()
+    if summary: st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
+    else: st.warning("Aucun cours disponible pour la sélection.")
+    if curves:
+        fig = px.line(pd.concat(curves, ignore_index=True), x="Date", y="Performance (%)",
+                      color="Actif", title=f"Performance comparée — {period_label}")
+        fig.update_layout(height=450, yaxis_title="Performance (%)")
+        st.plotly_chart(fig, use_container_width=True)
+    st.subheader("ETF thématiques à surveiller")
+    st.markdown(
+        "- **Santé mondiale :** SPDR MSCI World Health Care UCITS ETF (IE00BYTRRB94) ; comparer avec iShares MSCI World Health Care Sector Advanced UCITS ETF. Contrôler TER, encours, spread, réplication et éligibilité au support envisagé.\n"
+        "- **Électrification / énergie :** VanEck Electrification and Power Infrastructure UCITS ETF (IE000YYVSM16). Fonds récent : suivre encours, liquidité, concentration et historique limité.\n"
+        "- **Schneider Electric / Siemens :** commandes data centres et réseaux, marges, cash-flow, dette, valorisation et chevauchement avec l'ETF."
+    )
+    st.caption("Les symboles de marché ne remplacent pas la vérification de l'ISIN, de la place de cotation et de la devise auprès de l'émetteur.")
+
+def fx_chf_page():
+    st.header("💱 CHF & devises — EUR/CHF et EUR/AED")
+    st.caption("Indicateurs de marché, pas d'ordre de conversion automatique.")
+    period_label = st.selectbox("Historique", list(PERIODS.keys()), index=3, key="wels_fx_period")
+    period = PERIODS[period_label]
+    for name, symbol in FX_SYMBOLS.items():
+        hist = fetch_history(symbol, period)
+        st.subheader(name)
+        if hist.empty:
+            st.warning(f"Cours indisponible ({symbol}).")
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        prev = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        first = float(hist["Cours"].iloc[0])
+        change = (last / first - 1) * 100 if first else 0
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Dernier cours", f"{last:.4f}")
+        c2.metric("Dernière séance", f"{(last / prev - 1) * 100:+.2f}%" if prev else "—")
+        c3.metric(f"Variation {period_label}", f"{change:+.2f}%")
+        fig = px.line(hist, x="Date", y="Cours", title=f"{name} — {period_label}")
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+        if name == "EUR/CHF":
+            st.info("Pour acheter des CHF : une baisse d'EUR/CHF signifie que chaque euro achète moins de francs ; une hausse signifie que l'euro achète davantage. Des conversions fractionnées limitent le risque de chercher le point bas.")
+        else:
+            st.caption("L'AED est arrimé au dollar américain ; EUR/AED dépend donc largement de l'évolution de l'euro face au dollar.")
+    st.subheader("Répartition CHF de référence — scénarios discutés")
+    allocations = pd.DataFrame([
+        {"Support": "Liquidités CHF", "10k CHF": 20, "25k CHF": 15, "50k CHF": 12},
+        {"Support": "Obligations souveraines CHF", "10k CHF": 20, "25k CHF": 15, "50k CHF": 15},
+        {"Support": "Obligations entreprises CHF", "10k CHF": 15, "25k CHF": 15, "50k CHF": 13},
+        {"Support": "Actions suisses SPI", "10k CHF": 15, "25k CHF": 20, "50k CHF": 20},
+        {"Support": "Or CHF", "10k CHF": 15, "25k CHF": 15, "50k CHF": 15},
+        {"Support": "Immobilier suisse SIMA", "10k CHF": 10, "25k CHF": 10, "50k CHF": 10},
+        {"Support": "ETF mondial coté en CHF", "10k CHF": 5, "25k CHF": 10, "50k CHF": 10},
+        {"Support": "Diversification complémentaire", "10k CHF": 0, "25k CHF": 0, "50k CHF": 5},
+    ])
+    st.dataframe(allocations, use_container_width=True, hide_index=True)
+    st.caption("Répartitions de travail, non recommandations d'achat. Vérifier frais, fiscalité française, risque de taux/crédit, liquidité et modalités de détention. SIMA est moins liquide qu'un ETF coté.")
+
+def war_risk_page(df):
+    st.header("🌍 Guerres & risques géopolitiques")
+    st.caption("Flux médias et GDELT : un titre ou un mot-clé ne confirme pas seul un événement.")
+    war = df[df["Thèmes"].apply(lambda x: "Géopolitique / conflit" in x)].copy() if not df.empty else df
+    days = st.selectbox("Période", [1, 3, 7, 14, 30], index=2, key="wels_war_days")
+    keyword = st.text_input("Zone / mot-clé", placeholder="Ukraine, Iran, mer Rouge…", key="wels_war_keyword")
+    if not war.empty:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        war = war[war["Date"].isna() | (war["Date"] >= cutoff)]
+        if keyword.strip():
+            war = war[(war["Titre"].fillna("") + " " + war["Résumé"].fillna("")).str.contains(re.escape(keyword.strip()), case=False, na=False)]
+    st.subheader("Transmission potentielle aux actifs")
+    st.markdown(
+        "- **Pétrole / gaz :** risque d'offre, routes maritimes, primes d'assurance et inflation.\n"
+        "- **Transport maritime :** détours, fret et délais ; exposition indirecte de Frontline.\n"
+        "- **Or / CHF :** demande refuge possible, sans garantie de hausse.\n"
+        "- **Énergie / défense :** réactions potentiellement positives mais dépendantes des valorisations, marges, coûts et marchés.\n"
+        "- **Bitcoin :** actif volatil, pas un substitut garanti aux liquidités."
+    )
+    render_alert_articles(war, 40)
+
+def france_supply_page(df):
+    st.header("🇫🇷 France — approvisionnement & continuité")
+    st.caption("Les flux repèrent des articles, pas les stocks réels des commerces ou pharmacies. Ne pas extrapoler une pénurie locale depuis une information nationale.")
+    supply = df[df["Thèmes"].apply(lambda x: "Approvisionnement" in x)].copy() if not df.empty else df
+    days = st.selectbox("Période", [1, 3, 7, 14, 30], index=2, key="wels_supply_days")
+    if not supply.empty:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        supply = supply[supply["Date"].isna() | (supply["Date"] >= cutoff)]
+    render_alert_articles(supply, 30)
+    st.markdown("**Précautions**")
+    st.markdown("- Confirmer la zone, la durée et l'opérateur auprès de la préfecture ou de l'autorité compétente.\n- Pour les médicaments, suivre les conseils du pharmacien ; éviter le stockage spéculatif.\n- Garder des réserves domestiques raisonnables et tournantes, sans stockage dangereux de carburants.")
+
+def enhanced_newsletter_page(df, errors):
+    st.header("📰 Newsletter — veille filtrée")
+    c1, c2, c3 = st.columns([1, 1, 1.5])
+    with c1: days = st.selectbox("Période", [1, 3, 7, 14, 30], index=2, key="wels_news_days")
+    with c2: topic = st.selectbox("Thème", ["Tous", "Géopolitique / conflit", "Approvisionnement", "Suisse / CHF", "Marchés"], key="wels_news_topic")
+    with c3: keyword = st.text_input("Mot-clé", placeholder="CHF, pétrole, Ukraine…", key="wels_news_keyword")
+    if st.button("Actualiser les actualités", key="wels_news_refresh"):
+        fetch_news.clear()
+        st.rerun()
+    selected = df.copy()
+    if not selected.empty:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        selected = selected[selected["Date"].isna() | (selected["Date"] >= cutoff)]
+        if topic != "Tous":
+            selected = selected[selected["Thèmes"].apply(lambda tags: topic in tags)]
+        if keyword.strip():
+            selected = selected[(selected["Titre"].fillna("") + " " + selected["Résumé"].fillna("")).str.contains(re.escape(keyword.strip()), case=False, na=False)]
+    st.write(f"**{len(selected)} article(s)**")
+    render_alert_articles(selected, 50)
+    if errors:
+        with st.expander(f"Sources indisponibles ({len(errors)})"):
+            for error in errors: st.write("• " + error)
+
+def enhanced_sources_page():
+    st.header("Sources, méthode et limites")
+    st.markdown(
+        "**Flux utilisés**\n- Franceinfo Monde, Économie et Société.\n- BBC World et Business.\n- Boursorama.\n- GDELT : agrégateur de presse, utile pour repérer des signaux mais pas une autorité de confirmation.\n\n"
+        "**Sources officielles pour confirmer**\n- [Gouvernement français](https://www.gouvernement.fr/) · [Service-Public](https://www.service-public.fr/) · [Préfecture de police de Paris](https://www.prefecturedepolice.interieur.gouv.fr/)\n"
+        "- [Banque nationale suisse](https://www.snb.ch/) · [Banque de France](https://www.banque-france.fr/) · [AIE](https://www.iea.org/)\n\n"
+        "**Limites**\n- Les flux RSS et cours peuvent être indisponibles ou différés.\n- Les alertes utilisent des mots-clés : elles ne valident ni gravité, ni localisation, ni causalité.\n- Pas de surveillance intrajournalière continue, pas d'ordre automatique, pas de conseil financier."
+    )
+
+
 def main():
-    st.set_page_config(page_title=APP_TITLE, page_icon="📰", layout="wide")
-    st.title("📰 WELS Actions")
-    st.caption("Newsletter financière, suivi des marchés et veille des risques patrimoniaux")
-    if feedparser is None:
-        st.error("Le module feedparser est absent. Installez les dépendances avec : pip install -r requirements.txt")
+    # Do not call set_page_config here: app.py configures the parent Streamlit page.
+    st.title("📰 WELS Actions — Market, War & CHF Monitor")
+    st.caption("Briefing financier et veille des risques patrimoniaux · cache des données : 15 minutes")
+    with st.spinner("Collecte des flux d'actualité…"):
+        df, errors = fetch_news()
+    df = enrich_news_frame(df) if not df.empty else df
     with st.sidebar:
         st.title("WELS Actions")
-        page = st.radio("Navigation", ["🏠 Vue d’ensemble", "📰 Newsletter", "📈 Marchés & portefeuille", "💱 Devises", "⚠️ Sources & risques"], key="navigation")
-        if st.button("🔄 Vider le cache et actualiser"):
+        page = st.radio("Navigation", [
+            "Vue d'ensemble", "Marchés & portefeuille", "Guerres & géopolitique",
+            "CHF & devises", "France — approvisionnement", "Newsletter", "Sources & limites"
+        ], key="wels_navigation_v2")
+        if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
             fetch_history.clear()
-            fetch_article_text.clear()
             st.rerun()
-        st.caption("Cache des données : 15 minutes")
-    if page == "🏠 Vue d’ensemble":
-        home_page()
-    elif page == "📰 Newsletter":
-        newsletter_page()
-    elif page == "📈 Marchés & portefeuille":
-        markets_page()
-    elif page == "💱 Devises":
-        currencies_page()
-    else:
-        sources_page()
-
+        st.caption("Actualités et cours : cache 15 min")
+    if page == "Vue d'ensemble":
+        st.header("Briefing quotidien")
+        st.caption("Marchés, conflits, CHF et approvisionnement — sources et dates visibles.")
+        a, b, c, d = st.columns(4)
+        a.metric("Articles collectés", len(df))
+        war = df[df["Thèmes"].apply(lambda x: "Géopolitique / conflit" in x)] if not df.empty else df
+        supply = df[df["Thèmes"].apply(lambda x: "Approvisionnement" in x)] if not df.empty else df
+        chf = df[df["Thèmes"].apply(lambda x: "Suisse / CHF" in x)] if not df.empty else df
+        b.metric("Géopolitique", len(war)); c.metric("Approvisionnement", len(supply)); d.metric("Suisse / CHF", len(chf))
+        st.subheader("Alertes éditoriales à examiner")
+        candidates = df[df["Priorité"] != "Information"] if not df.empty else df
+        if candidates.empty: st.success("Aucun article prioritaire repéré par les mots-clés.")
+        else:
+            st.warning("Triage automatique de titres/résumés : ce niveau ne confirme pas une urgence.")
+            render_alert_articles(candidates, 12)
+        st.subheader("Dernières actualités")
+        render_alert_articles(df, 8)
+        if errors:
+            with st.expander(f"Sources indisponibles ({len(errors)})"):
+                for error in errors: st.write("• " + error)
+    elif page == "Marchés & portefeuille": market_watch_page()
+    elif page == "Guerres & géopolitique": war_risk_page(df)
+    elif page == "CHF & devises": fx_chf_page()
+    elif page == "France — approvisionnement": france_supply_page(df)
+    elif page == "Newsletter": enhanced_newsletter_page(df, errors)
+    else: enhanced_sources_page()
 
 def newsletter_dashboard():
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
