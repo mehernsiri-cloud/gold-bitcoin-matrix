@@ -549,6 +549,110 @@ def france_supply_page(df):
     st.markdown("**Précautions**")
     st.markdown("- Confirmer la zone, la durée et l'opérateur auprès de la préfecture ou de l'autorité compétente.\n- Pour les médicaments, suivre les conseils du pharmacien ; éviter le stockage spéculatif.\n- Garder des réserves domestiques raisonnables et tournantes, sans stockage dangereux de carburants.")
 
+def geopolitics_supply_dashboard(df):
+    """Vue synthétique des signaux géopolitiques et d'approvisionnement."""
+    st.header("🌍 Géopolitique & approvisionnement")
+    st.caption(
+        "Un tableau de bord de veille pour repérer rapidement les signaux. "
+        "Le volume d'articles ne mesure pas directement la gravité d'un événement "
+        "ni les stocks réellement disponibles en France."
+    )
+    days = st.selectbox("Période d'analyse", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
+    keyword = st.text_input("Zone ou mot-clé (facultatif)", placeholder="Ukraine, Iran, mer Rouge, carburant, médicaments…", key="wels_geo_supply_keyword")
+
+    if df is None or df.empty or "Thèmes" not in df.columns:
+        st.warning("Données d'actualité indisponibles : impossible d'établir un statut fiable.")
+        return
+
+    selected = df[df["Thèmes"].apply(lambda tags: "Géopolitique / conflit" in tags or "Approvisionnement" in tags)].copy()
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    if "Date" in selected.columns:
+        selected = selected[selected["Date"].isna() | (selected["Date"] >= cutoff)]
+    if keyword.strip():
+        titles = selected.get("Titre", pd.Series("", index=selected.index)).fillna("").astype(str)
+        summaries = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
+        selected = selected[(titles + " " + summaries).str.contains(re.escape(keyword.strip()), case=False, na=False)]
+
+    war = selected[selected["Thèmes"].apply(lambda tags: "Géopolitique / conflit" in tags)]
+    supply = selected[selected["Thèmes"].apply(lambda tags: "Approvisionnement" in tags)]
+    priorities = selected.get("Priorité", pd.Series("Information", index=selected.index))
+    priority = selected[priorities.eq("À examiner en priorité")]
+    watch = selected[priorities.eq("À surveiller")]
+
+    if selected.empty:
+        status, detail = "AUCUN SIGNAL DÉTECTÉ", "Aucun article classé sur la période et les filtres choisis."
+    elif not priority.empty:
+        status, detail = "SIGNAUX PRIORITAIRES", f"{len(priority)} article(s) classé(s) à examiner en priorité."
+    else:
+        status, detail = "SIGNAUX À SUIVRE", f"{len(selected)} article(s) détecté(s), sans priorité élevée selon les règles de tri."
+
+    st.markdown("""
+        <style>
+        .geo-status{border:1px solid #777;border-radius:14px;padding:14px 18px;margin:6px 0 16px;background:rgba(128,128,128,.08)}
+        .geo-status-label{font-size:12px;letter-spacing:1px;opacity:.8;font-weight:700}
+        .geo-status-value{font-size:24px;font-weight:800;margin:5px 0}
+        .geo-status-detail{font-size:13px;opacity:.85}
+        </style>
+    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="geo-status"><div class="geo-status-label">STATUT DE VEILLE · {days} JOURS</div>'
+        f'<div class="geo-status-value">{status}</div><div class="geo-status-detail">{detail}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Signaux détectés", len(selected))
+    m2.metric("Géopolitique", len(war))
+    m3.metric("Approvisionnement", len(supply))
+    m4.metric("Prioritaires", len(priority))
+
+    left, right = st.columns(2)
+    with left:
+        categories = pd.DataFrame({"Catégorie": ["Géopolitique", "Approvisionnement"], "Articles": [len(war), len(supply)]})
+        categories = categories[categories["Articles"] > 0]
+        if not categories.empty:
+            fig = px.pie(categories, names="Catégorie", values="Articles", hole=0.58, title="Répartition des signaux")
+            fig.update_traces(textposition="inside", textinfo="percent+label")
+            fig.update_layout(height=330, margin=dict(t=55, b=15, l=10, r=10))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Pas de signal à répartir sur cette période.")
+
+    with right:
+        priority_data = pd.DataFrame({
+            "Niveau": ["Prioritaire", "À surveiller", "Information"],
+            "Articles": [len(priority), len(watch), max(0, len(selected) - len(priority) - len(watch))],
+        })
+        fig = px.bar(priority_data, x="Articles", y="Niveau", orientation="h", title="Niveau de priorité des articles", text="Articles")
+        fig.update_layout(height=330, margin=dict(t=55, b=15, l=10, r=10), xaxis_title="Nombre d'articles", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+    if not selected.empty and "Date" in selected.columns:
+        dated = selected.dropna(subset=["Date"]).copy()
+        if not dated.empty:
+            dated["Jour"] = pd.to_datetime(dated["Date"], errors="coerce").dt.date
+            timeline = dated.groupby("Jour", as_index=False).size().rename(columns={"size": "Articles"})
+            fig = px.bar(timeline, x="Jour", y="Articles", title="Évolution quotidienne des signaux")
+            fig.update_layout(height=280, margin=dict(t=55, b=15, l=10, r=10), xaxis_title="", yaxis_title="Articles")
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Lecture rapide")
+    impact_left, impact_right = st.columns(2)
+    with impact_left:
+        st.markdown("**🌍 Géopolitique**")
+        st.caption("Surveiller l'escalade, les sanctions, les routes maritimes et les infrastructures énergétiques.")
+        st.markdown("Expositions possibles : pétrole et gaz, transport maritime, or, CHF, défense.")
+    with impact_right:
+        st.markdown("**🇫🇷 Approvisionnement**")
+        st.caption("Distinguer une tension nationale d'une rupture locale, temporaire ou sectorielle.")
+        st.markdown("Points sensibles : carburants, électricité, alimentation, médicaments, transport et logistique.")
+
+    st.caption(
+        "Limite méthodologique : les graphiques comptent des articles RSS classés automatiquement. "
+        "Un même événement peut générer plusieurs articles ; l'absence d'article ne prouve pas l'absence de risque."
+    )
+
+
 def enhanced_newsletter_page(df, errors):
     st.header("📰 Newsletter — veille filtrée")
     c1, c2, c3 = st.columns([1, 1, 1.5])
@@ -703,9 +807,9 @@ def main():
     with st.sidebar:
         st.title("WELS Actions")
         page = st.radio("Navigation", [
-            "Vue d'ensemble", "Marchés & portefeuille", "Guerres & géopolitique",
-            "CHF & devises", "France — approvisionnement", "Newsletter"
-        ], key="wels_navigation_v2")
+            "Vue d'ensemble", "Marchés & portefeuille", "Géopolitique & approvisionnement",
+            "CHF & devises", "Newsletter"
+        ], key="wels_navigation_v3")
         if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
             fetch_history.clear()
@@ -714,9 +818,8 @@ def main():
     if page == "Vue d'ensemble":
         executive_dashboard(df)
     elif page == "Marchés & portefeuille": market_watch_page()
-    elif page == "Guerres & géopolitique": war_risk_page(df)
+    elif page == "Géopolitique & approvisionnement": geopolitics_supply_dashboard(df)
     elif page == "CHF & devises": fx_chf_page()
-    elif page == "France — approvisionnement": france_supply_page(df)
     elif page == "Newsletter": enhanced_newsletter_page(df, errors)
     else: enhanced_newsletter_page(df, errors)
 
