@@ -497,6 +497,12 @@ def fx_chf_page():
         fig.update_layout(height=300)
         st.plotly_chart(fig, use_container_width=True)
         if name == "EUR/CHF":
+            if change >= 2.0:
+                st.success(f"Signal CHF : EUR/CHF a progressé de {change:+.2f}% sur {period_label}. Un euro achète davantage de CHF qu’au début de la période ; une conversion fractionnée peut être étudiée.")
+            elif change <= -2.0:
+                st.warning(f"Signal CHF : EUR/CHF a reculé de {change:+.2f}% sur {period_label}. Le CHF s’est renforcé face à l’euro ; convertir des euros en CHF coûte davantage.")
+            else:
+                st.info(f"Pas de signal de change marqué : variation EUR/CHF de {change:+.2f}% sur {period_label} (seuil indicatif ±2%).")
             st.info("Pour acheter des CHF : une baisse d'EUR/CHF signifie que chaque euro achète moins de francs ; une hausse signifie que l'euro achète davantage. Des conversions fractionnées limitent le risque de chercher le point bas.")
         else:
             st.caption("L'AED est arrimé au dollar américain ; EUR/AED dépend donc largement de l'évolution de l'euro face au dollar.")
