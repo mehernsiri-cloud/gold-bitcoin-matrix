@@ -414,6 +414,61 @@ def market_watch_page():
     )
     st.caption("Les symboles de marché ne remplacent pas la vérification de l'ISIN, de la place de cotation et de la devise auprès de l'émetteur.")
 
+    st.divider()
+    st.header("Composition du portefeuille réel — ETF et actions")
+    st.caption(
+        "Vue des positions détenues, exprimée en nombre de lignes et non en poids financier. "
+        "Les quantités et valorisations récentes ne sont pas toutes disponibles dans les données enregistrées."
+    )
+
+    holdings = pd.DataFrame([
+        {"Actif": "Vanguard FTSE All-World UCITS ETF", "Type": "ETF", "Exposition": "Actions mondiales"},
+        {"Actif": "WELS — World Health Care", "Type": "ETF", "Exposition": "Santé mondiale"},
+        {"Actif": "XDWU — World Utilities", "Type": "ETF", "Exposition": "Services aux collectivités / électricité"},
+        {"Actif": "TotalEnergies", "Type": "Action", "Exposition": "Énergie"},
+        {"Actif": "ExxonMobil", "Type": "Action", "Exposition": "Énergie"},
+        {"Actif": "Air Liquide", "Type": "Action", "Exposition": "Industrie"},
+        {"Actif": "FTAI Aviation", "Type": "Action", "Exposition": "Aviation"},
+        {"Actif": "Frontline", "Type": "Action", "Exposition": "Transport maritime"},
+        {"Actif": "Thales", "Type": "Action", "Exposition": "Défense / technologie"},
+        {"Actif": "Lockheed Martin", "Type": "Action", "Exposition": "Défense"},
+    ])
+    by_type = holdings.groupby("Type").size().reset_index(name="Nombre de positions")
+    by_exposure = holdings.groupby("Exposition").size().reset_index(name="Nombre de positions").sort_values("Nombre de positions")
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Positions détenues", len(holdings))
+    m2.metric("ETF", int((holdings["Type"] == "ETF").sum()))
+    m3.metric("Actions", int((holdings["Type"] == "Action").sum()))
+
+    chart_left, chart_right = st.columns(2)
+    with chart_left:
+        fig_type = go.Figure(go.Pie(
+            labels=by_type["Type"], values=by_type["Nombre de positions"],
+            hole=0.48, textinfo="label+percent+value"
+        ))
+        fig_type.update_layout(title="ETF vs actions — nombre de lignes", height=390)
+        st.plotly_chart(fig_type, use_container_width=True)
+    with chart_right:
+        fig_exposure = go.Figure(go.Bar(
+            x=by_exposure["Nombre de positions"],
+            y=by_exposure["Exposition"],
+            orientation="h",
+            text=by_exposure["Nombre de positions"],
+            textposition="auto"
+        ))
+        fig_exposure.update_layout(
+            title="Répartition par type d'exposition — nombre de lignes",
+            height=390, xaxis_title="Nombre de positions", yaxis_title=""
+        )
+        st.plotly_chart(fig_exposure, use_container_width=True)
+
+    st.dataframe(holdings, use_container_width=True, hide_index=True)
+    st.caption(
+        "Important : ces graphiques décrivent le nombre de lignes détenues, pas leur poids dans le portefeuille. "
+        "Pour calculer les poids en euros et les expositions financières, il faudra disposer des quantités ou des valorisations actualisées."
+    )
+
 def fx_chf_page():
     st.header("💱 CHF & devises — EUR/CHF et EUR/AED")
     st.caption("Indicateurs de marché, pas d'ordre de conversion automatique.")
@@ -637,7 +692,7 @@ def executive_dashboard(df):
         st.caption(f"CHF : {len(chf)} signal(aux) de presse détecté(s) — voir l'onglet CHF & devises.")
     st.caption("Cours indicatifs potentiellement différés. Les niveaux de risque sont des indicateurs de veille, pas une évaluation officielle.")
 
-def main(portfolio_strategy_renderer=None):
+def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
     st.title("📰 WELS Actions — Market, War & CHF Monitor")
     st.caption("Briefing financier et veille des risques patrimoniaux · cache des données : 15 minutes")
@@ -657,27 +712,16 @@ def main(portfolio_strategy_renderer=None):
         st.caption("Actualités et cours : cache 15 min")
     if page == "Vue d'ensemble":
         executive_dashboard(df)
-    elif page == "Marchés & portefeuille":
-        market_section = st.sidebar.radio(
-            "Sous-menu — Marchés & portefeuille",
-            ["Marchés & suivi", "Portfolio Strategy"],
-            key="wels_market_subnav_v1"
-        )
-        if market_section == "Marchés & suivi":
-            market_watch_page()
-        elif portfolio_strategy_renderer is not None:
-            portfolio_strategy_renderer()
-        else:
-            st.warning("La vue Portfolio Strategy n'est pas disponible depuis ce point d'entrée.")
+    elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "Guerres & géopolitique": war_risk_page(df)
     elif page == "CHF & devises": fx_chf_page()
     elif page == "France — approvisionnement": france_supply_page(df)
     elif page == "Newsletter": enhanced_newsletter_page(df, errors)
     else: enhanced_newsletter_page(df, errors)
 
-def newsletter_dashboard(portfolio_strategy_renderer=None):
+def newsletter_dashboard():
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
-    main(portfolio_strategy_renderer=portfolio_strategy_renderer)
+    main()
 
 
 if __name__ == "__main__":
