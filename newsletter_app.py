@@ -34,15 +34,11 @@ APP_TITLE = "WELS Actions"
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; WELSActions/1.0)"}
 
 RSS_FEEDS = {
-    "France Info Économie": "https://www.francetvinfo.fr/economie.rss",
-    "France Info Monde": "https://www.francetvinfo.fr/monde.rss",
-    "France Info Société": "https://www.francetvinfo.fr/societe.rss",
-    "Boursorama": "https://www.boursorama.com/rss/actualites/",
-    # Reuters' legacy feeds can be unavailable; failures are handled per source.
-    "BBC World": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "BBC Business": "https://feeds.bbci.co.uk/news/business/rss.xml",
-    "GDELT — conflits": "https://api.gdeltproject.org/api/v2/doc/doc?query=(war%20OR%20conflict%20OR%20missile%20OR%20sanctions%20OR%20ceasefire)&mode=artlist&format=rss&maxrecords=40&sort=datedesc",
-    "GDELT — France approvisionnement": "https://api.gdeltproject.org/api/v2/doc/doc?query=(France%20AND%20(shortage%20OR%20strike%20OR%20blockade%20OR%20fuel%20OR%20electricity%20OR%20supply))&mode=artlist&format=rss&maxrecords=30&sort=datedesc",
+    "Veille France — infrastructures vitales": "https://api.gdeltproject.org/api/v2/doc/doc?query=(France%20OR%20French)%20AND%20(fuel%20shortage%20OR%20fuel%20strike%20OR%20refinery%20OR%20electricity%20outage%20OR%20water%20supply%20OR%20cyberattack%20OR%20port%20blockade%20OR%20transport%20strike%20OR%20food%20shortage%20OR%20hospital%20crisis)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
+    "Veille Émirats — Dubaï": "https://api.gdeltproject.org/api/v2/doc/doc?query=(UAE%20OR%20Emirates%20OR%20Dubai%20OR%20Abu%20Dhabi)%20AND%20(missile%20OR%20drone%20OR%20airspace%20OR%20airport%20closure%20OR%20port%20OR%20Jebel%20Ali%20OR%20water%20OR%20desalination%20OR%20power%20outage%20OR%20banking%20OR%20cyberattack%20OR%20food%20supply)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
+    "Veille Europe — stabilité et économie": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Europe%20OR%20European%20Union%20OR%20EU)%20AND%20(energy%20shortage%20OR%20gas%20supply%20OR%20electricity%20grid%20OR%20banking%20crisis%20OR%20sovereign%20debt%20OR%20capital%20controls%20OR%20mass%20protests%20OR%20general%20strike%20OR%20cyberattack%20OR%20infrastructure%20attack)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
+    "Veille Moyen-Orient — sécurité et approvisionnement": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Middle%20East%20OR%20Iran%20OR%20Israel%20OR%20Gulf%20OR%20Yemen%20OR%20Saudi%20Arabia)%20AND%20(military%20attack%20OR%20missile%20OR%20drone%20OR%20escalation%20OR%20Hormuz%20OR%20Red%20Sea%20OR%20oil%20supply%20OR%20gas%20supply%20OR%20water%20crisis%20OR%20power%20outage%20OR%20civilian%20casualties)&mode=artlist&format=rss&maxrecords=60&sort=datedesc",
+    "Veille mondiale — risques systémiques": "https://api.gdeltproject.org/api/v2/doc/doc?query=(global%20OR%20international)%20AND%20(major%20cyberattack%20OR%20pandemic%20OR%20epidemic%20OR%20food%20crisis%20OR%20energy%20crisis%20OR%20shipping%20disruption%20OR%20financial%20crisis%20OR%20nuclear%20incident%20OR%20critical%20infrastructure)&mode=artlist&format=rss&maxrecords=40&sort=datedesc",
 }
 
 TOPICS = {
@@ -644,6 +640,15 @@ def qualify_situation(title, summary):
             "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Médicament et zone à préciser"
         },
     ]
+    rules.extend([
+        {"id":"airspace_airport","terms":["airspace closure","airport closure","flights suspended","flight cancellations","fermeture de l'espace aérien","aéroport fermé","vols suspendus"],"event":"Fermeture d'espace aérien ou perturbation majeure des vols","impact":"Voyageurs bloqués, déroutements et perturbation du fret aérien ; effet économique local si la fermeture dure.","market":"Surcoûts pour les compagnies, le tourisme et la logistique.","action":"Vérifier les avis de l'aéroport, de la compagnie et des autorités de l'aviation civile avant tout déplacement.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Durée et périmètre à confirmer"},
+        {"id":"water_desalination","terms":["water shortage","water supply disruption","desalination plant","water rationing","pénurie d'eau","coupure d'eau","usine de dessalement","restriction d'eau"],"event":"Perturbation de l'accès à l'eau potable","impact":"Risque vital en cas de perturbation prolongée, particulièrement dans les territoires dépendants du dessalement ; conséquences sanitaires et économiques.","market":"Impact opérationnel sur ménages, hôtels, industrie et services.","action":"Vérifier les communiqués des opérateurs et autorités ; suivre les consignes concernant l'eau potable.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Installation, zone et durée à confirmer"},
+        {"id":"cyber_critical","terms":["cyberattack","cyber attack","ransomware attack","critical infrastructure cyber","cyberattaque","attaque informatique","rançongiciel"],"event":"Cyberattaque visant une infrastructure essentielle","impact":"Peut interrompre les services publics, hôpitaux, banques, énergie, eau ou télécommunications ; cible et portée à confirmer.","market":"Coûts de remise en service et interruption d'activité.","action":"Identifier l'opérateur et les services réellement indisponibles ; suivre les communications officielles.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Cible et conséquences à confirmer"},
+        {"id":"banking_capital","terms":["bank run","bank failure","bank collapse","capital controls","withdrawal limits","deposit freeze","contrôle des capitaux","limitation des retraits","gel des dépôts","faillite bancaire"],"event":"Crise bancaire ou restriction d'accès aux liquidités","impact":"Risque direct pour l'accès aux dépôts, paiements et transferts ; distinguer rumeur, difficulté d'une banque et mesure officielle.","market":"Stress financier et risque de contagion si plusieurs établissements sont concernés.","action":"Vérifier les communications du régulateur et de la banque centrale ; ne pas agir sur des rumeurs.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Confirmation réglementaire requise"},
+        {"id":"food_supply","terms":["food shortage","food supply disruption","food rationing","grain export ban","food crisis","pénurie alimentaire","rupture d'approvisionnement alimentaire","rationnement alimentaire"],"event":"Risque majeur sur l'approvisionnement alimentaire","impact":"Hausse des prix ou disponibilité réduite de produits essentiels ; conséquences sociales si la crise dure ou s'étend.","market":"Pression possible sur les prix agricoles et l'inflation.","action":"Vérifier les produits, territoires et volumes concernés auprès des autorités et opérateurs ; éviter les achats de panique.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Produits et territoires à préciser"},
+        {"id":"sovereign_financial","terms":["sovereign debt crisis","sovereign default","debt restructuring","crise de la dette souveraine","défaut souverain","restructuration de la dette publique"],"event":"Crise de dette souveraine","impact":"Risque de hausse des taux, mesures budgétaires et pression sur les banques et l'activité ; conséquences dépendantes du pays.","market":"Tension possible sur obligations, banques, euro et financement public.","action":"Suivre décisions gouvernementales, banque centrale et régulateurs ; distinguer dégradation de notation et défaut effectif.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Indicateurs à recouper"},
+        {"id":"mass_social_disruption","terms":["nationwide general strike","national general strike","mass riots","state of emergency","grève générale nationale","émeutes généralisées","état d'urgence"],"event":"Troubles sociaux majeurs ou paralysie nationale","impact":"Risque de perturbation des transports, services publics, commerces et accès aux soins ; impact dépendant des villes et de la durée.","market":"Pertes d'activité, retards logistiques et incertitude pour les entreprises.","action":"Vérifier les zones et services touchés ; anticiper les déplacements et suivre les consignes officielles.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Échelle et conséquences à confirmer"}
+    ]);
     matches = []
     for rule in rules:
         if any(term in text for term in rule["terms"]):
@@ -654,7 +659,7 @@ def qualify_situation(title, summary):
 def geopolitics_supply_dashboard(df):
     """Situation dashboard: event highlights, causal impact chains and immediate actions."""
     st.header("🌍 Géopolitique, énergie & approvisionnement")
-    st.caption("Objectif : comprendre ce qui se passe, ce que cela peut entraîner et quoi faire. Qualification automatique par mots-clés, à confirmer avec les sources.")
+    st.caption("Veille ciblée sur les événements ayant des conséquences humaines, vitales, sociales, économiques ou logistiques. Priorité : France et Dubaï/Émirats ; puis Europe et Moyen-Orient.")
 
     days = st.selectbox("Fenêtre de veille", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
     keyword = st.text_input("Filtrer par zone ou sujet (facultatif)", placeholder="France, Iran, carburant, électricité…", key="wels_geo_supply_keyword")
@@ -690,6 +695,7 @@ def geopolitics_supply_dashboard(df):
                 "source": str(row.get("Source", "Source non précisée")),
                 "url": str(row.get("Lien", "")),
                 "date": date_label,
+                "region": ("France" if "france" in str(row.get("Source", "")).lower() else "Dubaï / Émirats" if "émirats" in str(row.get("Source", "")).lower() else "Europe" if "europe" in str(row.get("Source", "")).lower() else "Moyen-Orient" if "moyen-orient" in str(row.get("Source", "")).lower() else "International"),
             })
         if len(unqualified) < 12:
             unqualified.append(row)
@@ -740,13 +746,13 @@ def geopolitics_supply_dashboard(df):
     elif high_events:
         st.warning("Un signal à impact potentiellement élevé est présent. Vérifier sa réalité, son périmètre et sa durée avant d'agir.")
 
-    st.markdown("### Highlights — événements et conséquences")
+    st.markdown("### Événements à impact concret — faits et conséquences")
     if not events:
         st.info("Aucun événement n'a pu être qualifié automatiquement sur cette période. Les nouvelles non reconnues ne sont pas interprétées comme positives.")
     for index, event in enumerate(events[:15], start=1):
         with st.expander(f"{'🟢' if event['polarity'] == 'positive' else ('🔴' if event['score'] >= 3 else '🟠')} {event['event']} — {event['level']}", expanded=(index <= 3)):
             st.markdown(f"**Actualité :** {event['title']}")
-            st.caption(f"{event['source']} · {event['date']} · Qualification : {event['confidence']}")
+            st.caption(f"{event.get('region', 'Zone à confirmer')} · {event['source']} · {event['date']} · Qualification : {event['confidence']}")
             if event["summary"]:
                 st.write(event["summary"][:700])
             st.markdown(f"**Ce que cela peut entraîner :** {event['impact']}")
@@ -790,7 +796,7 @@ def geopolitics_supply_dashboard(df):
             url = str(row.get("Lien", ""))
             st.markdown(f"- **{title}** — {source}" + (f" · [Source]({url})" if url.startswith("http") else ""))
 
-    st.caption("Méthode et limites : qualification par règles de mots-clés sur les titres et résumés RSS, pas une vérification factuelle ni une prévision. Les liens et dates doivent être contrôlés. Un même événement peut apparaître dans plusieurs médias ; les conséquences décrites sont des scénarios plausibles, pas des faits établis.")
+    st.caption("Méthode et limites : sélection par requêtes thématiques et qualification par mots-clés. Ce système réduit le bruit mais ne remplace pas une vérification factuelle. Les liens et dates doivent être contrôlés. Un même événement peut apparaître dans plusieurs médias ; les conséquences décrites sont des scénarios plausibles, pas des faits établis.")
 
 
 def enhanced_newsletter_page(df, errors):
