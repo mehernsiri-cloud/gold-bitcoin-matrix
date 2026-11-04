@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import html
 import re
 import time
+import threading
 
 import pandas as pd
 import plotly.express as px
@@ -115,59 +116,81 @@ def topic_for(text):
     return "Autres actualités"
 
 
+@st.cache_resource
+def gdelt_collection_lock():
+    """One shared lock prevents simultaneous GDELT bursts from Streamlit sessions."""
+    return threading.Lock()
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_news(max_per_feed=25):
     if feedparser is None:
         return pd.DataFrame(), ["Le module feedparser n'est pas installé."]
     articles, errors = [], []
-    # GDELT applies a global rate limit: keep at least 5 seconds between requests.
-    for feed_index, (source, url) in enumerate(RSS_FEEDS.items()):
-        if feed_index:
-            time.sleep(5.2)
-        try:
-            # GDELT can return multilingual matches. Restrict at source where supported,
-            # then apply a conservative French/English check before displaying anything.
-            request_url = url.replace("&mode=", "%20(sourcelang:english%20OR%20sourcelang:french)&mode=", 1)
-            response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=20)
-            response.raise_for_status()
-            parsed = feedparser.parse(response.content)
-            if not parsed.entries:
-                errors.append(f"{source} : aucun article francophone/anglophone retourné.")
-            accepted_for_feed = 0
-            for item in parsed.entries:
-                title = clean_html(item.get("title", ""))
-                link = item.get("link", "")
-                if not title or not link:
+    # GDELT limits requests globally. Serialize all sessions and leave a safer margin.
+    with gdelt_collection_lock():
+        last_request_at = 0.0
+        for feed_index, (source, url) in enumerate(RSS_FEEDS.items()):
+            try:
+                # Restrict at source where supported; the language check below is a second guard.
+                request_url = url.replace("&mode=", "%20(sourcelang:english%20OR%20sourcelang:french)&mode=", 1)
+                response = None
+                for attempt in range(3):
+                    wait_for_slot = 7.0 - (time.monotonic() - last_request_at)
+                    if wait_for_slot > 0:
+                        time.sleep(wait_for_slot)
+                    response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=30)
+                    last_request_at = time.monotonic()
+                    if response.status_code != 429:
+                        response.raise_for_status()
+                        break
+                    if attempt < 2:
+                        retry_after = response.headers.get("Retry-After", "")
+                        try:
+                            delay = max(15.0, float(retry_after))
+                        except (TypeError, ValueError):
+                            delay = 15.0 * (attempt + 1)
+                        time.sleep(delay)
+                if response is None or response.status_code == 429:
+                    body = clean_html(response.text if response is not None else "")[:240]
+                    errors.append(f"{source} : HTTP 429 après 3 tentatives" + (f" — {body}" if body else ""))
                     continue
-                summary = clean_html(item.get("summary", item.get("description", "")))
-                if not supported_news_language(title, summary):
-                    continue
-                accepted_for_feed += 1
-                if accepted_for_feed > max_per_feed:
-                    break
-                published = item.get("published", item.get("updated", ""))
-                articles.append({
-                    "Date": parse_date(published),
-                    "Source": source,
-                    "Domaine": urlparse(link).netloc.replace("www.", ""),
-                    "Titre": title,
-                    "Résumé": summary[:2500],
-                    "Lien": link,
-                })
-        except requests.exceptions.HTTPError as exc:
-            response = getattr(exc, "response", None)
-            status = getattr(response, "status_code", None)
-            body = clean_html(getattr(response, "text", ""))[:240]
-            errors.append(
-                f"{source} : HTTP {status or 'inconnu'}"
-                + (f" — réponse serveur : {body}" if body else "")
-            )
-        except requests.exceptions.Timeout:
-            errors.append(f"{source} : délai dépassé (timeout après 12 secondes)")
-        except requests.exceptions.RequestException as exc:
-            errors.append(f"{source} : erreur réseau {type(exc).__name__} — {str(exc)[:180]}")
-        except Exception as exc:
-            errors.append(f"{source} : {type(exc).__name__} — {str(exc)[:180]}")
+
+                parsed = feedparser.parse(response.content)
+                accepted_for_feed = 0
+                for item in parsed.entries:
+                    title = clean_html(item.get("title", ""))
+                    link = item.get("link", "")
+                    if not title or not link:
+                        continue
+                    summary = clean_html(item.get("summary", item.get("description", "")))
+                    if not supported_news_language(title, summary):
+                        continue
+                    accepted_for_feed += 1
+                    if accepted_for_feed > max_per_feed:
+                        break
+                    published = item.get("published", item.get("updated", ""))
+                    articles.append({
+                        "Date": parse_date(published),
+                        "Source": source,
+                        "Domaine": urlparse(link).netloc.replace("www.", ""),
+                        "Titre": title,
+                        "Résumé": summary[:2500],
+                        "Lien": link,
+                    })
+                if not parsed.entries:
+                    errors.append(f"{source} : flux vide ou format RSS non reconnu.")
+            except requests.exceptions.HTTPError as exc:
+                response = getattr(exc, "response", None)
+                status = getattr(response, "status_code", None)
+                body = clean_html(getattr(response, "text", ""))[:240]
+                errors.append(f"{source} : HTTP {status or 'inconnu'}" + (f" — réponse serveur : {body}" if body else ""))
+            except requests.exceptions.Timeout:
+                errors.append(f"{source} : délai dépassé (timeout après 30 secondes)")
+            except requests.exceptions.RequestException as exc:
+                errors.append(f"{source} : erreur réseau {type(exc).__name__} — {str(exc)[:180]}")
+            except Exception as exc:
+                errors.append(f"{source} : {type(exc).__name__} — {str(exc)[:180]}")
     if not articles:
         return pd.DataFrame(), errors
     df = pd.DataFrame(articles).drop_duplicates(subset=["Lien"])
