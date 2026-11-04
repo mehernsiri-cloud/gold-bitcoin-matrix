@@ -661,6 +661,10 @@ def geopolitics_supply_dashboard(df):
     st.header("🌍 Géopolitique, énergie & approvisionnement")
     st.caption("Veille ciblée sur les événements ayant des conséquences humaines, vitales, sociales, économiques ou logistiques. Priorité : France et Dubaï/Émirats ; puis Europe et Moyen-Orient.")
 
+    if st.button("🔄 Actualiser les flux de veille", key="wels_geo_refresh"):
+        fetch_news.clear()
+        st.rerun()
+
     days = st.selectbox("Fenêtre de veille", [1, 3, 7, 14, 30], index=2, key="wels_geo_supply_days")
     keyword = st.text_input("Filtrer par zone ou sujet (facultatif)", placeholder="France, Iran, carburant, électricité…", key="wels_geo_supply_keyword")
 
@@ -676,6 +680,17 @@ def geopolitics_supply_dashboard(df):
         title_text = selected.get("Titre", pd.Series("", index=selected.index)).fillna("").astype(str)
         summary_text = selected.get("Résumé", pd.Series("", index=selected.index)).fillna("").astype(str)
         selected = selected[(title_text + " " + summary_text).str.contains(re.escape(keyword.strip()), case=False, na=False)]
+
+    # Diagnostics visibles : distinguer un flux vide d'un filtre trop strict.
+    with st.expander("Diagnostic de la veille — vérifier la collecte", expanded=False):
+        st.write(f"Articles récupérés au total : **{len(df)}**")
+        st.write(f"Articles dans la fenêtre sélectionnée ({days} jour(s)) : **{len(selected)}**")
+        if "Source" in df.columns:
+            st.write("Articles par flux :")
+            st.dataframe(df.groupby("Source").size().rename("Articles").reset_index(), hide_index=True, use_container_width=True)
+        if "Date" in df.columns and df["Date"].notna().any():
+            st.caption(f"Article le plus récent : {df['Date'].max().strftime('%d/%m/%Y %H:%M UTC')}")
+        st.caption("Si le total est nul, le problème vient de la collecte des flux. Si le total est positif mais qu'aucun événement n'est qualifié, les règles de détection sont trop restrictives ou les articles ne contiennent pas les mots-clés attendus.")
 
     events = []
     unqualified = []
