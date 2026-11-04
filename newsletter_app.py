@@ -37,6 +37,7 @@ RSS_FEEDS = {
     "Veille France — infrastructures vitales": "https://api.gdeltproject.org/api/v2/doc/doc?query=(France%20OR%20French)%20AND%20(fuel%20shortage%20OR%20fuel%20strike%20OR%20refinery%20OR%20electricity%20outage%20OR%20water%20supply%20OR%20cyberattack%20OR%20port%20blockade%20OR%20transport%20strike%20OR%20food%20shortage%20OR%20hospital%20crisis)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
     "Veille Émirats — Dubaï": "https://api.gdeltproject.org/api/v2/doc/doc?query=(UAE%20OR%20Emirates%20OR%20Dubai%20OR%20Abu%20Dhabi)%20AND%20(missile%20OR%20drone%20OR%20airspace%20OR%20airport%20closure%20OR%20port%20OR%20Jebel%20Ali%20OR%20water%20OR%20desalination%20OR%20power%20outage%20OR%20banking%20OR%20cyberattack%20OR%20food%20supply)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
     "Veille Europe — stabilité et économie": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Europe%20OR%20European%20Union%20OR%20EU)%20AND%20(energy%20shortage%20OR%20gas%20supply%20OR%20electricity%20grid%20OR%20banking%20crisis%20OR%20sovereign%20debt%20OR%20capital%20controls%20OR%20mass%20protests%20OR%20general%20strike%20OR%20cyberattack%20OR%20infrastructure%20attack)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
+    "Veille Europe — prix et stocks énergétiques": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Europe%20OR%20European%20OR%20France)%20AND%20(%22gas%20storage%22%20OR%20%22gas%20prices%22%20OR%20%22TTF%20gas%22%20OR%20%22energy%20bills%22%20OR%20%22heating%20costs%22%20OR%20%22electricity%20prices%22%20OR%20%22LNG%20supply%22%20OR%20%22gas%20market%20tightness%22%20OR%20%22oil%20prices%22)&mode=artlist&format=rss&maxrecords=60&sort=datedesc",
     "Veille Moyen-Orient — sécurité et approvisionnement": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Middle%20East%20OR%20Iran%20OR%20Israel%20OR%20Gulf%20OR%20Yemen%20OR%20Saudi%20Arabia)%20AND%20(military%20attack%20OR%20missile%20OR%20drone%20OR%20escalation%20OR%20Hormuz%20OR%20Red%20Sea%20OR%20oil%20supply%20OR%20gas%20supply%20OR%20water%20crisis%20OR%20power%20outage%20OR%20civilian%20casualties)&mode=artlist&format=rss&maxrecords=60&sort=datedesc",
     "Veille mondiale — risques systémiques": "https://api.gdeltproject.org/api/v2/doc/doc?query=(global%20OR%20international)%20AND%20(major%20cyberattack%20OR%20pandemic%20OR%20epidemic%20OR%20food%20crisis%20OR%20energy%20crisis%20OR%20shipping%20disruption%20OR%20financial%20crisis%20OR%20nuclear%20incident%20OR%20critical%20infrastructure)&mode=artlist&format=rss&maxrecords=40&sort=datedesc",
 }
@@ -649,6 +650,72 @@ def qualify_situation(title, summary):
         {"id":"sovereign_financial","terms":["sovereign debt crisis","sovereign default","debt restructuring","crise de la dette souveraine","défaut souverain","restructuration de la dette publique"],"event":"Crise de dette souveraine","impact":"Risque de hausse des taux, mesures budgétaires et pression sur les banques et l'activité ; conséquences dépendantes du pays.","market":"Tension possible sur obligations, banques, euro et financement public.","action":"Suivre décisions gouvernementales, banque centrale et régulateurs ; distinguer dégradation de notation et défaut effectif.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Indicateurs à recouper"},
         {"id":"mass_social_disruption","terms":["nationwide general strike","national general strike","mass riots","state of emergency","grève générale nationale","émeutes généralisées","état d'urgence"],"event":"Troubles sociaux majeurs ou paralysie nationale","impact":"Risque de perturbation des transports, services publics, commerces et accès aux soins ; impact dépendant des villes et de la durée.","market":"Pertes d'activité, retards logistiques et incertitude pour les entreprises.","action":"Vérifier les zones et services touchés ; anticiper les déplacements et suivre les consignes officielles.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Échelle et conséquences à confirmer"}
     ]);
+    # Economic and social transmission signals: detect pressure before a formal shortage.
+    rules.extend([
+        {
+            "id": "gas_market_tightness",
+            "terms": ["gas market tightness", "low storage buffers", "low gas storage", "gas storage levels", "gas storage", "gas inventories", "gas stocks", "gas supply tightness", "faibles stocks de gaz", "stocks de gaz", "réserves de gaz", "stockage de gaz", "tension sur le marché du gaz", "approvisionnement gazier"],
+            "event": "Tension sur les réserves ou l'approvisionnement de gaz",
+            "impact": "Des stocks faibles ou une offre tendue peuvent renchérir le prix de gros du gaz. Une transmission aux factures de chauffage et de gaz des ménages est possible selon les contrats, les mécanismes tarifaires et le calendrier de révision ; elle n'est ni immédiate ni automatique.",
+            "market": "Risque de volatilité ou de hausse du gaz de gros (notamment TTF), avec effets possibles sur l'électricité, l'industrie et l'inflation.",
+            "action": "Suivre le niveau des stocks européens, les prix TTF, les flux de gaz et de GNL, la météo et les annonces de la Commission européenne. Pour la France, vérifier les évolutions tarifaires et les conditions de son contrat.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Risque de tension identifié ; évolution des prix et répercussion sur les factures à confirmer"
+        },
+        {
+            "id": "gas_price_increase",
+            "terms": ["gas prices rise", "gas price rises", "gas price surge", "gas price spike", "gas prices jump", "gas prices climb", "gas prices increase", "hausse du prix du gaz", "hausse des prix du gaz", "prix du gaz en hausse", "flambée du gaz", "envolée du gaz"],
+            "event": "Hausse des prix de marché du gaz",
+            "impact": "Une hausse durable des prix de gros peut augmenter les coûts de chauffage et de cuisson des ménages, directement ou lors d'une révision contractuelle, et peser sur les entreprises. L'ampleur dépend du pays, du contrat et des protections tarifaires.",
+            "market": "Pression potentielle sur l'électricité, les coûts industriels et l'inflation ; vérifier le TTF et la durée du mouvement.",
+            "action": "Distinguer mouvement journalier et hausse durable ; suivre TTF, prix de détail et annonces tarifaires françaises avant de conclure à une hausse des factures.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Hausse de marché à recouper avec les prix de détail"
+        },
+        {
+            "id": "oil_price_increase",
+            "terms": ["oil rises", "oil prices rise", "crude rises", "brent rises", "oil prices jump", "oil prices climb", "surge in oil prices", "pétrole en hausse", "hausse du pétrole", "prix du pétrole en hausse", "brent en hausse", "flambée du pétrole"],
+            "event": "Hausse du pétrole et risque de transmission aux carburants",
+            "impact": "Une hausse durable du brut peut se répercuter sur les prix des carburants, les transports et certains coûts de production. La répercussion dépend aussi du raffinage, des marges, des taxes et du taux de change.",
+            "market": "Pression potentielle sur Brent, diesel, essence, fret et inflation ; la hausse du brut ne se traduit pas mécaniquement ni immédiatement à la pompe.",
+            "action": "Suivre le Brent sur plusieurs séances, les cours des produits raffinés et les prix à la pompe en France ; distinguer réaction ponctuelle et tendance durable.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Transmission aux prix de détail possible, non automatique"
+        },
+        {
+            "id": "measles_health",
+            "terms": ["measles", "morbillo", "rougeole", "morbilli"],
+            "event": "Risque sanitaire lié à la rougeole",
+            "impact": "La rougeole est très contagieuse. Des cas ou foyers peuvent entraîner des chaînes de transmission, des consultations et hospitalisations, surtout chez les personnes non immunisées.",
+            "market": "Impact principalement sanitaire et organisationnel ; ne pas déduire une épidémie d'un article général ou d'un cas isolé.",
+            "action": "Vérifier le nombre de cas, les régions et les recommandations des autorités sanitaires ; consulter les recommandations vaccinales officielles et un professionnel de santé en cas de doute.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Cas, foyer et diffusion géographique à confirmer"
+        },
+        {
+            "id": "homecare_workforce",
+            "terms": ["private equity takeover of homecare", "private equity homecare", "home care workers", "homecare workers", "home care services", "domiciliary care", "soins à domicile", "aide à domicile"],
+            "event": "Tensions sociales dans les services de soins à domicile",
+            "impact": "Des changements de propriété ou de modèle économique peuvent affecter les conditions de travail, la continuité et l'accès aux services. L'effet dépend des opérateurs et des territoires concernés.",
+            "market": "Risque social et opérationnel pour un secteur essentiel ; impact local à documenter.",
+            "action": "Identifier les opérateurs, les territoires, les effets documentés sur les salariés et la continuité des prestations ; rechercher les rapports et réponses des autorités.",
+            "level": "À SURVEILLER", "score": 2, "polarity": "negative", "confidence": "Constats à vérifier selon les opérateurs et territoires"
+        },
+        {
+            "id": "humanitarian_crisis",
+            "terms": ["civilian killings", "civilian casualties", "siege", "gaza killings", "west bank raids", "west bank siege", "mass displacement", "forced displacement", "morts de civils", "victimes civiles", "siège", "déplacements forcés"],
+            "event": "Aggravation d'une crise humanitaire ou de violences contre les civils",
+            "impact": "Risque de victimes, déplacements de population, accès réduit aux soins et à l'aide humanitaire, et extension possible des tensions régionales.",
+            "market": "Effets indirects possibles via l'instabilité régionale, les routes commerciales, l'énergie et les dépenses humanitaires ; pas d'effet de marché automatique.",
+            "action": "Recouper les bilans et l'accès humanitaire auprès d'organisations reconnues ; suivre les avis aux voyageurs et les évolutions régionales.",
+            "level": "ÉLEVÉ", "score": 3, "polarity": "negative", "confidence": "Bilan humain et périmètre à recouper auprès de sources indépendantes"
+        },
+        {
+            "id": "flight_normalization",
+            "terms": ["resumes flights", "resume flights", "return to uae flights", "return to the uae", "flights resume", "restarting flights", "reintroduces flights", "reprise des vols", "reprend ses vols", "retour des vols"],
+            "event": "Reprise ou rétablissement de liaisons aériennes",
+            "impact": "Peut signaler une amélioration de la connectivité et une réduction de certaines perturbations opérationnelles. Cela ne prouve pas à lui seul la disparition du risque sécuritaire régional.",
+            "market": "Effet potentiellement favorable pour le tourisme, les compagnies et les déplacements ; portée limitée à la compagnie, aux routes et aux dates concernées.",
+            "action": "Vérifier les routes et dates effectivement rétablies, les avis officiels et les conditions des compagnies avant tout déplacement.",
+            "level": "ATTÉNUATION", "score": 0, "polarity": "positive", "confidence": "Reprise annoncée ; périmètre opérationnel à vérifier"
+        }
+    ])
     matches = []
     for rule in rules:
         if any(term in text for term in rule["terms"]):
