@@ -840,9 +840,89 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 # MAIN MENU: add "Candlestick Predictions"
 # -------------------------------------------------------------------
+def render_portfolio_strategy():
+    """Portfolio strategy plus a snapshot of the user's actual ETF and stock holdings."""
+    st.title("📊 Portfolio Strategy")
+
+    st.subheader("Composition du portefeuille réel — ETF et actions")
+    holdings = pd.DataFrame([
+        {"Actif": "Vanguard FTSE All-World (VWCE)", "Type": "ETF", "Valeur (€)": 139.76},
+        {"Actif": "Xtrackers World Utilities (XDWU)", "Type": "ETF", "Valeur (€)": 89.12},
+        {"Actif": "Amundi World Health Care (WELS)", "Type": "ETF", "Valeur (€)": 88.88},
+        {"Actif": "TotalEnergies", "Type": "Action", "Valeur (€)": 107.42},
+        {"Actif": "ExxonMobil", "Type": "Action", "Valeur (€)": 99.03},
+        {"Actif": "Air Liquide", "Type": "Action", "Valeur (€)": 56.54},
+        {"Actif": "FTAI Aviation", "Type": "Action", "Valeur (€)": 44.01},
+        {"Actif": "Frontline", "Type": "Action", "Valeur (€)": 43.62},
+        {"Actif": "Thales", "Type": "Action", "Valeur (€)": 23.46},
+        {"Actif": "Lockheed Martin", "Type": "Action", "Valeur (€)": 23.28},
+    ])
+    total_value = float(holdings["Valeur (€)"].sum())
+    holdings["Poids (%)"] = holdings["Valeur (€)"] / total_value * 100
+    by_type = holdings.groupby("Type", as_index=False)["Valeur (€)"].sum()
+    by_type["Poids (%)"] = by_type["Valeur (€)"] / total_value * 100
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Valeur du relevé", f"{total_value:,.2f} €")
+    c2.metric("ETF", f"{by_type.loc[by_type['Type'] == 'ETF', 'Valeur (€)'].sum():,.2f} €")
+    c3.metric("Actions", f"{by_type.loc[by_type['Type'] == 'Action', 'Valeur (€)'].sum():,.2f} €")
+
+    left, right = st.columns(2)
+    with left:
+        fig_assets = go.Figure(go.Pie(
+            labels=holdings["Actif"], values=holdings["Valeur (€)"],
+            hole=0.42, sort=False, textinfo="percent"
+        ))
+        fig_assets.update_layout(title="Répartition par actif", height=420, legend=dict(orientation="v"))
+        st.plotly_chart(fig_assets, use_container_width=True)
+    with right:
+        fig_types = go.Figure(go.Pie(
+            labels=by_type["Type"], values=by_type["Valeur (€)"],
+            hole=0.48, sort=False, textinfo="label+percent+value"
+        ))
+        fig_types.update_layout(title="ETF vs actions", height=420)
+        st.plotly_chart(fig_types, use_container_width=True)
+
+    st.subheader("Détail des positions")
+    st.dataframe(
+        holdings.sort_values("Valeur (€)", ascending=False).style.format(
+            {"Valeur (€)": "{:,.2f} €", "Poids (%)": "{:.2f}%"}
+        ),
+        use_container_width=True, hide_index=True
+    )
+    st.caption("Base de valorisation : dernier relevé de portefeuille retrouvé au 13/10/2026. Ces montants ne sont pas des valorisations en temps réel ; ils devront être actualisés pour refléter les positions du jour.")
+
+    st.divider()
+    st.subheader("Allocation stratégique dynamique")
+    portfolio_df = load_portfolio()
+    portfolio_dynamic = dynamic_portfolio_adjustment(portfolio_df, btc_df_adj, gold_df_adj)
+    if portfolio_dynamic is None or portfolio_dynamic.empty:
+        st.warning("Le fichier d'allocation stratégique est vide ou indisponible.")
+    else:
+        if "Dynamic_Allocation" in portfolio_dynamic.columns:
+            st.dataframe(
+                portfolio_dynamic.style.highlight_max(
+                    subset=["Dynamic_Allocation"], color="lightgreen"
+                ).format({"Dynamic_Allocation": "{:.2f}%", "Base_Allocation": "{:.2f}%"}),
+                use_container_width=True, hide_index=True
+            )
+            label_col = "Company" if "Company" in portfolio_dynamic.columns else "Asset"
+            if label_col in portfolio_dynamic.columns:
+                fig_strategy = go.Figure(go.Pie(
+                    labels=portfolio_dynamic[label_col],
+                    values=portfolio_dynamic["Dynamic_Allocation"],
+                    hole=0.38
+                ))
+                fig_strategy.update_layout(title="Allocation stratégique cible — ajustée dynamiquement")
+                st.plotly_chart(fig_strategy, use_container_width=True)
+        else:
+            st.dataframe(portfolio_dynamic, use_container_width=True, hide_index=True)
+    render_eur_aed_monitor()
+
+
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Portfolio Strategy", "Jobs", "Real Estate Bot",  "Formation Word & Excel", "Task Planner", "Newsletter"]
+    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
 )
 
 
@@ -1054,39 +1134,5 @@ elif menu == "Task Planner":
 # Newesletter
 # -------------------------------------------------------------------
 elif menu == "Newsletter":
-    newsletter_dashboard()
+    newsletter_dashboard(portfolio_strategy_renderer=render_portfolio_strategy)
 # -------------------------------------------------------------------
-# Portfolio Strategy
-# -------------------------------------------------------------------
-elif menu == "Portfolio Strategy":
-
-    st.title("📈 Dynamic Portfolio Allocation")
-
-    portfolio_df = load_portfolio()
-    portfolio_dynamic = dynamic_portfolio_adjustment(
-        portfolio_df,
-        btc_df_adj,
-        gold_df_adj
-    )
-
-    st.dataframe(
-        portfolio_dynamic.style.highlight_max(
-            subset=["Dynamic_Allocation"],
-            color="lightgreen"
-        )
-    )
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Pie(
-        labels=portfolio_dynamic["Company"],
-        values=portfolio_dynamic["Dynamic_Allocation"],
-        hole=0.35
-    ))
-
-    fig.update_layout(
-        title="Dynamic Portfolio Allocation"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-    render_eur_aed_monitor()
