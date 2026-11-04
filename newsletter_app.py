@@ -1006,7 +1006,7 @@ def main():
         st.title("WELS Actions")
         page = st.radio("Navigation", [
             "Vue d'ensemble", "Marchés & portefeuille", "Géopolitique & approvisionnement",
-            "CHF & devises", "Newsletter"
+            "CHF & devises"
         ], key="wels_navigation_v3")
         if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
@@ -1018,8 +1018,6 @@ def main():
     elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "Géopolitique & approvisionnement": geopolitics_supply_dashboard(df)
     elif page == "CHF & devises": fx_chf_page()
-    elif page == "Newsletter": enhanced_newsletter_page(df, errors)
-    else: enhanced_newsletter_page(df, errors)
 
 def newsletter_dashboard():
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
