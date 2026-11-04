@@ -130,8 +130,20 @@ def fetch_news(max_per_feed=25):
                     "Résumé": summary[:2500],
                     "Lien": link,
                 })
+        except requests.exceptions.HTTPError as exc:
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            body = clean_html(getattr(response, "text", ""))[:240]
+            errors.append(
+                f"{source} : HTTP {status or 'inconnu'}"
+                + (f" — réponse serveur : {body}" if body else "")
+            )
+        except requests.exceptions.Timeout:
+            errors.append(f"{source} : délai dépassé (timeout après 12 secondes)")
+        except requests.exceptions.RequestException as exc:
+            errors.append(f"{source} : erreur réseau {type(exc).__name__} — {str(exc)[:180]}")
         except Exception as exc:
-            errors.append(f"{source} : {type(exc).__name__}")
+            errors.append(f"{source} : {type(exc).__name__} — {str(exc)[:180]}")
     if not articles:
         return pd.DataFrame(), errors
     df = pd.DataFrame(articles).drop_duplicates(subset=["Lien"])
