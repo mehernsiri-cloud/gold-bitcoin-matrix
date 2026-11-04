@@ -586,6 +586,109 @@ def enhanced_sources_page():
     )
 
 
+
+def executive_dashboard(df):
+    """Compact, article-free executive risk dashboard for the Overview page."""
+    st.markdown("""
+    <style>
+    .risk-shell {background:#050505;border:1px solid #242424;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
+    .risk-head {display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .risk-title {font-size:21px;font-weight:750;letter-spacing:.2px;color:#eee}
+    .risk-sub {font-size:14px;color:#bdbdbd;margin-top:4px}
+    .risk-pill {border-radius:20px;padding:5px 11px;font-size:13px;font-weight:700;background:#321706;color:#ff8a32}
+    .risk-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+    .risk-card {border-radius:16px;padding:13px 12px 10px;min-height:118px}
+    .risk-card.red {background:#1b0708}.risk-card.amber {background:#1c1507}.risk-card.green {background:#07180e}
+    .risk-icon {font-size:21px}.risk-label {font-size:16px;font-weight:700;color:#eee;margin-top:7px}
+    .risk-level {font-size:21px;font-weight:800;margin-top:7px}
+    .risk-detail {font-size:13px;color:#d0d0d0;margin-top:8px}
+    .risk-divider {border-top:1px solid #242424;margin:18px 0 16px}
+    @media(max-width:600px){.risk-grid{grid-template-columns:1fr}.risk-card{min-height:95px}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    def topic_rows(topic):
+        if df.empty or "Thèmes" not in df.columns:
+            return df
+        return df[df["Thèmes"].apply(lambda tags: topic in tags)]
+
+    war = topic_rows("Géopolitique / conflit")
+    supply = topic_rows("Approvisionnement")
+    market = topic_rows("Marchés")
+    chf = topic_rows("Suisse / CHF")
+
+    def level_for(rows, default="MODÉRÉ"):
+        if rows.empty: return default
+        if "Priorité" in rows.columns and (rows["Priorité"] == "À examiner en priorité").any():
+            return "ÉLEVÉ"
+        if len(rows) >= 5: return "ÉLEVÉ"
+        return "À SURVEILLER" if len(rows) >= 2 else "MODÉRÉ"
+
+    war_level = level_for(war, "NON ÉVALUÉ")
+    france_level = level_for(supply, "NON ÉVALUÉ")
+    market_level = "VOLATIL" if len(market) >= 4 else ("À SURVEILLER" if len(market) >= 1 else "CALME")
+    levels = [war_level, france_level]
+    global_level = "RISQUE ÉLEVÉ" if "ÉLEVÉ" in levels else ("VIGILANCE" if any(x == "À SURVEILLER" for x in levels) or market_level == "VOLATIL" else "RISQUE MODÉRÉ")
+    stamp = datetime.now().astimezone().strftime("%d %b %Y")
+    pill_class = "background:#321706;color:#ff8a32" if global_level == "RISQUE ÉLEVÉ" else ("background:#2a2107;color:#ffc04d" if global_level == "VIGILANCE" else "background:#092313;color:#43d17a")
+    st.markdown(f"""
+    <div class="risk-shell">
+      <div class="risk-head">
+        <div><div class="risk-title">GLOBAL RISK MONITOR</div>
+        <div class="risk-sub">Daily Intelligence Dashboard · {stamp}</div></div>
+        <div class="risk-pill" style="{pill_class}">{global_level}</div>
+      </div>
+      <div class="risk-grid">
+        <div class="risk-card {'red' if war_level == 'ÉLEVÉ' else 'amber'}">
+          <div class="risk-icon">◎</div><div class="risk-label">Géopolitique</div>
+          <div class="risk-level" style="color:{'#ff5d61' if war_level == 'ÉLEVÉ' else '#ffad48'}">{war_level}</div>
+          <div class="risk-detail">{len(war)} signal(aux) détecté(s) · flux presse</div>
+        </div>
+        <div class="risk-card {'amber' if market_level != 'CALME' else 'green'}">
+          <div class="risk-icon">▥</div><div class="risk-label">Marchés</div>
+          <div class="risk-level" style="color:{'#ffad48' if market_level != 'CALME' else '#43d17a'}">{market_level}</div>
+          <div class="risk-detail">{len(market)} actualité(s) marché · volatilité à confirmer par les cours</div>
+        </div>
+        <div class="risk-card {'red' if france_level == 'ÉLEVÉ' else 'amber'}">
+          <div class="risk-icon">♧</div><div class="risk-label">France</div>
+          <div class="risk-level" style="color:{'#ff5d61' if france_level == 'ÉLEVÉ' else '#ffad48'}">{france_level}</div>
+          <div class="risk-detail">{len(supply)} signal(aux) approvisionnement · portée locale à confirmer</div>
+        </div>
+      </div>
+      <div class="risk-divider"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.subheader("Market snapshot")
+    instruments = [
+        ("Brent", "BZ=F", "$"),
+        ("Or", "GC=F", "$"),
+        ("EUR / CHF", "EURCHF=X", ""),
+        ("EUR / AED", "EURAED=X", ""),
+    ]
+    cols = st.columns(2)
+    for i, (label, symbol, suffix) in enumerate(instruments):
+        hist = fetch_history(symbol, "1mo")
+        with cols[i % 2]:
+            st.caption(label)
+            if hist.empty:
+                st.metric(label, "Indisponible")
+                continue
+            last = float(hist["Cours"].iloc[-1])
+            previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+            delta = ((last / previous) - 1) * 100 if previous else 0
+            if label in ("EUR / CHF", "EUR / AED"):
+                value = f"{last:.4f}"
+            else:
+                value = f"{last:,.2f} {suffix}"
+            st.metric(label, value, f"{delta:+.2f} %")
+    if not chf.empty:
+        st.caption(f"Veille CHF : {len(chf)} actualité(s) détectée(s). Le sens de conversion est présenté dans l'onglet « CHF & devises ».")
+    st.caption("Indicateurs issus de flux presse et de cours indicatifs (potentiellement différés). Les niveaux sont des signaux de veille, pas une évaluation officielle du risque.")
+    if not df.empty:
+        with st.expander("État technique des sources"):
+            st.write(f"{len(df)} articles analysés en arrière-plan ; aucun article n'est affiché sur cette page.")
+
 def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
     st.title("📰 WELS Actions — Market, War & CHF Monitor")
@@ -605,25 +708,7 @@ def main():
             st.rerun()
         st.caption("Actualités et cours : cache 15 min")
     if page == "Vue d'ensemble":
-        st.header("Briefing quotidien")
-        st.caption("Marchés, conflits, CHF et approvisionnement — sources et dates visibles.")
-        a, b, c, d = st.columns(4)
-        a.metric("Articles collectés", len(df))
-        war = df[df["Thèmes"].apply(lambda x: "Géopolitique / conflit" in x)] if not df.empty else df
-        supply = df[df["Thèmes"].apply(lambda x: "Approvisionnement" in x)] if not df.empty else df
-        chf = df[df["Thèmes"].apply(lambda x: "Suisse / CHF" in x)] if not df.empty else df
-        b.metric("Géopolitique", len(war)); c.metric("Approvisionnement", len(supply)); d.metric("Suisse / CHF", len(chf))
-        st.subheader("Alertes éditoriales à examiner")
-        candidates = df[df["Priorité"] != "Information"] if not df.empty else df
-        if candidates.empty: st.success("Aucun article prioritaire repéré par les mots-clés.")
-        else:
-            st.warning("Triage automatique de titres/résumés : ce niveau ne confirme pas une urgence.")
-            render_alert_articles(candidates, 12)
-        st.subheader("Dernières actualités")
-        render_alert_articles(df, 8)
-        if errors:
-            with st.expander(f"Sources indisponibles ({len(errors)})"):
-                for error in errors: st.write("• " + error)
+        executive_dashboard(df)
     elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "Guerres & géopolitique": war_risk_page(df)
     elif page == "CHF & devises": fx_chf_page()
