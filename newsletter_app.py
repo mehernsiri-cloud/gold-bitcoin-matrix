@@ -777,26 +777,25 @@ def geopolitics_supply_dashboard(df):
             actions.append("Énergie et transport : surveiller les flux physiques, les annonces réglementaires et le Brent ; ne pas assimiler une hausse de risque à une pénurie déjà constatée.")
         if any(event["id"] in {"medicine_shortage"} for event in negative_events):
             actions.append("Médicaments : vérifier le produit précis avec le pharmacien et les informations de l'ANSM ; ne pas faire de réserves non nécessaires.")
-        if any(event["id"] in {"war_escalation"} for event in negative_events):
+        if any(event["id"] in {"water_desalination"} for event in negative_events):
+            actions.append("Eau potable : vérifier les consignes de l'opérateur et des autorités locales ; appliquer les recommandations officielles de réserve si une perturbation est confirmée.")
+        if any(event["id"] in {"airspace_airport"} for event in negative_events):
+            actions.append("Voyages : contrôler les statuts de vol et les avis des aéroports/compagnies avant tout déplacement, en particulier dans le Golfe.")
+        if any(event["id"] in {"cyber_critical"} for event in negative_events):
+            actions.append("Services essentiels : identifier les opérateurs touchés et les services indisponibles ; suivre les canaux officiels, sans relayer de rumeurs.")
+        if any(event["id"] in {"banking_capital", "sovereign_financial"} for event in negative_events):
+            actions.append("Banques et liquidités : distinguer rumeurs, tensions de marché et mesures officielles ; vérifier les communications des autorités financières.")
+        if any(event["id"] in {"food_supply"} for event in negative_events):
+            actions.append("Alimentation : vérifier les produits et zones réellement touchés ; conserver des réserves domestiques raisonnables, sans achats de panique.")
+        if any(event["id"] in {"mass_social_disruption"} for event in negative_events):
+            actions.append("Continuité quotidienne : vérifier les transports, écoles, services de santé et consignes locales avant les déplacements.")
+        if any(event["id"] in {"war_escalation", "military_direct_threat"} for event in negative_events):
             actions.append("Géopolitique : recouper les faits auprès de sources fiables et suivre les avis officiels ; distinguer risque régional et impact direct en France.")
         for action in actions:
             st.markdown(f"- {action}")
         st.caption("Ces actions sont des mesures de vérification et de préparation proportionnées, pas des consignes d'achat ni des prédictions.")
 
-    st.markdown("### Signaux à vérifier — non qualifiés")
-    st.caption("Actualités de la période qui n'ont pas déclenché de règle d'impact. Elles restent visibles pour éviter qu'une actualité importante soit ignorée.")
-    qualified_titles = {event["title"] for event in events}
-    remaining = selected[~selected["Titre"].astype(str).isin(qualified_titles)] if "Titre" in selected.columns else selected
-    if remaining.empty:
-        st.info("Aucun autre titre dans les flux sélectionnés.")
-    else:
-        for _, row in remaining.head(12).iterrows():
-            title = str(row.get("Titre", "Titre indisponible"))
-            source = str(row.get("Source", "Source non précisée"))
-            url = str(row.get("Lien", ""))
-            st.markdown(f"- **{title}** — {source}" + (f" · [Source]({url})" if url.startswith("http") else ""))
-
-    st.caption("Méthode et limites : sélection par requêtes thématiques et qualification par mots-clés. Ce système réduit le bruit mais ne remplace pas une vérification factuelle. Les liens et dates doivent être contrôlés. Un même événement peut apparaître dans plusieurs médias ; les conséquences décrites sont des scénarios plausibles, pas des faits établis.")
+    st.caption("Les articles hors périmètre sont volontairement exclus de cette page afin de limiter le bruit. Une absence d'événement qualifié ne signifie pas une absence de risque : les flux et les règles de détection ont des limites.")
 
 
 def enhanced_newsletter_page(df, errors):
