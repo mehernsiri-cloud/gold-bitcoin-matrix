@@ -213,10 +213,6 @@ def newsletter_page():
         fetch_news.clear()
     with st.spinner("Récupération des flux RSS…"):
         df, errors = fetch_news()
-    if errors:
-        with st.expander(f"Sources indisponibles ou avec avertissement ({len(errors)})"):
-            for error in errors:
-                st.write("• " + error)
     if df.empty:
         st.error("Aucune actualité n’a pu être récupérée. Vérifiez la connexion Internet et les flux RSS.")
         return
@@ -314,120 +310,6 @@ def currencies_page():
     st.caption("L’AED est arrimé au dollar américain. Les cours de change peuvent être indisponibles selon le fournisseur de données.")
 
 
-def sources_page():
-    st.header("🧭 Sources et limites")
-    st.markdown("""
-    **Sources officielles utiles**
-    - [Gouvernement français](https://www.gouvernement.fr/)
-    - [Service-Public.fr](https://www.service-public.fr/)
-    - [Préfecture de police de Paris](https://www.prefecturedepolice.interieur.gouv.fr/)
-    - [Vigilance Météo-France](https://vigilance.meteofrance.fr/)
-    - [Banque de France](https://www.banque-france.fr/)
-    - [Banque nationale suisse](https://www.snb.ch/)
-    - [Agence internationale de l’énergie](https://www.iea.org/)
-
-    **Limites**
-    - Les flux RSS peuvent tomber en panne ou ne contenir qu’un titre et un bref résumé.
-    - L’extraction du texte intégral dépend des autorisations et de la structure de chaque site.
-    - Les cours peuvent être différés, incomplets ou indisponibles.
-    - Les mots-clés classent les actualités automatiquement : cette classification peut être imparfaite.
-    - Cette application ne détecte pas automatiquement les urgences et ne constitue pas un conseil financier.
-
-    **Bonnes pratiques**
-    - Vérifier la date, la zone géographique et la source.
-    - Distinguer les faits confirmés des hypothèses.
-    - Ne pas prendre de décision financière sur un titre seul.
-    - Éviter les achats de panique et surveiller la concentration et la liquidité.
-    """)
-
-
-def home_page():
-    st.header("Vue d’ensemble")
-    st.write("Un point de départ pour surveiller les marchés, les devises et les actualités prioritaires.")
-    now = datetime.now().astimezone()
-    st.caption(f"Dernière ouverture : {now.strftime('%d/%m/%Y à %H:%M %Z')}")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Marchés")
-        for label, symbol in [("Or (USD/once)", "GC=F"), ("Bitcoin (USD)", "BTC-USD"), ("Vanguard FTSE All-World", "VWRL.AS")]:
-            hist = fetch_history(symbol, "1mo")
-            if hist.empty:
-                st.write(f"**{label} :** données indisponibles")
-            else:
-                last = float(hist["Cours"].iloc[-1])
-                prev = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-                st.metric(label, f"{last:,.2f}", f"{(last / prev - 1) * 100:+.2f}% dernière séance")
-    with c2:
-        st.subheader("Actualités récentes")
-        df, errors = fetch_news()
-        if df.empty:
-            st.warning("Les flux RSS ne sont pas disponibles. Consultez l’onglet Newsletter.")
-        else:
-            recent = df.head(6)
-            for _, article in recent.iterrows():
-                date = article["Date"].strftime("%d/%m %H:%M UTC") if isinstance(article["Date"], datetime) else "Date inconnue"
-                st.markdown(f"**[{article['Titre']}]({article['Lien']})**")
-                st.caption(f"{date} · {article['Source']} · {article['Thème']}")
-                if article["Résumé"]:
-                    st.write(article["Résumé"][:350] + ("…" if len(article["Résumé"]) > 350 else ""))
-                st.divider()
-    st.info("Pour lire davantage, utilisez « Newsletter ». Pour comparer les performances, ouvrez « Marchés & portefeuille ».")
-
-
-
-# -------------------------------------------------------------------
-# WELS Actions — extensions Market / War / CHF / supply risk
-# -------------------------------------------------------------------
-WAR_TERMS = ["war", "invasion", "airstrike", "missile", "drone attack", "armed conflict",
-             "ceasefire", "nato", "otan", "sanction", "strait of hormuz", "red sea",
-             "ukraine", "iran", "israel", "gaza", "taiwan", "russia", "guerre",
-             "conflit", "attaque", "escalade", "blocus"]
-SUPPLY_TERMS = ["shortage", "stockout", "rationing", "blockade", "strike", "fuel shortage",
-                "power outage", "blackout", "gas supply", "medicine shortage", "supply disruption",
-                "pénurie", "rupture de stock", "rationnement", "blocage", "grève",
-                "carburant", "approvisionnement", "coupure", "médicament"]
-CHF_TERMS = ["swiss", "switzerland", "suisse", "franc suisse", "chf", "snb",
-             "banque nationale suisse", "eur/chf"]
-
-def classify_tags(title, summary, source):
-    text = f"{title} {summary} {source}".lower()
-    tags = []
-    if any(w in text for w in WAR_TERMS): tags.append("Géopolitique / conflit")
-    if any(w in text for w in SUPPLY_TERMS): tags.append("Approvisionnement")
-    if any(w in text for w in CHF_TERMS): tags.append("Suisse / CHF")
-    if any(w in text for w in TOPICS["Marchés et économie"]): tags.append("Marchés")
-    return tags or ["Autres"]
-
-def triage_priority(tags, title, summary):
-    text = f"{title} {summary}".lower()
-    priority_words = ["invasion", "missile attack", "airstrike", "strait of hormuz closed",
-                      "national emergency", "rationing", "pénurie nationale", "national shortage"]
-    watch_words = ["escalation", "sanctions", "strike", "blockade", "shortage", "disruption",
-                   "escalade", "grève", "blocage", "rupture de stock"]
-    if any(w in text for w in priority_words): return "À examiner en priorité"
-    if any(w in text for w in watch_words) or "Géopolitique / conflit" in tags: return "À surveiller"
-    return "Information"
-
-def enrich_news_frame(df):
-    if df.empty: return df
-    df = df.copy()
-    df["Thèmes"] = df.apply(lambda x: classify_tags(x.get("Titre", ""), x.get("Résumé", ""), x.get("Source", "")), axis=1)
-    df["Priorité"] = df.apply(lambda x: triage_priority(x["Thèmes"], x.get("Titre", ""), x.get("Résumé", "")), axis=1)
-    return df
-
-def render_alert_articles(df, limit=15):
-    if df.empty:
-        st.info("Aucun article correspondant sur la période.")
-        return
-    for _, article in df.head(limit).iterrows():
-        dt = article.get("Date")
-        date_label = dt.strftime("%d/%m/%Y %H:%M UTC") if isinstance(dt, datetime) else "Date inconnue"
-        tags = article.get("Thèmes", [])
-        st.markdown(f"**{article.get('Titre', '')}**")
-        st.caption(f"{date_label} · {article.get('Source', '')} · {' / '.join(tags)} · {article.get('Priorité', '')}")
-        if article.get("Résumé"): st.write(article["Résumé"])
-        st.markdown(f"[Lire la source originale]({article.get('Lien', '')})")
-        st.divider()
 
 def market_watch_page():
     st.header("📈 Marchés & portefeuille suivi")
@@ -576,16 +458,6 @@ def enhanced_newsletter_page(df, errors):
         with st.expander(f"Sources indisponibles ({len(errors)})"):
             for error in errors: st.write("• " + error)
 
-def enhanced_sources_page():
-    st.header("Sources, méthode et limites")
-    st.markdown(
-        "**Flux utilisés**\n- Franceinfo Monde, Économie et Société.\n- BBC World et Business.\n- Boursorama.\n- GDELT : agrégateur de presse, utile pour repérer des signaux mais pas une autorité de confirmation.\n\n"
-        "**Sources officielles pour confirmer**\n- [Gouvernement français](https://www.gouvernement.fr/) · [Service-Public](https://www.service-public.fr/) · [Préfecture de police de Paris](https://www.prefecturedepolice.interieur.gouv.fr/)\n"
-        "- [Banque nationale suisse](https://www.snb.ch/) · [Banque de France](https://www.banque-france.fr/) · [AIE](https://www.iea.org/)\n\n"
-        "**Limites**\n- Les flux RSS et cours peuvent être indisponibles ou différés.\n- Les alertes utilisent des mots-clés : elles ne valident ni gravité, ni localisation, ni causalité.\n- Pas de surveillance intrajournalière continue, pas d'ordre automatique, pas de conseil financier."
-    )
-
-
 
 def executive_dashboard(df):
     """Article-free executive dashboard: risk indicators and four market quotes."""
@@ -721,7 +593,7 @@ def main():
         st.title("WELS Actions")
         page = st.radio("Navigation", [
             "Vue d'ensemble", "Marchés & portefeuille", "Guerres & géopolitique",
-            "CHF & devises", "France — approvisionnement", "Newsletter", "Sources & limites"
+            "CHF & devises", "France — approvisionnement", "Newsletter"
         ], key="wels_navigation_v2")
         if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
@@ -735,7 +607,7 @@ def main():
     elif page == "CHF & devises": fx_chf_page()
     elif page == "France — approvisionnement": france_supply_page(df)
     elif page == "Newsletter": enhanced_newsletter_page(df, errors)
-    else: enhanced_sources_page()
+    else: enhanced_newsletter_page(df, errors)
 
 def newsletter_dashboard():
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
