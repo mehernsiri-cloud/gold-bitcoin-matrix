@@ -994,18 +994,24 @@ def geopolitics_supply_dashboard(df, errors=None):
                         if event["url"].startswith("http"):
                             st.markdown(f"[Ouvrir la source]({event['url']})")
 
-    if unqualified:
+    # La file de revue n'est affichée qu'après l'ouverture d'une région.
+    # Les expandeurs Streamlit ne peuvent pas être imbriqués : les articles
+    # sont donc présentés dans des conteneurs simples à l'intérieur du bloc.
+    if unqualified and selected_region is not None:
         with st.expander(f"Articles à examiner — non qualifiés automatiquement ({len(unqualified)})", expanded=False):
             st.caption("Articles récupérés mais non reconnus par les règles actuelles. Ils ne sont pas considérés comme sans importance ; cette zone permet de repérer les angles morts.")
-            for row in unqualified:
+            for index, row in enumerate(unqualified):
                 title = str(row.get("Titre", "Titre indisponible"))
-                with st.expander(title[:140], expanded=False):
+                with st.container():
+                    st.markdown(f"**{index + 1}. {title[:140]}**")
                     summary = str(row.get("Résumé", "") or "").strip()
                     if summary:
                         st.write(summary[:700])
                     url = str(row.get("Lien", "") or "")
                     if url.startswith("http"):
                         st.markdown(f"[Ouvrir la source]({url})")
+                    if index < len(unqualified) - 1:
+                        st.divider()
 
     st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
 
@@ -1166,6 +1172,12 @@ def main():
             "Vue d'ensemble", "Marchés & portefeuille", "Géopolitique & approvisionnement",
             "CHF & devises"
         ], key="wels_navigation_v3")
+        # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
+        # sans effacer la sélection lors des reruns provoqués par un clic régional.
+        previous_page = st.session_state.get("_wels_previous_navigation_page")
+        if previous_page != page:
+            st.session_state["wels_selected_risk_region"] = None
+            st.session_state["_wels_previous_navigation_page"] = page
         if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
             fetch_history.clear()
