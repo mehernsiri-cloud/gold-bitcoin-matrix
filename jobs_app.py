@@ -14,7 +14,7 @@ ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "39be78e26991e138d40ce4313620aebb")
 
 COUNTRIES = {
     "France": {"code": "fr", "where": "France", "linkedin": "France", "indeed": "France"},
-    "Dubaï": {"code": "ae", "where": "Dubai", "linkedin": "Dubai, United Arab Emirates", "indeed": "Dubai"},
+    "Dubaï": {"code": None, "where": "Dubai", "linkedin": "Dubai, United Arab Emirates", "indeed": "Dubai"},
     "Suisse": {"code": "ch", "where": "Switzerland", "linkedin": "Switzerland", "indeed": "Switzerland"},
 }
 
@@ -105,10 +105,11 @@ def _arbeitnow_country_match(location, country):
 def fetch_country_jobs(country):
     cfg = COUNTRIES[country]
     jobs = []
-    for role, keyword in ROLE_SEARCHES.items():
-        for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
-            job["role"] = role
-            jobs.append(job)
+    if cfg["code"]:
+        for role, keyword in ROLE_SEARCHES.items():
+            for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
+                job["role"] = role
+                jobs.append(job)
 
     for item in fetch_arbeitnow():
         location = item.get("location", "")
@@ -173,11 +174,26 @@ def _external_search_links(country):
     location = quote_plus(cfg["linkedin"])
     indeed_location = quote_plus(cfg["indeed"])
     indeed_domain = "fr.indeed.com" if country == "France" else "ae.indeed.com" if country == "Dubaï" else "ch.indeed.com"
-    return [
+    links = [
         ("LinkedIn", f"https://www.linkedin.com/jobs/search/?keywords={query}&location={location}&f_TPR=r2592000"),
         ("Indeed", f"https://{indeed_domain}/jobs?q={query}&l={indeed_location}&fromage=30"),
-        ("Welcome to the Jungle", f"https://www.welcometothejungle.com/fr/jobs?query={query}"),
     ]
+    if country == "France":
+        links.extend([
+            ("Welcome to the Jungle", f"https://www.welcometothejungle.com/fr/jobs?query={query}"),
+            ("France Travail", "https://candidat.francetravail.fr/offres/emploi"),
+        ])
+    elif country == "Dubaï":
+        links.extend([
+            ("Bayt", f"https://www.bayt.com/en/uae/jobs/?q={query}"),
+            ("GulfTalent", f"https://www.gulftalent.com/uae/jobs?search={query}"),
+        ])
+    else:
+        links.extend([
+            ("jobs.ch", f"https://www.jobs.ch/en/vacancies/?term={query}"),
+            ("Jobup.ch", f"https://www.jobup.ch/en/jobs/?term={query}"),
+        ])
+    return links
 
 
 def _render_job(job):
