@@ -16,6 +16,7 @@ permissions:
 jobs:
   hourly-predictions:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -56,8 +57,8 @@ jobs:
       - name: Generate AI predictions & backtest
         run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
 
-      - name: Update ROI data safely
-        run: python update_roi_data.py || echo "⚠️ update_roi_data.py failed, continuing"
+      - name: Update ROI data safely (max 90 seconds)
+        run: timeout 90s python update_roi_data.py || echo "⚠️ ROI refresh unavailable or timed out; keeping the last valid ROI data and continuing"
 
       - name: Commit & push CSV/JSON updates
         run: |
