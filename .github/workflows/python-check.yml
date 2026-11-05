@@ -6,6 +6,8 @@ on:
     paths:
       - "jobs_app.py"
       - "app.py"
+      - "real_estate_bot.py"
+      - "requirements.txt"
       - ".github/workflows/python-check.yml"
   pull_request:
     paths:
@@ -22,4 +24,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile application files
-        run: python -m py_compile jobs_app.py app.py
+        run: python -m py_compile jobs_app.py app.py real_estate_bot.py
