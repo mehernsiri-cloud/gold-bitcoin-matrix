@@ -318,7 +318,7 @@ def jobs_dashboard():
     filtered = [
         job for job in collected
         if pd.Timestamp(job["date"]) >= cutoff
-        and (not selected_roles or job.get("role") in selected_roles)
+        and job.get("role") in selected_roles
         and (source_filter == "Toutes les sources" or job.get("source") == source_filter)
     ]
     if sort_mode == "Plus récentes":
