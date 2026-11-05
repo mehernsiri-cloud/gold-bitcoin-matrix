@@ -217,7 +217,7 @@ def _render_job_card(job, accent):
     )
     st.markdown(
         f"""
-        <div class="job-card" style="--job-accent:{accent};--job-tint:{accent}22">
+        <div class="job-card" style="--job-accent:{accent};--job-tint:{accent}">
           <div class="job-card-top">
             <span class="job-source">{source}</span>
             <span class="job-date">{date}</span>
@@ -240,22 +240,22 @@ def jobs_dashboard():
         .jobs-layout-note {color:var(--text-color);opacity:.72;font-size:.88rem;margin-top:-.45rem}
         .job-card {
           min-height: 222px; height:100%; padding:17px; margin:0 0 14px 0;
-          border:1px solid color-mix(in srgb, var(--job-accent) 58%, #ffffff);
+          border:1px solid rgba(0,0,0,.12);
           border-top:5px solid var(--job-accent);
-          border-radius:15px; background:var(--job-tint);
+          border-radius:15px; background:var(--job-tint); color:#17202a;
           display:flex; flex-direction:column; gap:9px;
           box-shadow:0 3px 12px rgba(0,0,0,.10);
         }
         .job-card-top {display:flex;justify-content:space-between;gap:8px;align-items:center}
-        .job-source {font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;opacity:.72}
-        .job-date {font-size:.72rem;opacity:.68;white-space:nowrap}
+        .job-source {font-size:.72rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#263442;opacity:1}
+        .job-date {font-size:.72rem;color:#263442;opacity:1;white-space:nowrap}
         .job-title {font-size:1.03rem;line-height:1.3;font-weight:800;min-height:2.6em}
-        .job-title-link {color:var(--text-color)!important;text-decoration:none!important}
-        .job-title-link:hover {text-decoration:underline!important;color:var(--job-accent)!important}
-        .job-company {font-size:.9rem;font-weight:600;opacity:.88}
-        .job-location {font-size:.82rem;opacity:.72}
+        .job-title-link {color:#17202a!important;text-decoration:none!important}
+        .job-title-link:hover {text-decoration:underline!important;color:#334155!important}
+        .job-company {font-size:.9rem;font-weight:700;color:#17202a;opacity:1}
+        .job-location {font-size:.82rem;color:#263442;opacity:1}
         .job-tags {margin-top:2px}
-        .job-tags span {display:inline-block;border:1px solid rgba(128,128,128,.35);border-radius:20px;padding:4px 9px;font-size:.69rem;opacity:.82}
+        .job-tags span {display:inline-block;border:1px solid rgba(23,32,42,.28);border-radius:20px;padding:4px 9px;font-size:.69rem;color:#17202a;opacity:1}
         .job-card-bottom {margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end}
         .job-apply {display:inline-block;background:var(--job-accent);color:#17202a!important;text-decoration:none!important;padding:8px 14px;border-radius:18px;font-size:.8rem;font-weight:800;box-shadow:0 2px 5px rgba(0,0,0,.12)}
         .job-apply:hover {filter:brightness(.94)}
