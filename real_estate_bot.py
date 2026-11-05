@@ -1,314 +1,249 @@
-# real_estate_bot.py
-"""
-Dubai Real Estate Sales Bot (MVP) — Streamlit with GitHub REST API push + Dynamic ROI insights
+"""Real-estate listings for coastal towns in the Nabeul governorate, Tunisia.
 
-Features:
-- Form-based lead collection
-- Saves leads to CSV (data/real_estate_leads.csv)
-- Pushes leads CSV to GitHub using GH_PAT + GH_REPO
-- Loads ROI data from data/roi_data.json (refreshed hourly via GitHub Actions)
+The dashboard aggregates publicly visible classified listings where possible.
+Listings are indicative; users must verify availability, ownership and legal status
+with the advertiser/notary before any commitment.
 """
-import os
 import re
-import json
-import base64
-import requests
-from datetime import datetime
-import streamlit as st
+import unicodedata
+from urllib.parse import urljoin
+
 import pandas as pd
-import matplotlib.pyplot as plt
+import requests
+import streamlit as st
+from bs4 import BeautifulSoup
 
-# ------------------------------
-# Config / paths
-# ------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-LEADS_CSV = os.path.join(DATA_DIR, "real_estate_leads.csv")
-MARKET_DATA_JSON = os.path.join(DATA_DIR, "market_data.json")
-ROI_DATA_JSON = os.path.join(DATA_DIR, "roi_data.json")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-# ------------------------------
-# Load / create market_data.json
-# ------------------------------
-DEFAULT_MARKET_DATA = {
-    "JVC": {"roi": 6.0, "price_range": "400K-500K"},
-    "Dubai South": {"roi": 5.8, "price_range": "350K-500K"},
-    "Dubai Marina": {"roi": 6.5, "price_range": "500K-900K"},
-    "Business Bay": {"roi": 6.3, "price_range": "500K-1M"},
-    "Downtown": {"roi": 7.0, "price_range": "1M-3M"},
-    "Palm Jumeirah": {"roi": 7.2, "price_range": "1M-5M"}
+MAX_PRICE_TND = 300_000
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; NabeulPropertyWatch/1.0)",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
 }
-if not os.path.exists(MARKET_DATA_JSON):
-    with open(MARKET_DATA_JSON, "w", encoding="utf-8") as f:
-        json.dump(DEFAULT_MARKET_DATA, f, indent=2)
-with open(MARKET_DATA_JSON, "r", encoding="utf-8") as f:
-    MARKET_DATA = json.load(f)
-
-# ------------------------------
-# Load / create ROI data (dynamic)
-# ------------------------------
-DEFAULT_ROI_SAMPLE = {
-    "Dubai Marina": {
-        "Studio": {"roi": 6.8, "avg_price": 650000},
-        "1BR": {"roi": 6.4, "avg_price": 820000},
-        "2BR": {"roi": 6.1, "avg_price": 1200000}
-    },
-    "Business Bay": {
-        "Studio": {"roi": 6.1, "avg_price": 520000},
-        "1BR": {"roi": 6.0, "avg_price": 760000},
-        "2BR": {"roi": 5.8, "avg_price": 1000000}
-    },
-    "JVC": {
-        "Studio": {"roi": 5.9, "avg_price": 420000},
-        "1BR": {"roi": 6.0, "avg_price": 520000},
-        "2BR": {"roi": 6.2, "avg_price": 700000}
-    },
-    "Downtown": {
-        "1BR": {"roi": 7.1, "avg_price": 1500000},
-        "2BR": {"roi": 6.9, "avg_price": 2200000},
-        "Studio": {"roi": 6.6, "avg_price": 900000}
-    }
+COASTAL_TOWNS = {
+    "Nabeul": ["nabeul"],
+    "Hammamet": ["hammamet", "yasmine hammamet", "hammamet sud", "hammamet nord"],
+    "Kélibia": ["kelibia", "kélibia", "mansourah", "dar allouche", "kerkouane"],
+    "Korba": ["korba"],
+    "Menzel Temime": ["menzel temime", "menzel tmim"],
+    "Béni Khiar": ["beni khiar", "béni khiar"],
+    "Dar Chaâbane": ["dar chaabane", "dar chaâbane"],
+    "El Haouaria": ["el haouaria", "haouaria"],
+    "Soliman": ["soliman"],
+    "Mrezga": ["mrezga"],
+    "Maâmoura": ["maamoura", "maâmoura"],
+    "Tazarka": ["tazarka"],
 }
-if not os.path.exists(ROI_DATA_JSON):
-    with open(ROI_DATA_JSON, "w", encoding="utf-8") as f:
-        json.dump(DEFAULT_ROI_SAMPLE, f, indent=2)
-with open(ROI_DATA_JSON, "r", encoding="utf-8") as f:
-    ROI_DATA = json.load(f)
+TAYARA_URL = "https://www.tayara.tn/listing/c/immobilier/maisons-et-villas/l/nabeul/?page=1"
+SOURCE_URLS = {
+    "Tayara": TAYARA_URL,
+    "TounesImmo – maisons": "https://www.tounesimmo.com/maison-a-vendre-nabeul",
+    "Limmobilier.tn – villas": "https://limmobilier.tn/vente/villa/nabeul",
+    "Limmobilier.tn – maisons": "https://limmobilier.tn/vente/maison/nabeul",
+}
 
+def _norm(value):
+    value = unicodedata.normalize("NFKD", str(value or "").lower())
+    return "".join(ch for ch in value if not unicodedata.combining(ch))
 
-# ------------------------------
-# Form choices & lists
-# ------------------------------
-PROPERTY_TYPES = ["Studio", "1BR", "2BR", "3BR", "Apartment", "Villa", "Penthouse", "Townhouse"]
-AREAS = sorted(list(set(list(MARKET_DATA.keys()) + list(ROI_DATA.keys()))))
-
-PURPOSES = ["Investment", "Personal Use", "Holiday Home", "Mixed"]
-HORIZONS = ["<1 year", "1-3 years", "3-5 years", "5+ years"]
-PAYMENT_TYPES = ["Cash", "Payment Plan", "Mortgage"]
-
-# small curated country list (expand if needed)
-COUNTRIES = [
-    "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Oman", "Bahrain",
-    "France", "Germany", "United Kingdom", "United States", "Canada", "India",
-    "Pakistan", "China", "Russia", "Italy", "Spain", "Australia", "South Africa",
-    "Brazil", "Turkey", "Egypt", "Lebanon", "Jordan", "Philippines"
-]
-NATIONALITIES = COUNTRIES.copy()
-
-# ------------------------------
-# Ensure leads CSV exists with new headers
-# ------------------------------
-def init_leads_csv():
-    if not os.path.exists(LEADS_CSV):
-        df = pd.DataFrame(columns=[
-            "name", "phone", "email", "budget", "preference", "area",
-            "country", "nationality", "purpose", "horizon", "payment_type", "timestamp"
-        ])
-        df.to_csv(LEADS_CSV, index=False)
-init_leads_csv()
-
-# ------------------------------
-# GitHub REST API helper (Streamlit secrets)
-# ------------------------------
-def push_csv_to_github_api(commit_message: str = None) -> bool:
-    token = st.secrets.get("GH_PAT")
-    repo = st.secrets.get("GH_REPO")
-    branch = st.secrets.get("GH_BRANCH", "main")
-
-    if not token or not repo:
-        st.warning("⚠️ GH_PAT or GH_REPO not set — add them in Streamlit Cloud Secrets.")
-        return False
-
-    api_url = f"https://api.github.com/repos/{repo}/contents/data/real_estate_leads.csv"
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-
-    try:
-        with open(LEADS_CSV, "rb") as f:
-            content_bytes = f.read()
-    except FileNotFoundError:
-        st.error("Local leads CSV not found.")
-        return False
-
-    content_b64 = base64.b64encode(content_bytes).decode("utf-8")
-    if not commit_message:
-        commit_message = f"Update leads CSV — {datetime.utcnow().isoformat()}"
-
-    resp_get = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
-    sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
-
-    payload = {"message": commit_message, "content": content_b64, "branch": branch}
-    if sha:
-        payload["sha"] = sha
-
-    resp_put = requests.put(api_url, headers=headers, json=payload, timeout=30)
-    if resp_put.status_code in (200, 201):
-        st.info("✅ Leads CSV pushed to GitHub successfully.")
-        return True
-    else:
-        st.error(f"GitHub API error ({resp_put.status_code}): {resp_put.text}")
-        return False
-
-# ------------------------------
-# Save lead locally and push to GitHub
-# ------------------------------
-def save_lead_and_push(fields: dict) -> bool:
-    lead = fields.copy()
-    lead["timestamp"] = datetime.utcnow().isoformat()
-    try:
-        df = pd.read_csv(LEADS_CSV)
-    except Exception:
-        df = pd.DataFrame(columns=[
-            "name", "phone", "email", "budget", "preference", "area",
-            "country", "nationality", "purpose", "horizon", "payment_type", "timestamp"
-        ])
-    df = pd.concat([df, pd.DataFrame([lead])], ignore_index=True)
-    df.to_csv(LEADS_CSV, index=False)
-    return push_csv_to_github_api()
-
-# ------------------------------
-# ROI utilities
-# ------------------------------
-def get_roi_for(area: str, prop_type: str):
-    """Return ROI and avg_price if available for area+property type."""
-    area_data = ROI_DATA.get(area, {})
-    typ = area_data.get(prop_type)
-    if typ:
-        return typ.get("roi"), typ.get("avg_price")
-    # fallback to MARKET_DATA if present
-    m = MARKET_DATA.get(area, {})
-    return m.get("roi"), None
-
-def recommend_by_roi(prop_type: str, top_n: int = 5):
-    """Return list of (area, roi, avg_price) sorted by roi desc for given property type."""
-    results = []
-    for area, types in ROI_DATA.items():
-        info = types.get(prop_type)
-        if info and info.get("roi") is not None:
-            results.append((area, info["roi"], info.get("avg_price")))
-    # Also consider MARKET_DATA fallback (if roi exists)
-    for area, m in MARKET_DATA.items():
-        if area not in [r[0] for r in results] and m.get("roi") is not None:
-            results.append((area, m["roi"], m.get("price_range")))
-    results_sorted = sorted(results, key=lambda x: (x[1] if x[1] is not None else -1), reverse=True)
-    return results_sorted[:top_n]
-
-# ------------------------------
-# Streamlit UI
-# ------------------------------
-def real_estate_dashboard():
-    st.title("🏠 Dubai Real Estate Bot — Market Insights & Lead Capture")
-    st.write("Please fill out all mandatory fields (*). The app shows ROI insights for the selected property type.")
-
-    with st.form(key="lead_form"):
-        name = st.text_input("Full Name *", placeholder="e.g., John Doe")
-        phone = st.text_input("Phone (UAE format) *", placeholder="e.g., +971501234567")
-        email = st.text_input("Email *", placeholder="e.g., example@gmail.com")
-        budget = st.number_input("Budget in AED *", min_value=100_000, step=50_000, value=500_000)
-        preference = st.selectbox("Property Type *", PROPERTY_TYPES)
-        area = st.selectbox("Preferred Area *", AREAS)
-
-        country = st.selectbox("Country of Residence *", COUNTRIES)
-        nationality = st.selectbox("Nationality *", NATIONALITIES)
-        purpose = st.radio("Purpose of Investment *", PURPOSES, horizontal=True)
-        horizon = st.radio("Investment Horizon *", HORIZONS, horizontal=True)
-        payment_type = st.radio("Preferred Payment Type *", PAYMENT_TYPES, horizontal=True)
-
-        submit_btn = st.form_submit_button("Submit")
-
-    if submit_btn:
-        errors = []
-        if not name.strip():
-            errors.append("Name is required.")
-        if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
-            errors.append("Invalid email format.")
-        if not re.match(r"^(\+971\s?\d{7,9}|05\d{7})$", phone):
-            errors.append("Invalid UAE phone number (use +971xxxxxxxx or 05xxxxxxx).")
-
-        if errors:
-            for e in errors:
-                st.error(e)
-            return
-
-        lead_data = {
-            "name": name.strip(),
-            "phone": phone.strip(),
-            "email": email.strip(),
-            "budget": int(budget),
-            "preference": preference,
-            "area": area,
-            "country": country,
-            "nationality": nationality,
-            "purpose": purpose,
-            "horizon": horizon,
-            "payment_type": payment_type
-        }
-
-        pushed = save_lead_and_push(lead_data)
-
-        if pushed:
-            st.success("✅ Lead saved locally and pushed to GitHub.")
-        else:
-            st.success("✅ Lead saved locally (push to GitHub failed or not configured).")
-
-        # ------------------------------
-        # Dynamic ROI insights for the selected property type
-        # ------------------------------
-        st.subheader(f"📊 ROI Insights for {preference}")
-        roi_value, avg_price = get_roi_for(area, preference)
-        if roi_value is not None:
-            price_txt = f" — avg price: {avg_price} AED" if avg_price else ""
-            st.markdown(f"**{preference} in {area}** → **{roi_value:.2f}%** ROI{price_txt}")
-        else:
-            st.info(f"No specific ROI data for {preference} in {area}. Showing top areas by ROI for this property type below.")
-
-        # Top areas by ROI for the selected property type
-        ranked = recommend_by_roi(preference, top_n=10)
-        if ranked:
-            df_rank = pd.DataFrame(ranked, columns=["area", "roi", "avg_price"])
-            st.write("Top areas by estimated ROI:")
-            st.dataframe(df_rank.head(10).style.format({"roi": "{:.2f}", "avg_price": lambda v: f'{v}' if isinstance(v, (int, float)) else v}))
-
-            # Bar chart (matplotlib)
-            try:
-                areas_list = df_rank["area"].tolist()
-                rois_list = [float(x) for x in df_rank["roi"].tolist()]
-                fig, ax = plt.subplots(figsize=(6, max(3, len(areas_list)*0.4)))
-                ax.barh(areas_list[::-1], rois_list[::-1])
-                ax.set_xlabel("Estimated ROI (%)")
-                ax.set_title(f"ROI by Area — {preference}")
-                plt.tight_layout()
-                st.pyplot(fig)
-            except Exception as e:
-                st.warning(f"Could not render chart: {e}")
-        else:
-            st.info("No ROI dataset available for this property type yet.")
-
-        # Recommendations based on budget (rules + ROI)
-        st.subheader("💡 Suggested areas for your budget")
-        budget_recs = []
-        # simple mapping + include top ROI picks
-        if int(budget) < 500_000:
-            budget_recs = ["JVC", "Dubai South"]
-        elif 500_000 <= int(budget) <= 1_000_000:
-            budget_recs = ["Dubai Marina", "Business Bay"]
-        else:
-            budget_recs = ["Downtown", "Palm Jumeirah"]
-
-        # enrich with ROI (if available)
-        rec_lines = []
-        for a in budget_recs:
-            r, p = get_roi_for(a, preference)
-            rec_lines.append(f"- {a}: ROI {r:.2f}% — price {p if p else MARKET_DATA.get(a, {}).get('price_range','N/A')}" if r else f"- {a}: ROI N/A — price {MARKET_DATA.get(a, {}).get('price_range','N/A')}")
-        st.markdown("\n".join(rec_lines))
-
-        # Offer CSV download
+def _price_tnd(text):
+    """Extract a price in TND; MD is commonly used as thousand dinars."""
+    value = _norm(text).replace("\u202f", " ").replace("\xa0", " ")
+    patterns = [
+        r"(\d[\d\s.,]*\d|\d)\s*(?:dt|tnd)\b",
+        r"(\d+(?:[.,]\d+)?)\s*md\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, value)
+        if not match:
+            continue
+        raw = match.group(1).replace(" ", "").replace(",", ".")
         try:
-            with open(LEADS_CSV, "rb") as f:
-                st.download_button(label="📥 Download Leads CSV", data=f, file_name="real_estate_leads.csv", mime="text/csv")
-        except Exception as e:
-            st.warning(f"Could not provide download: {e}")
+            number = float(raw)
+            if "md" in match.group(0):
+                number *= 1000
+            else:
+                number = int(number)
+            if number >= 10_000:
+                return int(number)
+        except ValueError:
+            pass
+    return None
 
-# ------------------------------
-if __name__ == "__main__":
-    real_estate_dashboard()
+def _town_from_text(text):
+    value = _norm(text)
+    for town, aliases in COASTAL_TOWNS.items():
+        if any(_norm(alias) in value for alias in aliases):
+            return town
+    return None
+
+def _is_eligible(text):
+    value = _norm(text)
+    sale_terms = ("a vendre", "vente", "for sale", "للبيع")
+    property_terms = ("maison", "villa", "duplex", "maisonnette", "دار", "فيلا")
+    excluded = ("a louer", "location", "loyer", "rent", "studio a louer", "appartement")
+    return (
+        any(term in value for term in sale_terms)
+        and any(term in value for term in property_terms)
+        and not any(term in value for term in excluded)
+    )
+
+def _candidate_container(anchor):
+    node = anchor
+    for _ in range(5):
+        if node is None or getattr(node, "parent", None) is None:
+            break
+        text = node.get_text(" ", strip=True)
+        if 45 <= len(text) <= 1400:
+            return node
+        node = node.parent
+    return anchor.parent or anchor
+
+def _extract_cards(html_text, base_url, source):
+    soup = BeautifulSoup(html_text, "html.parser")
+    found = []
+    seen = set()
+    for anchor in soup.find_all("a", href=True):
+        href = urljoin(base_url, anchor["href"])
+        if source == "Tayara" and "/item/maisons-et-villas/" not in href:
+            continue
+        if source != "Tayara" and not any(x in href for x in ("/annonce", "/bien", "/vente/", "/maison", "/villa")):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        card = _candidate_container(anchor)
+        title = anchor.get_text(" ", strip=True)
+        card_text = card.get_text(" ", strip=True)
+        combined = f"{title} {card_text}"
+        if not title or not _is_eligible(combined):
+            continue
+        price = _price_tnd(combined)
+        town = _town_from_text(combined)
+        if price is None or price > MAX_PRICE_TND or town is None:
+            continue
+        if len(title) < 8:
+            title = next((x.get_text(" ", strip=True) for x in card.find_all(["h2", "h3", "h4"]) if len(x.get_text(" ", strip=True)) > 8), title)
+        image = card.find("img")
+        image_url = ""
+        if image:
+            image_url = image.get("src") or image.get("data-src") or ""
+            image_url = urljoin(base_url, image_url)
+        found.append({
+            "title": title[:180],
+            "town": town,
+            "price": price,
+            "url": href,
+            "source": source,
+            "image": image_url,
+            "details": card_text[:500],
+        })
+    return found
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_listings():
+    results = []
+    statuses = {}
+    for source, url in SOURCE_URLS.items():
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=(5, 18))
+            response.raise_for_status()
+            cards = _extract_cards(response.text, url, "Tayara" if source == "Tayara" else "TounesImmo" if source.startswith("TounesImmo") else "Limmobilier.tn")
+            results.extend(cards)
+            statuses[source] = f"OK · {len(cards)} annonce(s) retenue(s)"
+        except requests.RequestException as exc:
+            statuses[source] = f"Indisponible · {type(exc).__name__}"
+        except Exception as exc:
+            statuses[source] = f"Erreur de lecture · {type(exc).__name__}"
+
+    unique = {}
+    for item in results:
+        key = item["url"].split("?", 1)[0].rstrip("/")
+        if key not in unique:
+            unique[key] = item
+    listings = sorted(unique.values(), key=lambda item: item["price"])
+    return listings, statuses
+
+def _search_links():
+    return [
+        ("Tayara – Maisons et villas à Nabeul", TAYARA_URL),
+        ("TounesImmo – Maisons à vendre", SOURCE_URLS["TounesImmo – maisons"]),
+        ("Limmobilier.tn – Villas à vendre", SOURCE_URLS["Limmobilier.tn – villas"]),
+        ("Limmobilier.tn – Maisons à vendre", SOURCE_URLS["Limmobilier.tn – maisons"]),
+        ("Cava.tn – Maisons et villas à Hammamet", "https://www.cava.tn/category/immobilier/maisons_et_villas/a/Nabeul/Hammamet"),
+    ]
+
+def _render_listing(item):
+    price = f'{item["price"]:,}'.replace(",", " ")
+    title = item["title"].replace("<", "&lt;").replace(">", "&gt;")
+    st.markdown(
+        f"""
+        <div style="border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:13px;margin-bottom:10px;min-height:155px">
+          <div style="font-size:1.08rem;font-weight:750;line-height:1.35">{title}</div>
+          <div style="font-size:1.35rem;font-weight:850;margin:9px 0;color:#16804a">{price} TND</div>
+          <div style="font-size:.92rem;opacity:.85">{item["town"]} · {item["source"]}</div>
+          <div style="margin-top:10px"><a href="{item["url"]}" target="_blank" rel="noopener noreferrer">Consulter l’annonce ↗</a></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def real_estate_dashboard():
+    st.title("🏡 Immobilier – Cap Bon, Tunisie")
+    st.markdown(
+        "Maisons et villas **à vendre** dans les villes côtières du gouvernorat de Nabeul. "
+        "Budget maximal : **300 000 TND**."
+    )
+    metric_cols = st.columns(3)
+    metric_cols[0].metric("Budget maximum", "300 000 TND")
+    metric_cols[1].metric("Type de bien", "Maison / Villa")
+    metric_cols[2].metric("Zone", "Littoral de Nabeul")
+
+    with st.sidebar:
+        st.markdown("### Filtres immobilier")
+        selected_towns = st.multiselect(
+            "Villes côtières",
+            list(COASTAL_TOWNS.keys()),
+            default=list(COASTAL_TOWNS.keys()),
+            key="nabeul_towns",
+        )
+        max_price = st.slider(
+            "Budget maximum (TND)",
+            min_value=50_000,
+            max_value=MAX_PRICE_TND,
+            value=MAX_PRICE_TND,
+            step=10_000,
+            key="nabeul_max_price",
+        )
+        refresh = st.button("🔄 Actualiser les annonces", use_container_width=True)
+    if refresh:
+        fetch_listings.clear()
+
+    with st.spinner("Récupération des annonces immobilières publiques…"):
+        listings, statuses = fetch_listings()
+
+    filtered = [
+        item for item in listings
+        if item["town"] in selected_towns and item["price"] <= max_price
+    ]
+    st.subheader(f"{len(filtered)} annonce(s) correspondant aux critères")
+    if not filtered:
+        st.warning(
+            "Aucune annonce n’a pu être récupérée avec les filtres actuels. "
+            "Cela ne signifie pas qu’il n’existe aucun bien : certains sites bloquent "
+            "l’agrégation automatique ou modifient leur structure."
+        )
+    else:
+        for start in range(0, len(filtered), 3):
+            cols = st.columns(3, gap="medium")
+            for col, item in zip(cols, filtered[start:start + 3]):
+                with col:
+                    _render_listing(item)
+
+    with st.expander("État des sources automatiques"):
+        for source, status in statuses.items():
+            st.write(f"**{source}** : {status}")
+        st.caption("Les annonces sont filtrées sur le prix affiché et la localité détectée. Vérifie toujours le prix, la disponibilité, le titre foncier et les autorisations auprès du vendeur ou d’un notaire.")
+
+    with st.expander("Autres sites à consulter directement"):
+        for label, url in _search_links():
+            st.markdown(f"- [{label}]({url})")
+        st.caption("Les liens externes permettent de poursuivre la recherche si un site ne permet pas la lecture automatique de ses annonces.")
