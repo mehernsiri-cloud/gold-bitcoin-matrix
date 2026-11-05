@@ -198,59 +198,171 @@ def _external_search_links(country):
     return links
 
 
-def _render_job(job):
+def _render_job_card(job, accent):
     title = html.escape(str(job.get("title") or "Intitulé non précisé"))
     company = html.escape(str(job.get("company") or "Entreprise non précisée"))
     location = html.escape(str(job.get("location") or "Localisation non précisée"))
     source = html.escape(str(job.get("source") or "Source"))
-    role = html.escape(str(job.get("role") or ""))
+    role = html.escape(str(job.get("role") or "Offre complémentaire"))
     date = pd.Timestamp(job["date"]).strftime("%d/%m/%Y")
-    url = job.get("url") or ""
-    with st.container(border=True):
-        if url:
-            st.markdown(f"**[{title}]({url})**")
-        else:
-            st.markdown(f"**{title}**")
-        st.caption(f"{company} · {location}")
-        st.caption(f"Publié le {date} · {source} · {role}")
+    raw_url = str(job.get("url") or "").strip()
+    safe_url = raw_url if raw_url.startswith(("https://", "http://")) else ""
+    action = (
+        f'<a class="job-apply" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">Voir l’offre ↗</a>'
+        if safe_url else '<span class="job-no-link">Lien non disponible</span>'
+    )
+    st.markdown(
+        f"""
+        <div class="job-card" style="--job-accent:{accent}">
+          <div class="job-card-top">
+            <span class="job-source">{source}</span>
+            <span class="job-date">{date}</span>
+          </div>
+          <div class="job-title">{title}</div>
+          <div class="job-company">{company}</div>
+          <div class="job-location">⌖ &nbsp;{location}</div>
+          <div class="job-tags"><span>{role}</span></div>
+          <div class="job-card-bottom">{action}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def jobs_dashboard():
-    st.title("💼 Sélection d'offres d'emploi")
-    st.caption("France · Dubaï · Suisse | 30 derniers jours | HRIS, SAP et intégration")
-
-    st.info(
-        "Les annonces automatiques proviennent d'Adzuna et d'Arbeitnow. "
-        "LinkedIn est proposé en recherche directe : il ne fournit pas d'API publique ouverte "
-        "permettant d'agréger librement ses annonces."
+    st.markdown(
+        """
+        <style>
+        .jobs-layout-note {color:var(--text-color);opacity:.72;font-size:.88rem;margin-top:-.45rem}
+        .job-card {
+          min-height: 222px; height:100%; padding:16px; margin:0 0 14px 0;
+          border:1px solid rgba(128,128,128,.22); border-top:4px solid var(--job-accent);
+          border-radius:15px; background:var(--secondary-background-color);
+          display:flex; flex-direction:column; gap:9px;
+          box-shadow:0 2px 8px rgba(0,0,0,.035);
+        }
+        .job-card-top {display:flex;justify-content:space-between;gap:8px;align-items:center}
+        .job-source {font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;opacity:.72}
+        .job-date {font-size:.72rem;opacity:.68;white-space:nowrap}
+        .job-title {font-size:1.03rem;line-height:1.3;font-weight:750;min-height:2.6em}
+        .job-company {font-size:.9rem;font-weight:600;opacity:.88}
+        .job-location {font-size:.82rem;opacity:.72}
+        .job-tags {margin-top:2px}
+        .job-tags span {display:inline-block;border:1px solid rgba(128,128,128,.35);border-radius:20px;padding:4px 9px;font-size:.69rem;opacity:.82}
+        .job-card-bottom {margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end}
+        .job-apply {display:inline-block;background:var(--job-accent);color:#17202a!important;text-decoration:none!important;padding:7px 12px;border-radius:18px;font-size:.78rem;font-weight:750}
+        .job-no-link {font-size:.76rem;opacity:.55}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.title("💼 Offres d’emploi")
+    st.markdown(
+        '<div class="jobs-layout-note">France · Dubaï · Suisse — offres ciblées HRIS, SAP, intégration et transformation</div>',
+        unsafe_allow_html=True,
     )
 
-    tabs = st.tabs(["🇫🇷 France", "🇦🇪 Dubaï", "🇨🇭 Suisse"])
-    for tab, country in zip(tabs, COUNTRIES):
-        with tab:
-            with st.spinner(f"Recherche des offres récentes — {country}…"):
-                jobs, _ = fetch_country_jobs(country)
+    with st.sidebar:
+        st.markdown("## Filtres")
+        st.caption("Zone géographique")
+        selected_countries = []
+        for country in COUNTRIES:
+            if st.checkbox(country, value=True, key=f"jobs_country_{country}"):
+                selected_countries.append(country)
 
-            st.markdown(f"### {len(jobs)} offre(s) sélectionnée(s)")
-            if jobs:
-                for job in jobs:
-                    _render_job(job)
-            else:
-                st.warning(
-                    "Aucune offre correspondant aux critères n'a été trouvée dans les flux automatiques "
-                    "sur les 30 derniers jours. Cela ne signifie pas qu'il n'y a pas d'offres disponibles."
-                )
+        st.divider()
+        st.caption("Famille de poste")
+        selected_roles = []
+        for role in ROLE_SEARCHES:
+            if st.checkbox(role, value=True, key=f"jobs_role_{role}"):
+                selected_roles.append(role)
+        if st.checkbox("Autres offres pertinentes", value=True, key="jobs_role_other"):
+            selected_roles.append("Offre complémentaire")
 
-            st.markdown("#### Rechercher aussi sur les job boards")
-            links = _external_search_links(country)
-            cols = st.columns(len(links))
-            for col, (label, url) in zip(cols, links):
-                with col:
-                    st.link_button(label, url, use_container_width=True)
+        st.divider()
+        recency = st.selectbox(
+            "Date de publication",
+            ["30 derniers jours", "7 derniers jours", "14 derniers jours"],
+            index=0,
+            key="jobs_recency",
+        )
+        source_filter = st.selectbox(
+            "Source",
+            ["Toutes les sources", "Adzuna", "Arbeitnow"],
+            index=0,
+            key="jobs_source",
+        )
+        st.divider()
+        sort_mode = st.selectbox(
+            "Trier par",
+            ["Pertinence", "Plus récentes"],
+            index=0,
+            key="jobs_sort",
+        )
 
-            st.caption("Sources automatiques : Adzuna · Arbeitnow. Couverture variable selon le pays.")
+    if not selected_countries:
+        st.info("Sélectionne au moins un pays dans les filtres.")
+        return
 
-    with st.expander("Postes et critères suivis"):
-        for role, keywords in ROLE_SEARCHES.items():
-            st.markdown(f"- **{role}** — {keywords}")
-        st.caption("Tri par adéquation du titre/description et date de publication. Maximum 12 offres par pays, sans doublons.")
+    collected = []
+    with st.spinner("Recherche des offres correspondant aux filtres…"):
+        for country in selected_countries:
+            country_jobs, _ = fetch_country_jobs(country)
+            for job in country_jobs:
+                job = dict(job)
+                job["country"] = country
+                collected.append(job)
+
+    days_limit = {"7 derniers jours": 7, "14 derniers jours": 14, "30 derniers jours": 30}[recency]
+    cutoff = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(days=days_limit)
+    filtered = [
+        job for job in collected
+        if pd.Timestamp(job["date"]) >= cutoff
+        and (not selected_roles or job.get("role") in selected_roles)
+        and (source_filter == "Toutes les sources" or job.get("source") == source_filter)
+    ]
+    if sort_mode == "Plus récentes":
+        filtered.sort(key=lambda job: job["date"], reverse=True)
+    else:
+        filtered.sort(key=lambda job: (job.get("score", 0), job["date"]), reverse=True)
+
+    header_left, header_right = st.columns([2, 1])
+    with header_left:
+        st.markdown(f"### {len(filtered)} offre(s) trouvée(s)")
+        st.caption(f"Sur {len(selected_countries)} zone(s) sélectionnée(s) · {recency.lower()}")
+    with header_right:
+        st.caption("Recherche complémentaire")
+        all_links = []
+        for country in selected_countries:
+            all_links.extend((country, label, url) for label, url in _external_search_links(country))
+        with st.popover("Job boards par pays", use_container_width=True):
+            for country in selected_countries:
+                st.markdown(f"**{country}**")
+                for _, label, url in [x for x in all_links if x[0] == country]:
+                    st.markdown(f"- [{label}]({url})")
+
+    if filtered:
+        accents = ["#f4d58d", "#c9b8f5", "#f4b5c2", "#a9d9ed", "#b8dfbd", "#f2c6a8"]
+        columns = st.columns(3, gap="medium")
+        for index, job in enumerate(filtered):
+            with columns[index % 3]:
+                _render_job_card(job, accents[index % len(accents)])
+    else:
+        st.warning(
+            "Aucune offre ne correspond aux filtres sélectionnés dans les flux automatiques. "
+            "Cela ne signifie pas qu’il n’existe aucune offre : utilise les job boards par pays "
+            "pour élargir la recherche."
+        )
+
+    with st.expander("Sources et périmètre de recherche"):
+        st.markdown(
+            "- **Sources automatiques :** Adzuna et Arbeitnow (couverture variable selon le pays).\n"
+            "- **Sources complémentaires :** LinkedIn, Indeed et job boards locaux via recherche directe.\n"
+            "- **Périmètre :** HRIS / SAP SuccessFactors, SAP Integration / BTP / CPI, architecture RH, "
+            "transformation RH et, en secondaire, Supply Chain / WMS.\n"
+            "- **Tri :** pertinence des mots-clés et date, ou date seule selon le filtre."
+        )
+        st.caption(
+            "LinkedIn est proposé en recherche directe : son accès public ne permet pas "
+            "une agrégation libre et fiable de toutes ses annonces."
+        )
