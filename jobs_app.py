@@ -55,8 +55,10 @@ def classify_senior_role(title, description=""):
         "supply chain", "logistics", "distribution center", "distribution centre",
     ))
     it_context = any(term in full_text for term in (
-        "information technology", " it ", "technology", "digital", "enterprise systems",
-        "business systems", "applications", "infrastructure", "erp", "crm",
+        "information technology", " it ", "it project", "it program", "it programme",
+        "it delivery", "it manager", "it architect", "it solution", "it systems",
+        "technology", "digital", "enterprise systems", "business systems",
+        "applications", "infrastructure", "erp", "crm",
         "software implementation", "it transformation", "project delivery",
         "program delivery", "programme delivery", "system integration",
     ))
