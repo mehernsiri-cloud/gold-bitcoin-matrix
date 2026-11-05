@@ -241,7 +241,7 @@ def jobs_dashboard():
         .job-card {
           min-height: 222px; height:100%; padding:17px; margin:0 0 14px 0;
           border:1px solid rgba(0,0,0,.12);
-          border-radius:15px; background-color:#eaf1f8 !important; color:#17202a !important;
+          border-radius:15px; color:#17202a !important;
           display:flex; flex-direction:column; gap:9px;
           box-shadow:0 3px 12px rgba(0,0,0,.10);
         }
