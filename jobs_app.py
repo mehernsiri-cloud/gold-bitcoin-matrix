@@ -75,7 +75,7 @@ def classify_senior_role(title, description=""):
         return "HRIS / SIRH – IT"
     return None
 DAYS_BACK = 30
-MAX_PER_COUNTRY = 12
+MAX_PER_COUNTRY = 20
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CuratedJobsDashboard/1.0)"}
 
 
@@ -447,12 +447,29 @@ def jobs_dashboard():
 
     collected = []
     collection_status = {}
+    seen_offers = set()
     with st.spinner("Recherche des offres correspondant aux filtres…"):
         for country in selected_countries:
             country_jobs, source_status = fetch_country_jobs(country)
             collection_status[country] = source_status
             for job in country_jobs:
                 job = dict(job)
+                # Une même annonce (notamment remote/worldwide) ne doit appartenir
+                # qu'à un seul pays. L'URL normalisée est la clé prioritaire.
+                raw_url = str(job.get("url") or "").strip()
+                canonical_url = raw_url.split("#", 1)[0].split("?", 1)[0].rstrip("/").lower()
+                if canonical_url:
+                    dedupe_key = ("url", canonical_url)
+                else:
+                    dedupe_key = (
+                        "fallback",
+                        str(job.get("title") or "").strip().lower(),
+                        str(job.get("company") or "").strip().lower(),
+                        str(job.get("location") or "").strip().lower(),
+                    )
+                if dedupe_key in seen_offers:
+                    continue
+                seen_offers.add(dedupe_key)
                 job["country"] = country
                 collected.append(job)
 
@@ -512,14 +529,18 @@ def jobs_dashboard():
             if country not in selected_countries:
                 st.caption("Pays désactivé dans les filtres.")
             elif country_jobs:
-                for job in country_jobs:
-                    _render_job_card(job, style["bg"], style["border"])
+                # Grille de deux annonces par rangée à l'intérieur de chaque pays.
+                for row_start in range(0, len(country_jobs), 2):
+                    offer_columns = st.columns(2, gap="small")
+                    for offer_column, job in zip(offer_columns, country_jobs[row_start:row_start + 2]):
+                        with offer_column:
+                            _render_job_card(job, style["bg"], style["border"])
             else:
                 st.info("Aucune offre trouvée avec les filtres actuels.")
 
     with st.expander("Sources et périmètre de recherche"):
         st.markdown(
-            "- **Sources automatiques :** Himalayas (API publique sans token, postes à distance) et Arbeitnow.\n"
+            "- **Sources automatiques :** Himalayas, Jobicy, Remote OK et Arbeitnow (flux publics sans clé).\n"
             "- **Sources complémentaires :** LinkedIn, Indeed et job boards locaux via recherche directe.\n"
             "- **Périmètre :** postes expérimentés en IT RH / HRIS, SAP SuccessFactors, architecture IT RH "
             "et gestion de projets IT / WMS (Manhattan). Stages, alternances et postes juniors exclus.\n"
