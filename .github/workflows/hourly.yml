@@ -60,6 +60,35 @@ jobs:
       - name: Update ROI data safely (max 90 seconds)
         run: timeout 90s python update_roi_data.py || echo "⚠️ ROI refresh unavailable or timed out; keeping the last valid ROI data and continuing"
 
+      - name: Keep only 2026 history and deduplicate data
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+
+          cutoff = pd.Timestamp("2026-01-01")
+          configs = {
+              "data/actual_data.csv": ["timestamp"],
+              "data/predictions_log.csv": ["timestamp", "asset"],
+              "data/ai_predictions_log.csv": ["timestamp", "asset"],
+          }
+
+          for filename, dedupe_cols in configs.items():
+              path = Path(filename)
+              if not path.exists() or path.stat().st_size == 0:
+                  continue
+              df = pd.read_csv(path)
+              if "timestamp" not in df.columns:
+                  raise ValueError(f"Missing timestamp column in {filename}")
+              df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+              df = df.dropna(subset=["timestamp"])
+              df = df[df["timestamp"] >= cutoff]
+              df = df.drop_duplicates(subset=dedupe_cols, keep="last")
+              df = df.sort_values("timestamp")
+              df.to_csv(path, index=False)
+              print(f"{filename}: retained {len(df)} rows from 2026 onward")
+          PY
+
       - name: Commit & push CSV/JSON updates
         run: |
           git config --local user.email "actions@github.com"
@@ -73,5 +102,5 @@ jobs:
             git commit -m "Hourly update with ROI refresh"
           fi
 
-          git pull --rebase origin main
+          git pull --rebase -X theirs origin main
           git push origin HEAD:main
