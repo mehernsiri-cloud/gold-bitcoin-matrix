@@ -19,11 +19,64 @@ COUNTRIES = {
 }
 
 ROLE_SEARCHES = {
-    "HRIS / SAP SuccessFactors": "SAP SuccessFactors HRIS HCM SIRH",
-    "SAP Integration / Architecture": "SAP CPI Integration Suite BTP HR Architect",
-    "HR Transformation / Project Lead": "HR Transformation HRIS Project Manager Integration Lead",
-    "Supply Chain / WMS (secondary)": "WMS Manhattan Supply Chain Project Manager",
+    "HRIS / SIRH – IT": "Senior HRIS Manager HR IT Lead HRIS Project Manager SIRH",
+    "SAP SuccessFactors": "Senior SAP SuccessFactors Architect Integration Lead Project Manager",
+    "Architecte IT RH": "HRIS Solution Architect HR IT Architect HR Enterprise Architect",
+    "Chef de projet IT / WMS": "Senior IT Project Manager WMS Manhattan Program Manager",
 }
+ROLE_QUERIES = [
+    "Senior SAP SuccessFactors",
+    "SAP SuccessFactors Architect",
+    "SAP SuccessFactors Integration Lead",
+    "Senior HRIS Manager",
+    "HRIS Solution Architect",
+    "HR IT Project Manager",
+    "Senior WMS Project Manager",
+    "Manhattan WMS Program Manager",
+]
+
+EXCLUDED_TITLE = (
+    "intern", "internship", "stagiaire", "stage", "alternance", "apprentice",
+    "apprenticeship", "graduate", "junior", "entry level", "trainee", "working student",
+)
+
+def classify_senior_role(title, description=""):
+    title_text = str(title or "").lower()
+    full_text = f"{title_text} {str(description or '')}".lower()
+    if any(term in title_text for term in EXCLUDED_TITLE):
+        return None
+
+    # SuccessFactors is deliberately explicit: generic SAP jobs are not enough.
+    sf_context = any(term in full_text for term in (
+        "successfactors", "success factors", "sap sf", "employee central",
+    ))
+    hr_context = any(term in full_text for term in (
+        "hris", "sirh", "human resources information", "hr it", "hr technology",
+        "hcm", "human capital management", "employee central", "people systems",
+    ))
+    wms_context = any(term in full_text for term in (
+        "wms", "manhattan", "warehouse management", "manhattan associates",
+    ))
+    senior_title = any(term in title_text for term in (
+        "senior", "sr.", "lead", "principal", "head", "director", "manager",
+        "architect", "program", "programme",
+    ))
+
+    if sf_context and senior_title:
+        return "SAP SuccessFactors"
+    if wms_context and any(term in title_text for term in (
+        "project manager", "program manager", "programme manager", "delivery lead",
+        "implementation manager", "project lead", "director",
+    )):
+        return "Chef de projet IT / WMS"
+    if hr_context and senior_title and any(term in title_text for term in (
+        "architect", "architecture", "project", "program", "programme", "manager",
+        "lead", "director", "product owner", "transformation",
+    )):
+        if "architect" in title_text or "architecture" in title_text:
+            return "Architecte IT RH"
+        return "HRIS / SIRH – IT"
+    return None
 DAYS_BACK = 30
 MAX_PER_COUNTRY = 12
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CuratedJobsDashboard/1.0)"}
@@ -108,9 +161,8 @@ def fetch_country_jobs(country):
     cfg = COUNTRIES[country]
     jobs = []
     if cfg["code"]:
-        for role, keyword in ROLE_SEARCHES.items():
+        for keyword in ROLE_QUERIES:
             for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
-                job["role"] = role
                 jobs.append(job)
 
     for item in fetch_arbeitnow():
@@ -122,11 +174,8 @@ def fetch_country_jobs(country):
             continue
         title = item.get("title", "")
         description = item.get("description", "")
-        text = f"{title} {description}".lower()
-        if not any(term in text for term in [
-            "successfactors", "hris", "hcm", "sirh", "sap", "integration",
-            "hr architect", "hr transformation", "project manager", "wms", "manhattan"
-        ]):
+        role = classify_senior_role(title, description)
+        if not role:
             continue
         jobs.append({
             "title": title,
@@ -136,7 +185,7 @@ def fetch_country_jobs(country):
             "url": item.get("url", ""),
             "source": "Arbeitnow",
             "description": description,
-            "role": "Offre complémentaire",
+            "role": role,
         })
 
     unique = {}
@@ -157,7 +206,15 @@ def fetch_country_jobs(country):
         "transformation": 5, "project manager": 4, "manhattan": 4, "wms": 4,
     }
     ranked = []
+    curated = []
     for job in unique.values():
+        role = classify_senior_role(job.get("title"), job.get("description"))
+        if not role:
+            continue
+        job["role"] = role
+        curated.append(job)
+
+    for job in curated:
         title = str(job.get("title", "")).lower()
         description = str(job.get("description", "")).lower()
         score = sum(weight * (2 if term in title else 1 if term in description else 0)
@@ -246,17 +303,17 @@ def jobs_dashboard():
           box-shadow:0 3px 12px rgba(0,0,0,.10);
         }
         .job-card-top {display:flex;justify-content:space-between;gap:8px;align-items:center}
-        .job-source {font-size:.72rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#263442;opacity:1}
-        .job-date {font-size:.72rem;color:#263442;opacity:1;white-space:nowrap}
-        .job-title {font-size:1.03rem;line-height:1.3;font-weight:800;min-height:2.6em}
+        .job-source {font-size:.82rem;font-weight:850;letter-spacing:.03em;text-transform:uppercase;color:#263442;opacity:1}
+        .job-date {font-size:.82rem;color:#263442;opacity:1;white-space:nowrap}
+        .job-title {font-size:1.22rem;line-height:1.38;font-weight:850;min-height:2.8em}
         .job-title-link {color:#17202a!important;text-decoration:none!important}
         .job-title-link:hover {text-decoration:underline!important;color:#334155!important}
-        .job-company {font-size:.9rem;font-weight:700;color:#17202a;opacity:1}
-        .job-location {font-size:.82rem;color:#263442;opacity:1}
+        .job-company {font-size:1.02rem;font-weight:750;color:#17202a;opacity:1}
+        .job-location {font-size:.94rem;color:#263442;opacity:1}
         .job-tags {margin-top:2px}
-        .job-tags span {display:inline-block;border:1px solid rgba(23,32,42,.28);border-radius:20px;padding:4px 9px;font-size:.69rem;color:#17202a;opacity:1}
+        .job-tags span {display:inline-block;border:1px solid rgba(23,32,42,.28);border-radius:20px;padding:5px 10px;font-size:.78rem;font-weight:700;color:#17202a;opacity:1}
         .job-card-bottom {margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end}
-        .job-apply {display:inline-block;background:#ffffff;color:#17202a!important;text-decoration:none!important;padding:8px 14px;border:1px solid rgba(23,32,42,.2);border-radius:18px;font-size:.8rem;font-weight:800;box-shadow:0 2px 5px rgba(0,0,0,.12)}
+        .job-apply {display:inline-block;background:#ffffff;color:#17202a!important;text-decoration:none!important;padding:10px 16px;border:1px solid rgba(23,32,42,.2);border-radius:18px;font-size:.9rem;font-weight:850;box-shadow:0 2px 5px rgba(0,0,0,.12)}
         .job-apply:hover {filter:brightness(.94)}
         .job-no-link {font-size:.76rem;opacity:.55}
         </style>
@@ -265,7 +322,7 @@ def jobs_dashboard():
     )
     st.title("💼 Offres d’emploi")
     st.markdown(
-        '<div class="jobs-layout-note">France · Dubaï · Suisse — offres ciblées HRIS, SAP, intégration et transformation</div>',
+        '<div class="jobs-layout-note">France · Dubaï · Suisse — postes expérimentés en IT RH, SAP SuccessFactors, architecture et projets WMS</div>',
         unsafe_allow_html=True,
     )
 
@@ -379,8 +436,8 @@ def jobs_dashboard():
         st.markdown(
             "- **Sources automatiques :** Adzuna et Arbeitnow (couverture variable selon le pays).\n"
             "- **Sources complémentaires :** LinkedIn, Indeed et job boards locaux via recherche directe.\n"
-            "- **Périmètre :** HRIS / SAP SuccessFactors, SAP Integration / BTP / CPI, architecture RH, "
-            "transformation RH et, en secondaire, Supply Chain / WMS.\n"
+            "- **Périmètre :** postes expérimentés en IT RH / HRIS, SAP SuccessFactors, architecture IT RH "
+            "et gestion de projets IT / WMS (Manhattan). Stages, alternances et postes juniors exclus.\n"
             "- **Tri :** pertinence des mots-clés et date, ou date seule selon le filtre."
         )
         st.caption(
