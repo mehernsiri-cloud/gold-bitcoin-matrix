@@ -807,18 +807,18 @@ def geopolitics_supply_dashboard(df, errors=None):
     with c2:
         keyword = st.text_input("Filtrer (facultatif)", placeholder="Iran, carburant, eau, santé…", key="wels_geo_supply_keyword")
 
-    if df is None or df.empty:
+    data_available = df is not None and not df.empty
+    if not data_available:
         st.error("Aucun article n'a été récupéré : la collecte des flux a échoué ou les flux sont vides.")
-        st.warning("Le statut de risque est INCONNU. Ne pas interpréter cette absence de données comme une situation normale.")
+        st.warning("Le statut des régions est INCONNU. L'absence de données ne signifie pas une situation normale.")
         if errors:
-            with st.expander("Diagnostic de la collecte — erreurs des flux", expanded=True):
+            with st.expander("Diagnostic de la collecte — erreurs des flux", expanded=False):
                 for error in errors:
                     st.write(f"- {error}")
         else:
             st.caption("Aucun détail d'erreur n'a été transmis par la collecte. Réessayez l'actualisation.")
-        return
 
-    selected = df.copy()
+    selected = df.copy() if data_available else pd.DataFrame(columns=["Date", "Titre", "Résumé", "Source", "Lien"])
     if "Date" in selected.columns:
         cutoff = datetime.utcnow() - timedelta(days=days)
         selected = selected[selected["Date"].isna() | (selected["Date"] >= cutoff)]
@@ -846,7 +846,7 @@ def geopolitics_supply_dashboard(df, errors=None):
         if any(term in article_text for term in ["france", "french", "paris", "lyon", "marseille", "français", "française"]):
             region = "France"
         elif any(term in article_text for term in ["dubai", "dubaï", "uae", "united arab emirates", "emirates", "abu dhabi", "jebel ali", "émirats"]):
-            region = "Dubaï / EAU"
+            region = "Dubaï"
         elif any(term in article_text for term in ["europe", "european union", "eu member", "eurozone", "européen", "européenne", "cyprus", "italy", "germany", "poland", "ukraine", "united kingdom"]):
             region = "Europe"
         elif any(term in article_text for term in ["middle east", "iran", "iraq", "israel", "palestine", "gaza", "west bank", "yemen", "lebanon", "syria", "saudi", "qatar", "bahrain", "oman", "hormuz", "red sea"]):
@@ -856,7 +856,7 @@ def geopolitics_supply_dashboard(df, errors=None):
         elif "france" in source_text:
             region = "France"
         elif "émirats" in source_text or "dubai" in source_text:
-            region = "Dubaï / EAU"
+            region = "Dubaï"
         elif "europe" in source_text:
             region = "Europe"
         elif "moyen-orient" in source_text:
@@ -909,61 +909,78 @@ def geopolitics_supply_dashboard(df, errors=None):
     for event in events:
         event["severity"] = severity(event)
 
-    regions = ["France", "Dubaï / EAU", "Europe", "Moyen-Orient", "International"]
+    regions = ["France", "Dubaï", "Europe", "Moyen-Orient", "International"]
     st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · fenêtre de {days} jour(s)")
     st.caption("CRITIQUE = événement majeur à vérifier ; ÉLEVÉ = risque important ; VIGILANCE = pression émergente ; INFORMATION = suivi ; ATTÉNUATION = signal positif.")
 
-    # Synthèse globale par niveau, sans dérouler les titres à ce stade.
-    summary_cols = st.columns(5)
-    for col, level in zip(summary_cols, severity_order):
-        count = sum(1 for event in events if event["severity"] == level)
-        icon, color, _ = severity_meta[level]
-        col.markdown(
-            f"<div style='border:1px solid {color};border-radius:10px;padding:10px 6px;text-align:center'>"
-            f"<div style='font-size:20px'>{icon}</div><div style='font-size:12px;color:{color};font-weight:700'>{level}</div>"
-            f"<div style='font-size:23px;font-weight:800'>{count}</div></div>",
-            unsafe_allow_html=True
-        )
+    # Regional widgets are the default view. Event titles are only rendered after a region is selected.
+    selected_region = st.session_state.get("wels_selected_risk_region")
+    if selected_region not in regions:
+        selected_region = None
 
-    for region in regions:
+    region_cols = st.columns(2)
+    for index, region in enumerate(regions):
         regional = [event for event in events if event["region"] == region]
         counts = {level: sum(1 for event in regional if event["severity"] == level) for level in severity_order}
-        active_levels = [level for level in severity_order if counts[level] > 0]
         highest = next((level for level in severity_order if counts[level] > 0), None)
-        if highest:
-            icon, color, _ = severity_meta[highest]
-            region_label = f"{icon} {region} · {len(regional)} signal(aux) · {highest}"
+
+        if not data_available:
+            status = "INCONNU"
+            status_icon = "⚪"
+        elif highest:
+            status = highest
+            status_icon = severity_meta[highest][0]
         else:
-            color = "#64748b"
-            region_label = f"⚪ {region} · Aucun signal qualifié"
+            status = "AUCUN SIGNAL QUALIFIÉ"
+            status_icon = "⚪"
 
-        st.markdown(f"### {region_label}")
-        with st.container():
-            if not regional:
-                st.caption("Aucun événement qualifié dans cette zone sur la période. Cela ne garantit pas l'absence de risque.")
-                continue
+        count_label = f"{len(regional)} événement(s)" if data_available else "Données indisponibles"
+        breakdown = " · ".join(f"{level}: {counts[level]}" for level in severity_order if counts[level])
+        button_label = f"{status_icon}  {region}\n{status} · {count_label}"
+        with region_cols[index % 2]:
+            st.button(
+                button_label,
+                key=f"wels_region_widget_{index}",
+                use_container_width=True,
+                on_click=lambda r=region: st.session_state.update({"wels_selected_risk_region": r}),
+            )
+            if breakdown:
+                st.caption(breakdown)
+            elif data_available:
+                st.caption("Aucun événement répondant aux critères de qualification. Cela ne prouve pas l'absence de risque.")
 
-            # Les niveaux sont affichés comme de petites briques colorées.
-            level_cols = st.columns(5)
-            for col, level in zip(level_cols, severity_order):
-                icon, level_color, _ = severity_meta[level]
-                col.markdown(
-                    f"<div style='background:{level_color}18;border-left:4px solid {level_color};padding:7px 5px;border-radius:5px'>"
-                    f"<div style='font-size:10px;color:{level_color};font-weight:700'>{level}</div>"
-                    f"<div style='font-size:18px;font-weight:800'>{counts[level]}</div></div>",
-                    unsafe_allow_html=True
-                )
+    if selected_region is None:
+        st.info("Sélectionne une région pour consulter les événements qualifiés et leurs conséquences.")
+    else:
+        st.divider()
+        back_col, title_col = st.columns([1, 3])
+        with back_col:
+            if st.button("← Toutes les régions", key="wels_back_to_regions"):
+                st.session_state["wels_selected_risk_region"] = None
+                st.rerun()
+        with title_col:
+            st.subheader(f"Événements — {selected_region}")
 
-            # Une ligne courte par sujet ; le détail complet s'ouvre au clic.
-            for level in active_levels:
+        regional = [event for event in events if event["region"] == selected_region]
+        if not data_available:
+            st.warning("INCONNU — aucune donnée disponible pour évaluer cette région.")
+        elif not regional:
+            st.info("Aucun événement qualifié pour cette région sur la période. Cela ne garantit pas l'absence de risque.")
+        else:
+            for level in severity_order:
                 level_events = sorted(
                     [event for event in regional if event["severity"] == level],
                     key=lambda item: (item["date"], item["score"]),
                     reverse=True
                 )
+                if not level_events:
+                    continue
                 icon, level_color, description = severity_meta[level]
-                st.markdown(f"<div style='color:{level_color};font-weight:700;margin:12px 0 5px'>{icon} {level} — {description}</div>", unsafe_allow_html=True)
-                for index, event in enumerate(level_events):
+                st.markdown(
+                    f"<div style='color:{level_color};font-weight:700;margin:14px 0 6px'>{icon} {level} — {description}</div>",
+                    unsafe_allow_html=True
+                )
+                for event in level_events:
                     short_title = event["title"]
                     if len(short_title) > 115:
                         short_title = short_title[:112].rstrip() + "…"
