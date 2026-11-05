@@ -198,7 +198,7 @@ def _external_search_links(country):
     return links
 
 
-def _render_job_card(job, accent):
+def _render_job_card(job, accent, accent_border):
     title = html.escape(str(job.get("title") or "Intitulé non précisé"))
     company = html.escape(str(job.get("company") or "Entreprise non précisée"))
     location = html.escape(str(job.get("location") or "Localisation non précisée"))
@@ -217,7 +217,7 @@ def _render_job_card(job, accent):
     )
     st.markdown(
         f"""
-        <div class="job-card" style="--job-accent:{accent};--job-tint:{accent}">
+        <div class="job-card" style="background-color:{accent};border-top:5px solid {accent_border};color:#17202a">
           <div class="job-card-top">
             <span class="job-source">{source}</span>
             <span class="job-date">{date}</span>
@@ -241,8 +241,7 @@ def jobs_dashboard():
         .job-card {
           min-height: 222px; height:100%; padding:17px; margin:0 0 14px 0;
           border:1px solid rgba(0,0,0,.12);
-          border-top:5px solid var(--job-accent);
-          border-radius:15px; background:var(--job-tint); color:#17202a;
+          border-radius:15px; background-color:#eaf1f8 !important; color:#17202a !important;
           display:flex; flex-direction:column; gap:9px;
           box-shadow:0 3px 12px rgba(0,0,0,.10);
         }
@@ -257,7 +256,7 @@ def jobs_dashboard():
         .job-tags {margin-top:2px}
         .job-tags span {display:inline-block;border:1px solid rgba(23,32,42,.28);border-radius:20px;padding:4px 9px;font-size:.69rem;color:#17202a;opacity:1}
         .job-card-bottom {margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end}
-        .job-apply {display:inline-block;background:var(--job-accent);color:#17202a!important;text-decoration:none!important;padding:8px 14px;border-radius:18px;font-size:.8rem;font-weight:800;box-shadow:0 2px 5px rgba(0,0,0,.12)}
+        .job-apply {display:inline-block;background:#ffffff;color:#17202a!important;text-decoration:none!important;padding:8px 14px;border:1px solid rgba(23,32,42,.2);border-radius:18px;font-size:.8rem;font-weight:800;box-shadow:0 2px 5px rgba(0,0,0,.12)}
         .job-apply:hover {filter:brightness(.94)}
         .job-no-link {font-size:.76rem;opacity:.55}
         </style>
@@ -349,18 +348,32 @@ def jobs_dashboard():
                 for _, label, url in [x for x in all_links if x[0] == country]:
                     st.markdown(f"- [{label}]({url})")
 
-    if filtered:
-        accents = ["#f4d58d", "#c9b8f5", "#f4b5c2", "#a9d9ed", "#b8dfbd", "#f2c6a8"]
-        columns = st.columns(3, gap="medium")
-        for index, job in enumerate(filtered):
-            with columns[index % 3]:
-                _render_job_card(job, accents[index % len(accents)])
-    else:
-        st.warning(
-            "Aucune offre ne correspond aux filtres sélectionnés dans les flux automatiques. "
-            "Cela ne signifie pas qu’il n’existe aucune offre : utilise les job boards par pays "
-            "pour élargir la recherche."
-        )
+    # Trois colonnes fixes : les offres ne sont jamais mélangées entre pays.
+    country_styles = {
+        "France": {"flag": "🇫🇷", "bg": "#DCEBFA", "border": "#3978B9"},
+        "Dubaï": {"flag": "🇦🇪", "bg": "#FCE8CC", "border": "#C47A25"},
+        "Suisse": {"flag": "🇨🇭", "bg": "#F7D9DE", "border": "#C44755"},
+    }
+    columns = st.columns(3, gap="medium")
+    for country, column in zip(COUNTRIES.keys(), columns):
+        country_jobs = [job for job in filtered if job.get("country") == country]
+        style = country_styles[country]
+        with column:
+            st.markdown(
+                f"<div style='padding:12px 14px;margin:0 0 12px 0;"
+                f"background:{style['bg']};border-left:5px solid {style['border']};"
+                f"border-radius:12px;color:#17202a;font-weight:800;font-size:1.05rem'>"
+                f"{style['flag']} {country} <span style='float:right'>"
+                f"{len(country_jobs)}</span></div>",
+                unsafe_allow_html=True,
+            )
+            if country not in selected_countries:
+                st.caption("Pays désactivé dans les filtres.")
+            elif country_jobs:
+                for job in country_jobs:
+                    _render_job_card(job, style["bg"], style["border"])
+            else:
+                st.info("Aucune offre trouvée avec les filtres actuels.")
 
     with st.expander("Sources et périmètre de recherche"):
         st.markdown(
