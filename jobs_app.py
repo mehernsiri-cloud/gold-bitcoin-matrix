@@ -1,175 +1,238 @@
 # jobs_app.py
-import streamlit as st
+"""Curated job dashboard focused on France, Dubai and Switzerland."""
+import html
+import os
+from datetime import datetime, timedelta
+from urllib.parse import quote_plus
+
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+import streamlit as st
 
-# ------------------------------
-# JOB DASHBOARD CONFIG
-# ------------------------------
-CATEGORIES = {
-    "HR": ["HCM", "HR", "Workday", "SAP SuccessFactors", "HRIS", "RH", "SIRH"],
-    "Project Management": ["Project manager", "Chef de projet", "Program Manager"],
-    "Supply": ["WMS", "Manhattan Associate", "Supply chain project manager"]
+ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "2c269bb8")
+ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "39be78e26991e138d40ce4313620aebb")
+
+COUNTRIES = {
+    "France": {"code": "fr", "where": "France", "linkedin": "France", "indeed": "France"},
+    "Dubaï": {"code": "ae", "where": "Dubai", "linkedin": "Dubai, United Arab Emirates", "indeed": "Dubai"},
+    "Suisse": {"code": "ch", "where": "Switzerland", "linkedin": "Switzerland", "indeed": "Switzerland"},
 }
 
-LOCATIONS = {
-    "France": "fr",
-    "Dubai": "ae",
-    "Luxembourg": "lu",
-    "Switzerland": "ch",
-    "Worldwide": "gb"
+ROLE_SEARCHES = {
+    "HRIS / SAP SuccessFactors": "SAP SuccessFactors HRIS HCM SIRH",
+    "SAP Integration / Architecture": "SAP CPI Integration Suite BTP HR Architect",
+    "HR Transformation / Project Lead": "HR Transformation HRIS Project Manager Integration Lead",
+    "Supply Chain / WMS (secondary)": "WMS Manhattan Supply Chain Project Manager",
 }
+DAYS_BACK = 30
+MAX_PER_COUNTRY = 12
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CuratedJobsDashboard/1.0)"}
 
-ADZUNA_APP_ID = "2c269bb8"
-ADZUNA_APP_KEY = "39be78e26991e138d40ce4313620aebb"
 
-REMOTEOK_URL = "https://remoteok.io/api"
+def _normalise_date(value):
+    if not value:
+        return pd.NaT
+    try:
+        return pd.to_datetime(value, utc=True).tz_convert(None)
+    except Exception:
+        return pd.NaT
 
-# ------------------------------
-# UTILS
-# ------------------------------
-def clean_text(text):
-    if not text:
-        return ""
-    return BeautifulSoup(text, "html.parser").get_text()
 
-def fetch_jobs_adzuna(keyword, country_code, location, max_results=50, remote_only=False, company_filter=None, last_n_days=60):
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_adzuna(country_code, location, keyword):
+    if not ADZUNA_APP_ID or not ADZUNA_APP_KEY:
+        return []
     url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
     params = {
         "app_id": ADZUNA_APP_ID,
         "app_key": ADZUNA_APP_KEY,
-        "results_per_page": max_results,
+        "results_per_page": 30,
         "what": keyword,
-        "where": location if location != "Worldwide" else "",
-        "content-type": "application/json"
+        "where": location,
+        "sort_by": "date",
+        "content-type": "application/json",
     }
     try:
-        resp = requests.get(url, params=params, timeout=10)
-        data = resp.json()
-        jobs = []
-        cutoff_date = datetime.today() - timedelta(days=last_n_days)
-        for job in data.get("results", []):
-            job_location = clean_text(job.get("location", {}).get("display_name", ""))
-            company = clean_text(job.get("company", {}).get("display_name", ""))
-            created = job.get("created", "")
-            job_date = datetime.strptime(created.split("T")[0], "%Y-%m-%d") if created else None
+        response = requests.get(url, params=params, headers=HEADERS, timeout=(3, 8))
+        response.raise_for_status()
+        results = response.json().get("results", [])
+    except (requests.RequestException, ValueError, TypeError):
+        return []
 
-            # Apply filters
-            if remote_only and "remote" not in job_location.lower():
-                continue
-            if company_filter and company_filter.lower() not in company.lower():
-                continue
-            if job_date and job_date < cutoff_date:
-                continue
+    jobs = []
+    cutoff = datetime.utcnow() - timedelta(days=DAYS_BACK)
+    for item in results:
+        created = _normalise_date(item.get("created"))
+        if pd.isna(created) or created.to_pydatetime() < cutoff:
+            continue
+        jobs.append({
+            "title": item.get("title", ""),
+            "company": (item.get("company") or {}).get("display_name", "Entreprise non précisée"),
+            "location": (item.get("location") or {}).get("display_name", location),
+            "date": created,
+            "url": item.get("redirect_url", ""),
+            "source": "Adzuna",
+            "description": item.get("description", ""),
+        })
+    return jobs
 
-            jobs.append({
-                "title": clean_text(job.get("title")),
-                "company": company,
-                "location": job_location,
-                "date": job_date,
-                "link": job.get("redirect_url")
-            })
-        df_jobs = pd.DataFrame(jobs)
-        if not df_jobs.empty:
-            df_jobs = df_jobs.sort_values("date", ascending=False)
-        return df_jobs
-    except:
-        return pd.DataFrame([])
 
-def fetch_jobs_remoteok(keyword, last_n_days=60):
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_arbeitnow():
     try:
-        resp = requests.get(REMOTEOK_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        data = resp.json()
-        jobs = []
-        cutoff_date = datetime.today() - timedelta(days=last_n_days)
-        for job in data[1:]:  # first item is metadata
-            job_date = datetime.strptime(job.get("date", "")[:10], "%Y-%m-%d") if job.get("date") else None
-            if job_date and job_date < cutoff_date:
-                continue
-            description = clean_text(job.get("description", ""))
-            if keyword.lower() in job.get("position", "").lower() or keyword.lower() in description.lower():
-                jobs.append({
-                    "title": job.get("position"),
-                    "company": job.get("company"),
-                    "location": job.get("location", "Remote"),
-                    "date": job_date,
-                    "link": job.get("url")
-                })
-        df_jobs = pd.DataFrame(jobs)
-        if not df_jobs.empty:
-            df_jobs = df_jobs.sort_values("date", ascending=False)
-        return df_jobs
-    except:
-        return pd.DataFrame([])
+        response = requests.get(
+            "https://www.arbeitnow.com/api/job-board-api",
+            headers=HEADERS,
+            timeout=(3, 8),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("data", []) if isinstance(payload, dict) else []
+    except (requests.RequestException, ValueError, TypeError):
+        return []
 
-# ------------------------------
-# TRELLLO-STYLE JOB DASHBOARD
-# ------------------------------
+
+def _arbeitnow_country_match(location, country):
+    text = (location or "").lower()
+    aliases = {
+        "France": ["france", "paris", "lyon", "marseille", "toulouse", "bordeaux", "lille", "nantes", "nice", "grenoble"],
+        "Dubaï": ["dubai", "dubaï", "united arab emirates", "uae", "abu dhabi", "sharjah"],
+        "Suisse": ["switzerland", "schweiz", "suisse", "zurich", "zürich", "geneva", "genève", "geneve", "lausanne", "basel", "bern", "lugano"],
+    }
+    return any(alias in text for alias in aliases[country])
+
+
+def fetch_country_jobs(country):
+    cfg = COUNTRIES[country]
+    jobs = []
+    for role, keyword in ROLE_SEARCHES.items():
+        for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
+            job["role"] = role
+            jobs.append(job)
+
+    for item in fetch_arbeitnow():
+        location = item.get("location", "")
+        if not _arbeitnow_country_match(location, country):
+            continue
+        created = _normalise_date(item.get("created_at"))
+        if pd.isna(created) or created < pd.Timestamp(datetime.utcnow() - timedelta(days=DAYS_BACK)):
+            continue
+        title = item.get("title", "")
+        description = item.get("description", "")
+        text = f"{title} {description}".lower()
+        if not any(term in text for term in [
+            "successfactors", "hris", "hcm", "sirh", "sap", "integration",
+            "hr architect", "hr transformation", "project manager", "wms", "manhattan"
+        ]):
+            continue
+        jobs.append({
+            "title": title,
+            "company": item.get("company_name", "Entreprise non précisée"),
+            "location": location or country,
+            "date": created,
+            "url": item.get("url", ""),
+            "source": "Arbeitnow",
+            "description": description,
+            "role": "Offre complémentaire",
+        })
+
+    unique = {}
+    for job in jobs:
+        url = (job.get("url") or "").strip()
+        key = url.lower() if url else (
+            f"{job.get('title','').lower()}|{job.get('company','').lower()}|{job.get('location','').lower()}"
+        )
+        if not key.strip("|"):
+            continue
+        if key not in unique or job["date"] > unique[key]["date"]:
+            unique[key] = job
+
+    now = pd.Timestamp.utcnow().tz_localize(None)
+    relevance_terms = {
+        "successfactors": 8, "sap": 5, "hris": 8, "sirh": 8, "hcm": 6,
+        "integration": 7, "cpi": 7, "btp": 7, "architect": 6,
+        "transformation": 5, "project manager": 4, "manhattan": 4, "wms": 4,
+    }
+    ranked = []
+    for job in unique.values():
+        title = str(job.get("title", "")).lower()
+        description = str(job.get("description", "")).lower()
+        score = sum(weight * (2 if term in title else 1 if term in description else 0)
+                    for term, weight in relevance_terms.items())
+        age_days = max(0, (now - pd.Timestamp(job["date"])).total_seconds() / 86400)
+        job["score"] = score + max(0, 30 - age_days) / 10
+        ranked.append(job)
+
+    ranked.sort(key=lambda x: (x["score"], x["date"]), reverse=True)
+    return ranked[:MAX_PER_COUNTRY], []
+
+
+def _external_search_links(country):
+    cfg = COUNTRIES[country]
+    query = quote_plus("SAP SuccessFactors HRIS SAP CPI integration HR architect")
+    location = quote_plus(cfg["linkedin"])
+    indeed_location = quote_plus(cfg["indeed"])
+    indeed_domain = "fr.indeed.com" if country == "France" else "ae.indeed.com" if country == "Dubaï" else "ch.indeed.com"
+    return [
+        ("LinkedIn", f"https://www.linkedin.com/jobs/search/?keywords={query}&location={location}&f_TPR=r2592000"),
+        ("Indeed", f"https://{indeed_domain}/jobs?q={query}&l={indeed_location}&fromage=30"),
+        ("Welcome to the Jungle", f"https://www.welcometothejungle.com/fr/jobs?query={query}"),
+    ]
+
+
+def _render_job(job):
+    title = html.escape(str(job.get("title") or "Intitulé non précisé"))
+    company = html.escape(str(job.get("company") or "Entreprise non précisée"))
+    location = html.escape(str(job.get("location") or "Localisation non précisée"))
+    source = html.escape(str(job.get("source") or "Source"))
+    role = html.escape(str(job.get("role") or ""))
+    date = pd.Timestamp(job["date"]).strftime("%d/%m/%Y")
+    url = job.get("url") or ""
+    with st.container(border=True):
+        if url:
+            st.markdown(f"**[{title}]({url})**")
+        else:
+            st.markdown(f"**{title}**")
+        st.caption(f"{company} · {location}")
+        st.caption(f"Publié le {date} · {source} · {role}")
+
+
 def jobs_dashboard():
-    st.title("💼 Jobs Dashboard (Trello Style & RemoteOK)")
+    st.title("💼 Sélection d'offres d'emploi")
+    st.caption("France · Dubaï · Suisse | 30 derniers jours | HRIS, SAP et intégration")
 
-    # Sidebar filters
-    st.sidebar.header("Job Filters")
-    location_choice = st.sidebar.selectbox("🌐 Select Location", list(LOCATIONS.keys()))
-    remote_only = st.sidebar.checkbox("🏠 Only remote jobs", value=False)
-    company_filter = st.sidebar.text_input("🏢 Filter by company (optional)", "")
-    last_n_days = st.sidebar.slider("📅 Show jobs opened in last (days)", 30, 90, 60, 10)
+    st.info(
+        "Les annonces automatiques proviennent d'Adzuna et d'Arbeitnow. "
+        "LinkedIn est proposé en recherche directe : il ne fournit pas d'API publique ouverte "
+        "permettant d'agréger librement ses annonces."
+    )
 
-    selected_category = st.sidebar.selectbox("📌 Select Job Category", list(CATEGORIES.keys()))
-    st.markdown(f"### 🌍 Showing jobs in **{location_choice}** for category **{selected_category}**")
+    tabs = st.tabs(["🇫🇷 France", "🇦🇪 Dubaï", "🇨🇭 Suisse"])
+    for tab, country in zip(tabs, COUNTRIES):
+        with tab:
+            with st.spinner(f"Recherche des offres récentes — {country}…"):
+                jobs, _ = fetch_country_jobs(country)
 
-    keywords = CATEGORIES[selected_category]
-
-    # ------------------------------
-    # ADZUNA JOBS
-    # ------------------------------
-    st.subheader("📌 Adzuna Jobs")
-    cols = st.columns(len(keywords))
-    for col, kw in zip(cols, keywords):
-        with col:
-            st.markdown(f"<div style='background-color:#004080;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold'>📌 {kw}</div>", unsafe_allow_html=True)
-            df_jobs = fetch_jobs_adzuna(
-                kw,
-                LOCATIONS[location_choice],
-                location_choice,
-                max_results=50,
-                remote_only=remote_only,
-                company_filter=company_filter if company_filter else None,
-                last_n_days=last_n_days
-            )
-            if not df_jobs.empty:
-                for _, job in df_jobs.iterrows():
-                    job_date_str = job['date'].strftime("%Y-%m-%d") if job['date'] else "N/A"
-                    st.markdown(f"""
-                        <div style='background-color:#f8f9fa;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
-                            <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#004080">{job['title']}</a></b><br>
-                            <span style='color:gray'>{job['company']} | {job['location']}</span><br>
-                            <span style='color:#888'>📅 {job_date_str}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
+            st.markdown(f"### {len(jobs)} offre(s) sélectionnée(s)")
+            if jobs:
+                for job in jobs:
+                    _render_job(job)
             else:
-                st.info(f"No recent jobs found for {kw}.")
+                st.warning(
+                    "Aucune offre correspondant aux critères n'a été trouvée dans les flux automatiques "
+                    "sur les 30 derniers jours. Cela ne signifie pas qu'il n'y a pas d'offres disponibles."
+                )
 
-    # ------------------------------
-    # REMOTEOK JOBS
-    # ------------------------------
-    st.subheader("🌐 RemoteOK Jobs")
-    cols_remote = st.columns(len(keywords))
-    for col, kw in zip(cols_remote, keywords):
-        with col:
-            st.markdown(f"<div style='background-color:#008080;color:white;padding:10px;border-radius:8px;text-align:center;font-weight:bold'>🌐 {kw}</div>", unsafe_allow_html=True)
-            df_jobs_remote = fetch_jobs_remoteok(kw, last_n_days=last_n_days)
-            if not df_jobs_remote.empty:
-                for _, job in df_jobs_remote.iterrows():
-                    job_date_str = job['date'].strftime("%Y-%m-%d") if job['date'] else "N/A"
-                    st.markdown(f"""
-                        <div style='background-color:#e8f4f4;padding:10px;border-radius:8px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)'>
-                            <b><a href="{job['link']}" target="_blank" style="text-decoration:none;color:#008080">{job['title']}</a></b><br>
-                            <span style='color:gray'>{job['company']} | {job['location']}</span><br>
-                            <span style='color:#888'>📅 {job_date_str}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info(f"No recent RemoteOK jobs found for {kw}.")
+            st.markdown("#### Rechercher aussi sur les job boards")
+            links = _external_search_links(country)
+            cols = st.columns(len(links))
+            for col, (label, url) in zip(cols, links):
+                with col:
+                    st.link_button(label, url, use_container_width=True)
+
+            st.caption("Sources automatiques : Adzuna · Arbeitnow. Couverture variable selon le pays.")
+
+    with st.expander("Postes et critères suivis"):
+        for role, keywords in ROLE_SEARCHES.items():
+            st.markdown(f"- **{role}** — {keywords}")
+        st.caption("Tri par adéquation du titre/description et date de publication. Maximum 12 offres par pays, sans doublons.")
