@@ -115,9 +115,9 @@ def fetch_arbeitnow():
         )
         response.raise_for_status()
         payload = response.json()
-        return payload.get("data", []) if isinstance(payload, dict) else []
+        return payload.get("data", []) if isinstance(payload, dict) else None
     except (requests.RequestException, ValueError, TypeError):
-        return []
+        return None
 
 
 def _arbeitnow_country_match(location, country):
