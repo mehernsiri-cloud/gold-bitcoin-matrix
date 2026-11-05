@@ -1169,8 +1169,7 @@ def main():
     with st.sidebar:
         st.title("WELS Actions")
         page = st.radio("Navigation", [
-            "Vue d'ensemble", "Marchés & portefeuille", "Géopolitique & approvisionnement",
-            "CHF & devises"
+            "Vue d'ensemble & Géopolitique", "Marchés & portefeuille", "CHF & devises"
         ], key="wels_navigation_v3")
         # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
         # sans effacer la sélection lors des reruns provoqués par un clic régional.
@@ -1183,10 +1182,12 @@ def main():
             fetch_history.clear()
             st.rerun()
         st.caption("Actualités et cours : cache 15 min")
-    if page == "Vue d'ensemble":
+    if page == "Vue d'ensemble & Géopolitique":
+        # Keep the original overview first, then show the full geopolitics/supply monitor.
         executive_dashboard(df)
+        st.divider()
+        geopolitics_supply_dashboard(df, errors)
     elif page == "Marchés & portefeuille": market_watch_page()
-    elif page == "Géopolitique & approvisionnement": geopolitics_supply_dashboard(df, errors)
     elif page == "CHF & devises": fx_chf_page()
 
 def newsletter_dashboard():
