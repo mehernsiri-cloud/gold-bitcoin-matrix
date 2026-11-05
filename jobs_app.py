@@ -208,17 +208,21 @@ def _render_job_card(job, accent):
     raw_url = str(job.get("url") or "").strip()
     safe_url = raw_url if raw_url.startswith(("https://", "http://")) else ""
     action = (
-        f'<a class="job-apply" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">Voir l’offre ↗</a>'
-        if safe_url else '<span class="job-no-link">Lien non disponible</span>'
+        f'<a class="job-apply" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">Voir l’annonce ↗</a>'
+        if safe_url else '<span class="job-no-link">Lien direct indisponible</span>'
+    )
+    title_markup = (
+        f'<a class="job-title-link" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">{title} ↗</a>'
+        if safe_url else f'<span class="job-title-link">{title}</span>'
     )
     st.markdown(
         f"""
-        <div class="job-card" style="--job-accent:{accent}">
+        <div class="job-card" style="--job-accent:{accent};--job-tint:{accent}22">
           <div class="job-card-top">
             <span class="job-source">{source}</span>
             <span class="job-date">{date}</span>
           </div>
-          <div class="job-title">{title}</div>
+          <div class="job-title">{title_markup}</div>
           <div class="job-company">{company}</div>
           <div class="job-location">⌖ &nbsp;{location}</div>
           <div class="job-tags"><span>{role}</span></div>
@@ -235,22 +239,26 @@ def jobs_dashboard():
         <style>
         .jobs-layout-note {color:var(--text-color);opacity:.72;font-size:.88rem;margin-top:-.45rem}
         .job-card {
-          min-height: 222px; height:100%; padding:16px; margin:0 0 14px 0;
-          border:1px solid rgba(128,128,128,.22); border-top:4px solid var(--job-accent);
-          border-radius:15px; background:var(--secondary-background-color);
+          min-height: 222px; height:100%; padding:17px; margin:0 0 14px 0;
+          border:1px solid color-mix(in srgb, var(--job-accent) 58%, #ffffff);
+          border-top:5px solid var(--job-accent);
+          border-radius:15px; background:var(--job-tint);
           display:flex; flex-direction:column; gap:9px;
-          box-shadow:0 2px 8px rgba(0,0,0,.035);
+          box-shadow:0 3px 12px rgba(0,0,0,.10);
         }
         .job-card-top {display:flex;justify-content:space-between;gap:8px;align-items:center}
         .job-source {font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;opacity:.72}
         .job-date {font-size:.72rem;opacity:.68;white-space:nowrap}
-        .job-title {font-size:1.03rem;line-height:1.3;font-weight:750;min-height:2.6em}
+        .job-title {font-size:1.03rem;line-height:1.3;font-weight:800;min-height:2.6em}
+        .job-title-link {color:var(--text-color)!important;text-decoration:none!important}
+        .job-title-link:hover {text-decoration:underline!important;color:var(--job-accent)!important}
         .job-company {font-size:.9rem;font-weight:600;opacity:.88}
         .job-location {font-size:.82rem;opacity:.72}
         .job-tags {margin-top:2px}
         .job-tags span {display:inline-block;border:1px solid rgba(128,128,128,.35);border-radius:20px;padding:4px 9px;font-size:.69rem;opacity:.82}
         .job-card-bottom {margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end}
-        .job-apply {display:inline-block;background:var(--job-accent);color:#17202a!important;text-decoration:none!important;padding:7px 12px;border-radius:18px;font-size:.78rem;font-weight:750}
+        .job-apply {display:inline-block;background:var(--job-accent);color:#17202a!important;text-decoration:none!important;padding:8px 14px;border-radius:18px;font-size:.8rem;font-weight:800;box-shadow:0 2px 5px rgba(0,0,0,.12)}
+        .job-apply:hover {filter:brightness(.94)}
         .job-no-link {font-size:.76rem;opacity:.55}
         </style>
         """,
