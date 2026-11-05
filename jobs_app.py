@@ -53,6 +53,7 @@ def classify_senior_role(title, description=""):
     hr_context = any(term in full_text for term in (
         "hris", "sirh", "human resources information", "hr it", "hr technology",
         "hcm", "human capital management", "employee central", "people systems",
+        "hr solution", "hr architect", "hr systems", "hr transformation",
     ))
     wms_context = any(term in full_text for term in (
         "wms", "manhattan", "warehouse management", "manhattan associates",
@@ -229,7 +230,7 @@ def fetch_country_jobs(country):
 
 def _external_search_links(country):
     cfg = COUNTRIES[country]
-    query = quote_plus("SAP SuccessFactors HRIS SAP CPI integration HR architect")
+    query = quote_plus('("SAP SuccessFactors" OR HRIS OR "HR Solution Architect" OR "HR IT Project Manager" OR "WMS Project Manager" OR Manhattan) AND (Senior OR Lead OR Principal OR Manager OR Director)')
     location = quote_plus(cfg["linkedin"])
     indeed_location = quote_plus(cfg["indeed"])
     indeed_domain = "fr.indeed.com" if country == "France" else "ae.indeed.com" if country == "Dubaï" else "ch.indeed.com"
@@ -305,10 +306,10 @@ def jobs_dashboard():
         .job-card-top {display:flex;justify-content:space-between;gap:8px;align-items:center}
         .job-source {font-size:.82rem;font-weight:850;letter-spacing:.03em;text-transform:uppercase;color:#263442;opacity:1}
         .job-date {font-size:.82rem;color:#263442;opacity:1;white-space:nowrap}
-        .job-title {font-size:1.22rem;line-height:1.38;font-weight:850;min-height:2.8em}
+        .job-title {font-size:1.28rem;line-height:1.4;font-weight:850;min-height:2.8em}
         .job-title-link {color:#17202a!important;text-decoration:none!important}
         .job-title-link:hover {text-decoration:underline!important;color:#334155!important}
-        .job-company {font-size:1.02rem;font-weight:750;color:#17202a;opacity:1}
+        .job-company {font-size:1.08rem;font-weight:750;color:#17202a;opacity:1}
         .job-location {font-size:.94rem;color:#263442;opacity:1}
         .job-tags {margin-top:2px}
         .job-tags span {display:inline-block;border:1px solid rgba(23,32,42,.28);border-radius:20px;padding:5px 10px;font-size:.78rem;font-weight:700;color:#17202a;opacity:1}
@@ -340,8 +341,6 @@ def jobs_dashboard():
         for role in ROLE_SEARCHES:
             if st.checkbox(role, value=True, key=f"jobs_role_{role}"):
                 selected_roles.append(role)
-        if st.checkbox("Autres offres pertinentes", value=True, key="jobs_role_other"):
-            selected_roles.append("Offre complémentaire")
 
         st.divider()
         recency = st.selectbox(
