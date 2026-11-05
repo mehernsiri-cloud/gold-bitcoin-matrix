@@ -13,7 +13,7 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 
-MAX_PRICE_TND = 300_000
+MAX_PRICE_TND = 500_000
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; NabeulPropertyWatch/1.0)",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
@@ -191,10 +191,10 @@ def real_estate_dashboard():
     st.title("🏡 Immobilier – Cap Bon, Tunisie")
     st.markdown(
         "Maisons et villas **à vendre** dans les villes côtières du gouvernorat de Nabeul. "
-        "Budget maximal : **300 000 TND**."
+        "Budget maximal : **500 000 TND**."
     )
     metric_cols = st.columns(3)
-    metric_cols[0].metric("Budget maximum", "300 000 TND")
+    metric_cols[0].metric("Budget maximum", "500 000 TND")
     metric_cols[1].metric("Type de bien", "Maison / Villa")
     metric_cols[2].metric("Zone", "Littoral de Nabeul")
 
