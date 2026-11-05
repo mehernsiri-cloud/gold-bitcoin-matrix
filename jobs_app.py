@@ -1,16 +1,12 @@
 # jobs_app.py
 """Curated job dashboard focused on France, Dubai and Switzerland."""
 import html
-import os
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 import pandas as pd
 import requests
 import streamlit as st
-
-ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "2c269bb8")
-ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "39be78e26991e138d40ce4313620aebb")
 
 COUNTRIES = {
     "France": {"code": None, "where": "France", "linkedin": "France", "indeed": "France"},
@@ -94,45 +90,6 @@ def _normalise_date(value):
         return pd.NaT
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def fetch_adzuna(country_code, location, keyword):
-    if not ADZUNA_APP_ID or not ADZUNA_APP_KEY:
-        return []
-    url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
-    params = {
-        "app_id": ADZUNA_APP_ID,
-        "app_key": ADZUNA_APP_KEY,
-        "results_per_page": 30,
-        "what": keyword,
-        "where": location,
-        "sort_by": "date",
-        "content-type": "application/json",
-    }
-    try:
-        response = requests.get(url, params=params, headers=HEADERS, timeout=(3, 8))
-        response.raise_for_status()
-        results = response.json().get("results", [])
-    except (requests.RequestException, ValueError, TypeError):
-        return []
-
-    jobs = []
-    cutoff = datetime.utcnow() - timedelta(days=DAYS_BACK)
-    for item in results:
-        created = _normalise_date(item.get("created"))
-        if pd.isna(created) or created.to_pydatetime() < cutoff:
-            continue
-        jobs.append({
-            "title": item.get("title", ""),
-            "company": (item.get("company") or {}).get("display_name", "Entreprise non précisée"),
-            "location": (item.get("location") or {}).get("display_name", location),
-            "date": created,
-            "url": item.get("redirect_url", ""),
-            "source": "Adzuna",
-            "description": item.get("description", ""),
-        })
-    return jobs
-
-
 @st.cache_data(ttl=21600, show_spinner=False)
 def fetch_himalayas(country_code):
     try:
@@ -187,13 +144,8 @@ def fetch_country_jobs(country):
                 "title": title, "company": item.get("companyName", "Entreprise non précisée"),
                 "location": f"Remote · {country}", "date": created,
                 "url": item.get("applicationLink", ""), "source": "Himalayas",
-                "description": description, "role": role,
+                "source_url": "https://himalayas.app", "description": description, "role": role,
             })
-    if cfg["code"]:
-        for keyword in ROLE_QUERIES:
-            for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
-                jobs.append(job)
-
     for item in fetch_arbeitnow():
         location = item.get("location", "")
         if not _arbeitnow_country_match(location, country):
@@ -253,7 +205,7 @@ def fetch_country_jobs(country):
         ranked.append(job)
 
     ranked.sort(key=lambda x: (x["score"], x["date"]), reverse=True)
-    return ranked[:MAX_PER_COUNTRY], []
+    return ranked[:MAX_PER_COUNTRY], {"Himalayas": "OK" if remote_jobs is not None else "Erreur API", "Arbeitnow": "OK"}
 
 
 def _external_search_links(country):
