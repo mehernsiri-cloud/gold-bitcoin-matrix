@@ -105,6 +105,39 @@ def fetch_himalayas(country_code, keyword):
         return None
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def fetch_jobicy():
+    try:
+        response = requests.get(
+            "https://jobicy.com/api/jobs",
+            params={"count": 100},
+            headers={**HEADERS, "Accept": "application/json"},
+            timeout=(4, 12),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            return None
+        return payload.get("jobs", [])
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def fetch_remoteok():
+    try:
+        response = requests.get(
+            "https://remoteok.com/api",
+            headers={**HEADERS, "Accept": "application/json"},
+            timeout=(4, 12),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload[1:] if isinstance(payload, list) else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_arbeitnow():
     try:
@@ -162,6 +195,56 @@ def fetch_country_jobs(country):
                     "role": role,
                 })
     source_status["Himalayas"] = "OK" if source_ok else "Erreur partielle/API"
+
+    jobicy = fetch_jobicy()
+    source_status["Jobicy"] = "OK" if jobicy is not None else "Erreur API"
+    for item in jobicy or []:
+        geo = str(item.get("jobGeo") or "")
+        geo_lower = geo.lower()
+        eligible = (
+            "anywhere" in geo_lower or "worldwide" in geo_lower
+            or (country == "France" and any(x in geo_lower for x in ("france", "europe")))
+            or (country == "Suisse" and any(x in geo_lower for x in ("switzerland", "suisse", "europe")))
+            or (country == "Dubaï" and any(x in geo_lower for x in ("united arab emirates", "uae", "dubai")))
+        )
+        if not eligible:
+            continue
+        title = item.get("jobTitle", "")
+        description = item.get("jobDescription") or item.get("jobExcerpt", "")
+        role = classify_senior_role(title, description)
+        created = _normalise_date(item.get("pubDate"))
+        if role and not pd.isna(created):
+            url = item.get("url", "")
+            jobs.append({
+                "title": title, "company": item.get("companyName", "Entreprise non précisée"),
+                "location": f"Remote · {geo or country}", "date": created,
+                "url": url, "source_url": url, "source": "Jobicy",
+                "description": description, "role": role,
+            })
+
+    remoteok = fetch_remoteok()
+    source_status["Remote OK"] = "OK" if remoteok is not None else "Erreur API"
+    for item in remoteok or []:
+        location = str(item.get("location") or "")
+        location_lower = location.lower()
+        eligible = (
+            any(x in location_lower for x in ("worldwide", "anywhere", "remote - global"))
+            or _arbeitnow_country_match(location, country)
+        )
+        if not eligible:
+            continue
+        title = item.get("position", "")
+        description = item.get("description", "")
+        role = classify_senior_role(title, description)
+        created = _normalise_date(item.get("date"))
+        if role and not pd.isna(created):
+            url = item.get("url", "")
+            jobs.append({
+                "title": title, "company": item.get("company", "Entreprise non précisée"),
+                "location": location or f"Remote · {country}", "date": created,
+                "url": url, "source_url": url, "source": "Remote OK",
+                "description": description, "role": role,
+            })
 
     arbeitnow = fetch_arbeitnow()
     source_status["Arbeitnow"] = "OK" if arbeitnow is not None else "Erreur API"
@@ -346,7 +429,7 @@ def jobs_dashboard():
         )
         source_filter = st.selectbox(
             "Source",
-            ["Toutes les sources", "Himalayas", "Arbeitnow"],
+            ["Toutes les sources", "Himalayas", "Jobicy", "Remote OK", "Arbeitnow"],
             index=0,
             key="jobs_source",
         )
