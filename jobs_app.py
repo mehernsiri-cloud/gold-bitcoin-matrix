@@ -91,11 +91,11 @@ def _normalise_date(value):
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def fetch_himalayas(country_code):
+def fetch_himalayas(country_code, keyword):
     try:
         response = requests.get(
             "https://himalayas.app/jobs/api/search",
-            params={"country": country_code, "seniority": "Senior,Manager,Director,Executive", "sort": "recent", "page": 1},
+            params={"country": country_code, "q": keyword, "seniority": "Senior,Manager,Director,Executive", "sort": "recent", "page": 1},
             headers={**HEADERS, "Accept": "application/json"}, timeout=(4, 12),
         )
         response.raise_for_status()
@@ -133,20 +133,39 @@ def _arbeitnow_country_match(location, country):
 def fetch_country_jobs(country):
     cfg = COUNTRIES[country]
     jobs = []
-    remote_jobs = fetch_himalayas(cfg["code"] or {"France": "FR", "Dubaï": "AE", "Suisse": "CH"}[country])
-    for item in remote_jobs or []:
-        title = item.get("title", "")
-        description = item.get("description") or item.get("excerpt", "")
-        role = classify_senior_role(title, description)
-        created = _normalise_date(item.get("pubDate"))
-        if role and not pd.isna(created):
-            jobs.append({
-                "title": title, "company": item.get("companyName", "Entreprise non précisée"),
-                "location": f"Remote · {country}", "date": created,
-                "url": item.get("applicationLink", ""), "source": "Himalayas",
-                "source_url": "https://himalayas.app", "description": description, "role": role,
-            })
-    for item in fetch_arbeitnow():
+    source_status = {}
+    country_code = {"France": "FR", "Dubaï": "AE", "Suisse": "CH"}[country]
+    search_terms = ["SAP SuccessFactors", "HRIS HR IT", "HR Solution Architect", "WMS Project Manager Manhattan"]
+    source_ok = True
+    for keyword in search_terms:
+        remote_jobs = fetch_himalayas(country_code, keyword)
+        if remote_jobs is None:
+            source_ok = False
+            continue
+        for item in remote_jobs:
+            title = item.get("title", "")
+            description = item.get("description") or item.get("excerpt", "")
+            role = classify_senior_role(title, description)
+            created = _normalise_date(item.get("pubDate"))
+            if role and not pd.isna(created):
+                guid = str(item.get("guid") or "")
+                source_url = guid if guid.startswith("http") else ("https://himalayas.app" + guid if guid.startswith("/") else "https://himalayas.app")
+                jobs.append({
+                    "title": title,
+                    "company": item.get("companyName", "Entreprise non précisée"),
+                    "location": f"Remote · {country}",
+                    "date": created,
+                    "url": item.get("applicationLink", ""),
+                    "source_url": source_url,
+                    "source": "Himalayas",
+                    "description": description,
+                    "role": role,
+                })
+    source_status["Himalayas"] = "OK" if source_ok else "Erreur partielle/API"
+
+    arbeitnow = fetch_arbeitnow()
+    source_status["Arbeitnow"] = "OK" if arbeitnow is not None else "Erreur API"
+    for item in arbeitnow or []:
         location = item.get("location", "")
         if not _arbeitnow_country_match(location, country):
             continue
@@ -175,9 +194,7 @@ def fetch_country_jobs(country):
         key = url.lower() if url else (
             f"{job.get('title','').lower()}|{job.get('company','').lower()}|{job.get('location','').lower()}"
         )
-        if not key.strip("|"):
-            continue
-        if key not in unique or job["date"] > unique[key]["date"]:
+        if key and (key not in unique or job["date"] > unique[key]["date"]):
             unique[key] = job
 
     now = pd.Timestamp.utcnow().tz_localize(None)
@@ -187,15 +204,7 @@ def fetch_country_jobs(country):
         "transformation": 5, "project manager": 4, "manhattan": 4, "wms": 4,
     }
     ranked = []
-    curated = []
     for job in unique.values():
-        role = classify_senior_role(job.get("title"), job.get("description"))
-        if not role:
-            continue
-        job["role"] = role
-        curated.append(job)
-
-    for job in curated:
         title = str(job.get("title", "")).lower()
         description = str(job.get("description", "")).lower()
         score = sum(weight * (2 if term in title else 1 if term in description else 0)
@@ -205,7 +214,7 @@ def fetch_country_jobs(country):
         ranked.append(job)
 
     ranked.sort(key=lambda x: (x["score"], x["date"]), reverse=True)
-    return ranked[:MAX_PER_COUNTRY], {"Himalayas": "OK" if remote_jobs is not None else "Erreur API", "Arbeitnow": "OK"}
+    return ranked[:MAX_PER_COUNTRY], source_status
 
 
 def _external_search_links(country):
@@ -249,15 +258,21 @@ def _render_job_card(job, accent, accent_border):
         f'<a class="job-apply" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">Voir l’annonce ↗</a>'
         if safe_url else '<span class="job-no-link">Lien direct indisponible</span>'
     )
+    title_url = str(job.get("source_url") or safe_url)
+    safe_title_url = title_url if title_url.startswith(("https://", "http://")) else ""
     title_markup = (
-        f'<a class="job-title-link" href="{html.escape(safe_url, quote=True)}" target="_blank" rel="noopener noreferrer">{title} ↗</a>'
-        if safe_url else f'<span class="job-title-link">{title}</span>'
+        f'<a class="job-title-link" href="{html.escape(safe_title_url, quote=True)}" target="_blank" rel="noopener noreferrer">{title} ↗</a>'
+        if safe_title_url else f'<span class="job-title-link">{title}</span>'
+    )
+    source_markup = (
+        f'<a href="{html.escape(str(job.get("source_url")), quote=True)}" target="_blank" rel="noopener noreferrer">{source}</a>'
+        if job.get("source_url") else source
     )
     st.markdown(
         f"""
         <div class="job-card" style="background-color:{accent};border-top:5px solid {accent_border};color:#17202a">
           <div class="job-card-top">
-            <span class="job-source">{source}</span>
+            <span class="job-source">{source_markup}</span>
             <span class="job-date">{date}</span>
           </div>
           <div class="job-title">{title_markup}</div>
@@ -348,9 +363,11 @@ def jobs_dashboard():
         return
 
     collected = []
+    collection_status = {}
     with st.spinner("Recherche des offres correspondant aux filtres…"):
         for country in selected_countries:
-            country_jobs, _ = fetch_country_jobs(country)
+            country_jobs, source_status = fetch_country_jobs(country)
+            collection_status[country] = source_status
             for job in country_jobs:
                 job = dict(job)
                 job["country"] = country
@@ -383,6 +400,12 @@ def jobs_dashboard():
                 st.markdown(f"**{country}**")
                 for _, label, url in [x for x in all_links if x[0] == country]:
                     st.markdown(f"- [{label}]({url})")
+
+    with st.expander("État des sources automatiques"):
+        for country, statuses in collection_status.items():
+            st.markdown(f"**{country}**")
+            for source_name, status in statuses.items():
+                st.caption(f"{source_name} : {status}")
 
     # Trois colonnes fixes : les offres ne sont jamais mélangées entre pays.
     country_styles = {
