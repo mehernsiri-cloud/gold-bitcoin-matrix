@@ -9,6 +9,7 @@ import html
 import re
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import plotly.express as px
@@ -36,12 +37,15 @@ APP_TITLE = "WELS Actions"
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; WELSActions/1.0)"}
 
 RSS_FEEDS = {
-    "Veille France — infrastructures vitales": "https://api.gdeltproject.org/api/v2/doc/doc?query=(France%20OR%20French)%20AND%20(fuel%20shortage%20OR%20fuel%20strike%20OR%20refinery%20OR%20electricity%20outage%20OR%20water%20supply%20OR%20cyberattack%20OR%20port%20blockade%20OR%20transport%20strike%20OR%20food%20shortage%20OR%20hospital%20crisis)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
-    "Veille Émirats — Dubaï": "https://api.gdeltproject.org/api/v2/doc/doc?query=(UAE%20OR%20Emirates%20OR%20Dubai%20OR%20Abu%20Dhabi)%20AND%20(missile%20OR%20drone%20OR%20airspace%20OR%20airport%20closure%20OR%20port%20OR%20Jebel%20Ali%20OR%20water%20OR%20desalination%20OR%20power%20outage%20OR%20banking%20OR%20cyberattack%20OR%20food%20supply)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
-    "Veille Europe — stabilité et économie": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Europe%20OR%20European%20Union%20OR%20EU)%20AND%20(energy%20shortage%20OR%20gas%20supply%20OR%20electricity%20grid%20OR%20banking%20crisis%20OR%20sovereign%20debt%20OR%20capital%20controls%20OR%20mass%20protests%20OR%20general%20strike%20OR%20cyberattack%20OR%20infrastructure%20attack)&mode=artlist&format=rss&maxrecords=50&sort=datedesc",
-    "Veille Europe — prix et stocks énergétiques": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Europe%20OR%20European%20OR%20France)%20AND%20(%22gas%20storage%22%20OR%20%22gas%20prices%22%20OR%20%22TTF%20gas%22%20OR%20%22energy%20bills%22%20OR%20%22heating%20costs%22%20OR%20%22electricity%20prices%22%20OR%20%22LNG%20supply%22%20OR%20%22gas%20market%20tightness%22%20OR%20%22oil%20prices%22)&mode=artlist&format=rss&maxrecords=60&sort=datedesc",
-    "Veille Moyen-Orient — sécurité et approvisionnement": "https://api.gdeltproject.org/api/v2/doc/doc?query=(Middle%20East%20OR%20Iran%20OR%20Israel%20OR%20Gulf%20OR%20Yemen%20OR%20Saudi%20Arabia)%20AND%20(military%20attack%20OR%20missile%20OR%20drone%20OR%20escalation%20OR%20Hormuz%20OR%20Red%20Sea%20OR%20oil%20supply%20OR%20gas%20supply%20OR%20water%20crisis%20OR%20power%20outage%20OR%20civilian%20casualties)&mode=artlist&format=rss&maxrecords=60&sort=datedesc",
-    "Veille mondiale — risques systémiques": "https://api.gdeltproject.org/api/v2/doc/doc?query=(global%20OR%20international)%20AND%20(major%20cyberattack%20OR%20pandemic%20OR%20epidemic%20OR%20food%20crisis%20OR%20energy%20crisis%20OR%20shipping%20disruption%20OR%20financial%20crisis%20OR%20nuclear%20incident%20OR%20critical%20infrastructure)&mode=artlist&format=rss&maxrecords=40&sort=datedesc",
+    # Curated publisher feeds replace GDELT, which was rate-limiting the Streamlit app.
+    "Franceinfo — France": "https://www.franceinfo.fr/france.rss",
+    "Franceinfo — Monde": "https://www.franceinfo.fr/monde.rss",
+    "France 24 — International": "https://www.france24.com/fr/rss",
+    "BBC — World": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "BBC — Business": "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "Deutsche Welle — World": "https://rss.dw.com/rdf/rss-en-all",
+    "The Guardian — World": "https://www.theguardian.com/world/rss",
+    "Al Jazeera — International": "https://www.aljazeera.com/xml/rss/all.xml",
 }
 
 TOPICS = {
@@ -116,83 +120,71 @@ def topic_for(text):
     return "Autres actualités"
 
 
-@st.cache_resource
-def gdelt_collection_lock():
-    """One shared lock prevents simultaneous GDELT bursts from Streamlit sessions."""
-    return threading.Lock()
-
-
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_news(max_per_feed=25):
+    """Fetch independent publisher RSS feeds concurrently with strict timeouts."""
     if feedparser is None:
         return pd.DataFrame(), ["Le module feedparser n'est pas installé."]
-    articles, errors = [], []
-    # GDELT limits requests globally. Serialize all sessions and leave a safer margin.
-    with gdelt_collection_lock():
-        last_request_at = 0.0
-        for feed_index, (source, url) in enumerate(RSS_FEEDS.items()):
-            try:
-                # Restrict at source where supported; the language check below is a second guard.
-                request_url = url.replace("&mode=", "%20(sourcelang:english%20OR%20sourcelang:french)&mode=", 1)
-                response = None
-                for attempt in range(3):
-                    wait_for_slot = 7.0 - (time.monotonic() - last_request_at)
-                    if wait_for_slot > 0:
-                        time.sleep(wait_for_slot)
-                    response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=30)
-                    last_request_at = time.monotonic()
-                    if response.status_code != 429:
-                        response.raise_for_status()
-                        break
-                    if attempt < 2:
-                        retry_after = response.headers.get("Retry-After", "")
-                        try:
-                            delay = max(15.0, float(retry_after))
-                        except (TypeError, ValueError):
-                            delay = 15.0 * (attempt + 1)
-                        time.sleep(delay)
-                if response is None or response.status_code == 429:
-                    body = clean_html(response.text if response is not None else "")[:240]
-                    errors.append(f"{source} : HTTP 429 après 3 tentatives" + (f" — {body}" if body else ""))
-                    continue
 
-                parsed = feedparser.parse(response.content)
-                accepted_for_feed = 0
-                for item in parsed.entries:
-                    title = clean_html(item.get("title", ""))
-                    link = item.get("link", "")
-                    if not title or not link:
-                        continue
-                    summary = clean_html(item.get("summary", item.get("description", "")))
-                    if not supported_news_language(title, summary):
-                        continue
-                    accepted_for_feed += 1
-                    if accepted_for_feed > max_per_feed:
-                        break
-                    published = item.get("published", item.get("updated", ""))
-                    articles.append({
-                        "Date": parse_date(published),
-                        "Source": source,
-                        "Domaine": urlparse(link).netloc.replace("www.", ""),
-                        "Titre": title,
-                        "Résumé": summary[:2500],
-                        "Lien": link,
-                    })
-                if not parsed.entries:
-                    errors.append(f"{source} : flux vide ou format RSS non reconnu.")
-            except requests.exceptions.HTTPError as exc:
-                response = getattr(exc, "response", None)
-                status = getattr(response, "status_code", None)
-                body = clean_html(getattr(response, "text", ""))[:240]
-                errors.append(f"{source} : HTTP {status or 'inconnu'}" + (f" — réponse serveur : {body}" if body else ""))
-            except requests.exceptions.Timeout:
-                errors.append(f"{source} : délai dépassé (timeout après 30 secondes)")
-            except requests.exceptions.RequestException as exc:
-                errors.append(f"{source} : erreur réseau {type(exc).__name__} — {str(exc)[:180]}")
+    def fetch_one(source, url):
+        try:
+            response = requests.get(
+                url,
+                headers=REQUEST_HEADERS,
+                timeout=(3, 6),
+            )
+            response.raise_for_status()
+            parsed = feedparser.parse(response.content)
+            if not parsed.entries:
+                return [], f"{source} : flux vide ou format RSS non reconnu."
+
+            rows = []
+            for item in parsed.entries[:max_per_feed]:
+                title = clean_html(item.get("title", ""))
+                link = item.get("link", "")
+                if not title or not link:
+                    continue
+                summary = clean_html(item.get("summary", item.get("description", "")))
+                if not supported_news_language(title, summary):
+                    continue
+                published = item.get("published", item.get("updated", ""))
+                rows.append({
+                    "Date": parse_date(published),
+                    "Source": source,
+                    "Domaine": urlparse(link).netloc.replace("www.", ""),
+                    "Titre": title,
+                    "Résumé": summary[:2500],
+                    "Lien": link,
+                })
+            return rows, None if rows else f"{source} : aucun article FR/EN exploitable."
+        except requests.exceptions.Timeout:
+            return [], f"{source} : délai dépassé (6 secondes)."
+        except requests.exceptions.HTTPError as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            return [], f"{source} : HTTP {status or 'erreur'}."
+        except requests.exceptions.RequestException as exc:
+            return [], f"{source} : erreur réseau {type(exc).__name__}."
+        except Exception as exc:
+            return [], f"{source} : {type(exc).__name__}."
+
+    articles, errors = [], []
+    # Parallel requests prevent one slow publisher from blocking the other sources.
+    with ThreadPoolExecutor(max_workers=len(RSS_FEEDS)) as executor:
+        futures = {
+            executor.submit(fetch_one, source, url): source
+            for source, url in RSS_FEEDS.items()
+        }
+        for future in as_completed(futures):
+            try:
+                rows, error = future.result()
+                articles.extend(rows)
+                if error:
+                    errors.append(error)
             except Exception as exc:
-                errors.append(f"{source} : {type(exc).__name__} — {str(exc)[:180]}")
+                errors.append(f"{futures[future]} : erreur inattendue {type(exc).__name__}.")
+
     if not articles:
-        return pd.DataFrame(), errors
+        return pd.DataFrame(), errors or ["Aucun flux éditeur n'a retourné d'article."]
     df = pd.DataFrame(articles).drop_duplicates(subset=["Lien"])
     df["Date_tri"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Thème"] = (df["Titre"].fillna("") + " " + df["Résumé"].fillna("")).apply(topic_for)
