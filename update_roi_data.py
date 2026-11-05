@@ -27,18 +27,22 @@ HEADERS = {
                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 }
 
-# Retry transient Bayut/network errors (including HTTP 503) before giving up.
+# Keep Bayut failures bounded. In particular, never wait for a long
+# Retry-After header: Bayut may return 503 with multi-hour retry delays.
 SESSION = requests.Session()
 RETRY_POLICY = Retry(
-    total=4,
-    connect=4,
-    read=4,
-    status=4,
-    backoff_factor=1.5,
+    total=1,
+    connect=1,
+    read=1,
+    status=1,
+    backoff_factor=0.2,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["GET"],
+    respect_retry_after_header=False,
+    raise_on_status=False,
 )
 SESSION.mount("https://", HTTPAdapter(max_retries=RETRY_POLICY))
+REQUEST_TIMEOUT = (3, 5)  # connect timeout, read timeout
 
 MAX_LISTINGS_PER_TYPE = 100
 PLACEHOLDER_ROI = 6.0  # %
@@ -58,7 +62,7 @@ def get_build_id():
     """Fetch main Bayut page and extract current BUILD_ID."""
     url = "https://www.bayut.com/"
     try:
-        resp = SESSION.get(url, headers=HEADERS, timeout=20)
+        resp = SESSION.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         match = re.search(r'"BUILD_ID":"([a-zA-Z0-9]+)"', resp.text)
         if match:
@@ -74,7 +78,7 @@ def fetch_json_listings(build_id, category_url):
     try:
         category_path = category_url.replace("https://www.bayut.com/", "")
         json_url = f"https://www.bayut.com/_next/data/{build_id}/{category_path}.json"
-        resp = SESSION.get(json_url, headers=HEADERS, timeout=20)
+        resp = SESSION.get(json_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         # Traverse to listings array
