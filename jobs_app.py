@@ -30,9 +30,11 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CuratedJobsDashboard/1.0)"}
 
 
 def _normalise_date(value):
-    if not value:
+    if value is None or value == "":
         return pd.NaT
     try:
+        if isinstance(value, (int, float)):
+            return pd.to_datetime(value, unit="s", utc=True).tz_convert(None)
         return pd.to_datetime(value, utc=True).tz_convert(None)
     except Exception:
         return pd.NaT
