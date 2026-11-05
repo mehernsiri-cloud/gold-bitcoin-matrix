@@ -13,9 +13,9 @@ ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "2c269bb8")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "39be78e26991e138d40ce4313620aebb")
 
 COUNTRIES = {
-    "France": {"code": "fr", "where": "France", "linkedin": "France", "indeed": "France"},
+    "France": {"code": None, "where": "France", "linkedin": "France", "indeed": "France"},
     "Dubaï": {"code": None, "where": "Dubai", "linkedin": "Dubai, United Arab Emirates", "indeed": "Dubai"},
-    "Suisse": {"code": "ch", "where": "Switzerland", "linkedin": "Switzerland", "indeed": "Switzerland"},
+    "Suisse": {"code": None, "where": "Switzerland", "linkedin": "Switzerland", "indeed": "Switzerland"},
 }
 
 ROLE_SEARCHES = {
@@ -133,6 +133,21 @@ def fetch_adzuna(country_code, location, keyword):
     return jobs
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def fetch_himalayas(country_code):
+    try:
+        response = requests.get(
+            "https://himalayas.app/jobs/api/search",
+            params={"country": country_code, "seniority": "Senior,Manager,Director,Executive", "sort": "recent", "page": 1},
+            headers={**HEADERS, "Accept": "application/json"}, timeout=(4, 12),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("jobs", []) if isinstance(payload, dict) else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_arbeitnow():
     try:
@@ -161,6 +176,19 @@ def _arbeitnow_country_match(location, country):
 def fetch_country_jobs(country):
     cfg = COUNTRIES[country]
     jobs = []
+    remote_jobs = fetch_himalayas(cfg["code"] or {"France": "FR", "Dubaï": "AE", "Suisse": "CH"}[country])
+    for item in remote_jobs or []:
+        title = item.get("title", "")
+        description = item.get("description") or item.get("excerpt", "")
+        role = classify_senior_role(title, description)
+        created = _normalise_date(item.get("pubDate"))
+        if role and not pd.isna(created):
+            jobs.append({
+                "title": title, "company": item.get("companyName", "Entreprise non précisée"),
+                "location": f"Remote · {country}", "date": created,
+                "url": item.get("applicationLink", ""), "source": "Himalayas",
+                "description": description, "role": role,
+            })
     if cfg["code"]:
         for keyword in ROLE_QUERIES:
             for job in fetch_adzuna(cfg["code"], cfg["where"], keyword):
@@ -351,7 +379,7 @@ def jobs_dashboard():
         )
         source_filter = st.selectbox(
             "Source",
-            ["Toutes les sources", "Adzuna", "Arbeitnow"],
+            ["Toutes les sources", "Himalayas", "Arbeitnow"],
             index=0,
             key="jobs_source",
         )
@@ -433,7 +461,7 @@ def jobs_dashboard():
 
     with st.expander("Sources et périmètre de recherche"):
         st.markdown(
-            "- **Sources automatiques :** Adzuna et Arbeitnow (couverture variable selon le pays).\n"
+            "- **Sources automatiques :** Himalayas (API publique sans token, postes à distance) et Arbeitnow.\n"
             "- **Sources complémentaires :** LinkedIn, Indeed et job boards locaux via recherche directe.\n"
             "- **Périmètre :** postes expérimentés en IT RH / HRIS, SAP SuccessFactors, architecture IT RH "
             "et gestion de projets IT / WMS (Manhattan). Stages, alternances et postes juniors exclus.\n"
