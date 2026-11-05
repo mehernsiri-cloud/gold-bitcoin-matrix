@@ -1,0 +1,25 @@
+name: Python syntax check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "jobs_app.py"
+      - "app.py"
+      - ".github/workflows/python-check.yml"
+  pull_request:
+    paths:
+      - "jobs_app.py"
+      - "app.py"
+      - ".github/workflows/python-check.yml"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile application files
+        run: python -m py_compile jobs_app.py app.py
