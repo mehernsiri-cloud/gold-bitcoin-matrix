@@ -75,13 +75,13 @@ def _town_from_text(text):
             return town
     return None
 
-def _is_eligible(text):
+def _is_eligible(text, sale_context=False):
     value = _norm(text)
-    sale_terms = ("a vendre", "vente", "for sale", "للبيع")
+    sale_terms = ("a vendre", "à vendre", "vente", "for sale", "للبيع", "av ")
     property_terms = ("maison", "villa", "duplex", "maisonnette", "دار", "فيلا")
     excluded = ("a louer", "location", "loyer", "rent", "studio a louer", "appartement")
     return (
-        any(term in value for term in sale_terms)
+        (sale_context or any(term in value for term in sale_terms))
         and any(term in value for term in property_terms)
         and not any(term in value for term in excluded)
     )
@@ -114,7 +114,8 @@ def _extract_cards(html_text, base_url, source):
         title = anchor.get_text(" ", strip=True)
         card_text = card.get_text(" ", strip=True)
         combined = f"{title} {card_text}"
-        if not title or not _is_eligible(combined):
+        sale_context = "/vente/" in base_url or "a-vendre" in base_url
+        if not title or not _is_eligible(combined, sale_context=sale_context):
             continue
         price = _price_tnd(combined)
         town = _town_from_text(combined)
