@@ -42,7 +42,6 @@ def classify_senior_role(title, description=""):
     if any(term in title_text for term in EXCLUDED_TITLE):
         return None
 
-    # SuccessFactors is deliberately explicit: generic SAP jobs are not enough.
     sf_context = any(term in full_text for term in (
         "successfactors", "success factors", "sap sf", "employee central",
     ))
@@ -53,27 +52,46 @@ def classify_senior_role(title, description=""):
     ))
     wms_context = any(term in full_text for term in (
         "wms", "manhattan", "warehouse management", "manhattan associates",
+        "supply chain", "logistics", "distribution center", "distribution centre",
+    ))
+    it_context = any(term in full_text for term in (
+        "information technology", " it ", "technology", "digital", "enterprise systems",
+        "business systems", "applications", "infrastructure", "erp", "crm",
+        "software implementation", "it transformation", "project delivery",
+        "program delivery", "programme delivery", "system integration",
     ))
     senior_title = any(term in title_text for term in (
         "senior", "sr.", "lead", "principal", "head", "director", "manager",
-        "architect", "program", "programme",
+        "architect", "program", "programme", "project", "delivery",
     ))
 
     if sf_context and senior_title:
         return "SAP SuccessFactors"
-    if wms_context and any(term in title_text for term in (
-        "project manager", "program manager", "programme manager", "delivery lead",
-        "implementation manager", "project lead", "director",
-    )):
+
+    # Architecture roles are eligible when clearly linked to IT, enterprise systems or HR technology.
+    architecture_title = any(term in title_text for term in (
+        "architect", "architecture", "enterprise architect", "solution architect",
+        "technical architect", "it architect", "systems architect",
+    ))
+    if architecture_title and senior_title and (hr_context or it_context or wms_context):
+        return "Architecte IT RH"
+
+    project_title = any(term in title_text for term in (
+        "project manager", "program manager", "programme manager",
+        "project director", "program director", "programme director",
+        "delivery manager", "delivery lead", "project lead",
+        "chef de projet", "directeur de projet",
+    ))
+    if project_title and senior_title and (it_context or hr_context or wms_context):
         return "Chef de projet IT / WMS"
+
     if hr_context and senior_title and any(term in title_text for term in (
-        "architect", "architecture", "project", "program", "programme", "manager",
-        "lead", "director", "product owner", "transformation",
+        "project", "program", "programme", "manager", "lead", "director",
+        "product owner", "transformation",
     )):
-        if "architect" in title_text or "architecture" in title_text:
-            return "Architecte IT RH"
         return "HRIS / SIRH – IT"
     return None
+
 DAYS_BACK = 30
 MAX_PER_COUNTRY = 20
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CuratedJobsDashboard/1.0)"}
@@ -282,9 +300,11 @@ def fetch_country_jobs(country):
 
     now = pd.Timestamp.utcnow().tz_localize(None)
     relevance_terms = {
-        "successfactors": 8, "sap": 5, "hris": 8, "sirh": 8, "hcm": 6,
-        "integration": 7, "cpi": 7, "btp": 7, "architect": 6,
-        "transformation": 5, "project manager": 4, "manhattan": 4, "wms": 4,
+        "successfactors": 6, "success factors": 6, "hris": 7, "sirh": 7, "hcm": 5,
+        "integration": 5, "cpi": 5, "btp": 5, "architect": 7, "architecture": 6,
+        "project manager": 7, "program manager": 7, "programme manager": 7,
+        "project director": 6, "delivery manager": 6, "manhattan": 6, "wms": 6,
+        "warehouse management": 5, "enterprise": 3, "solution architect": 7,
     }
     ranked = []
     for job in unique.values():
@@ -296,8 +316,31 @@ def fetch_country_jobs(country):
         job["score"] = score + max(0, 30 - age_days) / 10
         ranked.append(job)
 
+    # Keep the country limit, but reserve space across role families so that
+    # SuccessFactors does not crowd out project, architecture and WMS positions.
     ranked.sort(key=lambda x: (x["score"], x["date"]), reverse=True)
-    return ranked[:MAX_PER_COUNTRY], source_status
+    role_order = [
+        "HRIS / SIRH – IT", "SAP SuccessFactors",
+        "Architecte IT RH", "Chef de projet IT / WMS",
+    ]
+    buckets = {
+        role: [job for job in ranked if job.get("role") == role]
+        for role in role_order
+    }
+    selected = []
+    selected_ids = set()
+    per_role_limit = max(1, MAX_PER_COUNTRY // len(role_order))
+    for role in role_order:
+        for job in buckets[role][:per_role_limit]:
+            selected.append(job)
+            selected_ids.add(id(job))
+    if len(selected) < MAX_PER_COUNTRY:
+        selected.extend(
+            job for job in ranked
+            if id(job) not in selected_ids
+        )
+    selected.sort(key=lambda x: (x["score"], x["date"]), reverse=True)
+    return selected[:MAX_PER_COUNTRY], source_status
 
 
 def _external_search_links(country):
