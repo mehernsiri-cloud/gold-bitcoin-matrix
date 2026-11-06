@@ -43,6 +43,7 @@ jobs:
           touch data/actual_data.csv
           touch data/predictions_log.csv
           touch data/ai_predictions_log.csv
+          touch data/market_forecasts.csv
           touch data/roi_data.json
 
       - name: Update market indicators
@@ -94,7 +95,7 @@ jobs:
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
 
-          git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv data/roi_data.json weight.yaml
+          git add data/predictions_log.csv data/actual_data.csv data/ai_predictions_log.csv data/market_forecasts.csv data/roi_data.json weight.yaml
 
           if git diff --cached --quiet; then
             echo "No data changes to commit."
