@@ -32,7 +32,7 @@ ASSETS = {
 FORECAST_COLUMNS = [
     "forecast_id", "asset", "issued_at", "target_date", "horizon_days",
     "model_version", "current_price", "predicted_price", "p10", "p90",
-    "expected_return_pct", "daily_drift", "daily_volatility", "factor_json",
+    "expected_return_pct", "daily_drift", "daily_volatility", "calibration_bias_pct", "calibration_sample", "factor_json",
     "status", "actual_price", "resolved_at", "error_pct", "direction_correct",
 ]
 
@@ -156,6 +156,35 @@ def _clip(value: float, low: float, high: float) -> float:
     return float(max(low, min(high, value)))
 
 
+def _daily_resolved_sample(asset: str) -> pd.DataFrame:
+    """Use one independent observation per UTC issue day and forecast horizon."""
+    df = _read_forecasts()
+    if df.empty:
+        return pd.DataFrame()
+    done = df[(df["asset"] == asset) & (df["status"] == "resolved")].copy()
+    if done.empty:
+        return done
+    done["issued_at"] = pd.to_datetime(done["issued_at"], errors="coerce", utc=True)
+    done["issue_day"] = done["issued_at"].dt.date
+    return done.dropna(subset=["issue_day"]).sort_values("issued_at").drop_duplicates(
+        subset=["horizon_days", "issue_day"], keep="first"
+    )
+
+
+def _calibration_for_asset(asset: str) -> dict:
+    """Estimate historical directional bias by horizon; require 20 distinct days."""
+    sample = _daily_resolved_sample(asset)
+    result = {}
+    if sample.empty:
+        return result
+    sample["error_pct"] = pd.to_numeric(sample["error_pct"], errors="coerce")
+    for horizon, group in sample.groupby("horizon_days"):
+        errors = group["error_pct"].dropna()
+        bias = float(errors.mean()) / 100 if not errors.empty else 0.0
+        result[int(horizon)] = {"bias": bias, "sample": int(len(errors))}
+    return result
+
+
 def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macro: dict) -> dict:
     """Explainable ensemble: momentum, trend, mean reversion and macro score."""
     hist = history.copy().sort_values("timestamp")
@@ -201,17 +230,25 @@ def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macr
     }
     for macro_name, macro_value in macro.items():
         factors[f"Macro · {macro_name}"] = float(macro_value)
+    calibration = _calibration_for_asset(asset)
     forecasts = []
     for horizon in HORIZONS:
         expected = float(current_price * np.exp(drift * horizon))
         band = 1.2816 * daily_vol * np.sqrt(horizon)
+        calibration_row = calibration.get(horizon, {"bias": 0.0, "sample": 0})
+        calibration_correction = _clip(-calibration_row["bias"], -0.025, 0.025) if calibration_row["sample"] >= 20 else 0.0
+        expected *= (1.0 + calibration_correction)
+        lower = float(current_price * np.exp(drift * horizon - band)) * (1.0 + calibration_correction)
+        upper = float(current_price * np.exp(drift * horizon + band)) * (1.0 + calibration_correction)
         forecasts.append({
             "horizon_days": horizon,
             "target_date": (_utc_now().date() + timedelta(days=horizon)).isoformat(),
             "predicted_price": expected,
-            "p10": float(current_price * np.exp(drift * horizon - band)),
-            "p90": float(current_price * np.exp(drift * horizon + band)),
-            "expected_return_pct": (np.exp(drift * horizon) - 1) * 100,
+            "p10": lower,
+            "p90": upper,
+            "expected_return_pct": (expected / current_price - 1) * 100,
+            "calibration_bias_pct": calibration_row["bias"] * 100,
+            "calibration_sample": calibration_row["sample"],
         })
 
     return {
@@ -256,6 +293,8 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
             "predicted_price": item["predicted_price"], "p10": item["p10"], "p90": item["p90"],
             "expected_return_pct": item["expected_return_pct"], "daily_drift": forecast["daily_drift"],
             "daily_volatility": forecast["volatility20_pct"] / 100,
+            "calibration_bias_pct": item.get("calibration_bias_pct", 0.0),
+            "calibration_sample": item.get("calibration_sample", 0),
             "factor_json": json.dumps(forecast["factors"], ensure_ascii=False),
             "status": "pending", "actual_price": np.nan, "resolved_at": "",
             "error_pct": np.nan, "direction_correct": "",
@@ -307,7 +346,7 @@ def _metrics_for_asset(asset: str) -> pd.DataFrame:
     df = _read_forecasts()
     if df.empty:
         return pd.DataFrame()
-    done = df[(df["asset"] == asset) & (df["status"] == "resolved")].copy()
+    done = _daily_resolved_sample(asset)
     if done.empty:
         return pd.DataFrame()
     done["abs_error"] = pd.to_numeric(done["error_pct"], errors="coerce").abs()
@@ -432,7 +471,7 @@ def render_market_forecast_dashboard() -> None:
                         "mape_pct": "Erreur absolue moyenne (%)",
                         "directional_accuracy": "Direction correcte",
                     }), use_container_width=True, hide_index=True)
-                    st.caption("La précision est calculée uniquement sur les prévisions dont l'échéance est passée et dont le cours réel est disponible.")
+                    st.caption("Précision calculée sur une seule prévision par jour et par échéance. Après 20 journées résolues, le modèle corrige automatiquement son biais historique par horizon (correction plafonnée à ±2,5 %).")
 
             st.caption("Méthode ensemble v1 : momentum, tendance SMA20/SMA50, retour vers la moyenne et score macro pondéré. Les intervalles P10–P90 représentent une plage indicative issue de la volatilité historique, pas une garantie.")
     st.divider()
