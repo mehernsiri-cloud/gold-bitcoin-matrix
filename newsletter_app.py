@@ -1420,7 +1420,6 @@ def executive_dashboard(df):
     st.caption("Source : Yahoo Finance · cache 5 min · dernier point quotidien disponible (pas un flux intraday garanti). Or : contrat futures utilisé comme proxy, et non cotation spot. Les taux EUR/CHF et EUR/AED sont des indications de marché, pas des taux garantis par ta banque.")
 
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
-        st.subheader("Portefeuille détenu — suivi des cours")
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
             ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
@@ -1442,8 +1441,8 @@ def executive_dashboard(df):
                               "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
         st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
         st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
-    
-        st.subheader("Nouvelles opportunités — santé, électricité et industrie")
+
+    with st.expander("Nouvelles opportunités — santé, électricité et industrie", expanded=False):
         candidates = [
             ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
             ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
