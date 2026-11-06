@@ -1806,7 +1806,7 @@ def ai_newsletter_page(df, errors):
         with st.spinner("L'IA recoupe les informations et rédige l'analyse stratégique…"):
             briefing = _generate_ai_newsletter(
                 json.dumps(articles, ensure_ascii=False, sort_keys=True), api_key,
-                str(st.session_state.get("wels_ai_refresh_id", "initial"))
+                f"{int(time.time() // 600)}:{st.session_state.get('wels_ai_refresh_id', 'initial')}"
             )
         if briefing:
             st.markdown(briefing)
