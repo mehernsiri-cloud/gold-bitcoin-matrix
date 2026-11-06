@@ -124,7 +124,7 @@ def topic_for(text):
     return "Autres actualités"
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_news(max_per_feed=25):
     """Fetch independent publisher RSS feeds concurrently with strict timeouts."""
     if feedparser is None:
@@ -1192,7 +1192,7 @@ def executive_dashboard(df):
 def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
     st.title("📰 WELS Actions — Market, War & CHF Monitor")
-    st.caption("Briefing financier et veille des risques patrimoniaux · cache des données : 15 minutes")
+    st.caption("Briefing financier et veille des risques patrimoniaux · actualités : cache 10 min · cours : cache 5 min")
     with st.spinner("Collecte des flux d'actualité…"):
         df, errors = fetch_news()
     df = enrich_news_frame(df) if not df.empty else df
