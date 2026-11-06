@@ -878,16 +878,72 @@ def geopolitics_supply_dashboard(df, errors=None):
                 "source": str(row.get("Source", "Source non précisée")),
                 "url": str(row.get("Lien", "")),
                 "date": date_label,
+                "date_raw": pd.to_datetime(date_value, utc=True, errors="coerce") if date_value is not None else pd.NaT,
                 "region": region,
             })
 
-    # Dédupliquer les mêmes événements et conserver la qualification la plus forte.
+    # Regrouper les reprises d'un même événement : la diversité des sources
+    # apporte un élément de corroboration, sans transformer un article en preuve.
     unique_events = {}
     for event in events:
         key = (event["id"], re.sub(r"[^a-z0-9]+", " ", event["title"].lower())[:100])
-        if key not in unique_events or event["score"] > unique_events[key]["score"]:
+        if key not in unique_events:
+            event["sources"] = [event["source"]] if event["source"] else []
             unique_events[key] = event
+        else:
+            current = unique_events[key]
+            if event["source"] and event["source"] not in current["sources"]:
+                current["sources"].append(event["source"])
+            if event["score"] > current["score"]:
+                current["score"] = event["score"]
+            if event.get("date_raw") and (not current.get("date_raw") or event["date_raw"] > current["date_raw"]):
+                current["date_raw"] = event["date_raw"]
     events = list(unique_events.values())
+    for event in events:
+        event["source_count"] = len(event.get("sources", []))
+
+    # Familles de risques : catégories opérationnelles, pas prédictions.
+    risk_domains = {
+        "Guerre / escalade": {"war_escalation", "shipping_chokepoint", "sanctions_energy", "airspace_airport", "humanitarian_crisis"},
+        "Crise financière": {"banking_capital", "sovereign_financial"},
+        "Blackout / infrastructures": {"power_disruption", "cyber_critical", "water_desalination"},
+        "Pénuries / approvisionnement": {"fuel_logistics_strike", "fuel_shortage", "refinery_outage", "transport_strike", "medicine_shortage", "food_supply", "gas_market_tightness"},
+        "Tensions sociales": {"mass_social_disruption", "transport_strike", "homecare_workforce", "fuel_logistics_strike", "fuel_shortage"},
+    }
+    for event in events:
+        event["domains"] = [name for name, ids in risk_domains.items() if event["id"] in ids]
+
+    def pressure_index(items):
+        """Transparent 0-100 signal-pressure index; explicitly NOT a probability."""
+        if not items:
+            return 0, 0, 0
+        now = pd.Timestamp.now(tz="UTC")
+        contributions = []
+        sources = set()
+        for item in items:
+            raw_date = item.get("date_raw")
+            if raw_date is None or pd.isna(raw_date):
+                age_days = 30
+            else:
+                if raw_date.tzinfo is None:
+                    raw_date = raw_date.tz_localize("UTC")
+                age_days = max(0, (now - raw_date).total_seconds() / 86400)
+            freshness = 1.0 if age_days <= 1 else (0.8 if age_days <= 3 else (0.55 if age_days <= 7 else 0.25))
+            base = min(48, int(item.get("score", 0)) * 12) * freshness
+            corroboration = min(12, max(0, int(item.get("source_count", 1)) - 1) * 6)
+            contributions.append(base + corroboration)
+            sources.update(item.get("sources", []))
+        contributions.sort(reverse=True)
+        persistence = min(15, max(0, len(items) - 1) * 5)
+        value = min(100, round(contributions[0] + sum(contributions[1:3]) * 0.30 + persistence))
+        return value, len(items), len(sources)
+
+    def pressure_label(value):
+        if value >= 80: return "TRÈS ÉLEVÉ"
+        if value >= 60: return "ÉLEVÉ"
+        if value >= 40: return "À SURVEILLER"
+        if value >= 20: return "FAIBLE"
+        return "BAS — PEU DE SIGNAUX"
 
     # International ne conserve que les événements qualifiés par une règle d'impact ;
     # les articles mondiaux sans lien concret restent dans la file de revue.
@@ -919,6 +975,36 @@ def geopolitics_supply_dashboard(df, errors=None):
     st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · fenêtre de {days} jour(s)")
     st.caption("CRITIQUE = événement majeur à vérifier ; ÉLEVÉ = risque important ; VIGILANCE = pression émergente ; INFORMATION = suivi ; ATTÉNUATION = signal positif.")
 
+    # Indices par famille de risque. Ils synthétisent uniquement les signaux RSS
+    # qualifiés et leur recoupement ; ils ne sont jamais des probabilités de crise.
+    st.subheader("Jauges de pression — signaux précurseurs observés")
+    st.caption("Score 0–100 calculé à partir de la gravité attribuée à chaque signal, de sa fraîcheur, du nombre de sources distinctes et de la répétition de signaux. Un score élevé signifie davantage de signaux documentés, pas une probabilité de crise.")
+    gauge_cols = st.columns(5)
+    for index, domain in enumerate(risk_domains):
+        domain_events = [event for event in events if domain in event.get("domains", [])]
+        value, event_count, source_count = pressure_index(domain_events)
+        if not data_available:
+            bg, fg, label = "#EEF1F5", "#667085", "INCONNU"
+        elif value >= 60:
+            bg, fg, label = "#FCE8E8", "#B42318", pressure_label(value)
+        elif value >= 40:
+            bg, fg, label = "#FFF3D9", "#A86100", pressure_label(value)
+        elif value >= 20:
+            bg, fg, label = "#EAF1FB", "#315B91", pressure_label(value)
+        else:
+            bg, fg, label = "#E5F4E9", "#237A45", pressure_label(value)
+        with gauge_cols[index]:
+            st.markdown(f"""
+            <div style="background:{bg};border:1px solid {fg}55;border-radius:13px;padding:12px;min-height:132px">
+              <div style="font-size:13px;font-weight:800;color:#344054;min-height:34px">{domain}</div>
+              <div style="font-size:27px;font-weight:900;color:{fg};margin:5px 0">{value if data_available else "—"}<span style="font-size:13px">/100</span></div>
+              <div style="height:8px;background:#DDE3EB;border-radius:8px;overflow:hidden"><div style="height:8px;width:{value if data_available else 0}%;background:{fg};border-radius:8px"></div></div>
+              <div style="font-size:11px;color:#596579;margin-top:8px">{label}</div>
+              <div style="font-size:10px;color:#667085">{event_count} signal(aux) · {source_count} source(s)</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.caption("Lecture : 0–19 bas, 20–39 faible, 40–59 à surveiller, 60–79 élevé, 80–100 très élevé. Les seuils sont des conventions de veille, non des seuils scientifiques. L’absence de signal ou de données ne vaut jamais garantie de sécurité.")
+
     # Regional widgets are the default view. Event titles are only rendered after a region is selected.
     selected_region = st.session_state.get("wels_selected_risk_region")
     if selected_region not in regions:
@@ -929,6 +1015,7 @@ def geopolitics_supply_dashboard(df, errors=None):
         regional = [event for event in events if event["region"] == region]
         counts = {level: sum(1 for event in regional if event["severity"] == level) for level in severity_order}
         highest = next((level for level in severity_order if counts[level] > 0), None)
+        regional_score, regional_count, regional_sources = pressure_index(regional)
 
         if not data_available:
             status = "INCONNU"
@@ -942,7 +1029,8 @@ def geopolitics_supply_dashboard(df, errors=None):
 
         count_label = f"{len(regional)} événement(s)" if data_available else "Données indisponibles"
         breakdown = " · ".join(f"{level}: {counts[level]}" for level in severity_order if counts[level])
-        button_label = f"{status_icon}  {region}\n{status} · {count_label}"
+        gauge_label = f"Indice signaux {regional_score}/100" if data_available else "Indice INCONNU"
+        button_label = f"{status_icon}  {region}\n{status} · {count_label}\n{gauge_label}"
         with region_cols[index % 2]:
             st.button(
                 button_label,
@@ -1019,7 +1107,7 @@ def geopolitics_supply_dashboard(df, errors=None):
                     if index < len(unqualified) - 1:
                         st.divider()
 
-    st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
+    st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Les jauges sont des indices internes de pression documentaire calculés sur les articles qualifiés ; elles ne prédisent pas la survenue d'une guerre, d'un blackout, d'une pénurie ou d'une crise financière. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
 
 def enhanced_newsletter_page(df, errors):
     st.header("📰 Newsletter — veille filtrée")
