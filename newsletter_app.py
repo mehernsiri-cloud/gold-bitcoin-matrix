@@ -972,7 +972,10 @@ def geopolitics_supply_dashboard(df, errors=None):
         event["severity"] = severity(event)
 
     regions = ["France", "Dubaï", "Europe", "Moyen-Orient", "International"]
-    st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · fenêtre de {days} jour(s)")
+    source_coverage = selected["Source"].nunique() if data_available and "Source" in selected.columns else 0
+    st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · {source_coverage} source(s) distincte(s) · fenêtre de {days} jour(s)")
+    if errors:
+        st.caption(f"Collecte partielle : {len(errors)} flux en erreur. Les jauges doivent être lues avec cette limite.")
     st.caption("CRITIQUE = événement majeur à vérifier ; ÉLEVÉ = risque important ; VIGILANCE = pression émergente ; INFORMATION = suivi ; ATTÉNUATION = signal positif.")
 
     # Indices par famille de risque. Ils synthétisent uniquement les signaux RSS
@@ -985,6 +988,8 @@ def geopolitics_supply_dashboard(df, errors=None):
         value, event_count, source_count = pressure_index(domain_events)
         if not data_available:
             bg, fg, label = "#EEF1F5", "#667085", "INCONNU"
+        elif not domain_events:
+            bg, fg, label = "#EEF1F5", "#667085", "AUCUN SIGNAL QUALIFIÉ"
         elif value >= 60:
             bg, fg, label = "#FCE8E8", "#B42318", pressure_label(value)
         elif value >= 40:
