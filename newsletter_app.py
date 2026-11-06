@@ -1066,32 +1066,32 @@ def render_drawdown_alerts():
         prices = [float(x) for x in recent["Cours"].tolist()]
         two_day = (prices[-1] / prices[0] - 1) * 100 if prices[0] else 0
         if two_day <= -8:
-            bg, color, status = "#3a090d", "#ff626b", "BAISSE FORTE"
+            bg, color, status = "#FCE4E4", "#C62828", "BAISSE FORTE"
         elif two_day <= -4:
-            bg, color, status = "#392408", "#ffbd55", "BAISSE À SURVEILLER"
+            bg, color, status = "#FFF0D5", "#A86100", "BAISSE À SURVEILLER"
         elif two_day >= 4:
-            bg, color, status = "#092b18", "#4cdb88", "REBOND"
+            bg, color, status = "#E1F3E7", "#237A45", "REBOND"
         else:
-            bg, color, status = "#202329", "#d7dce5", "MOUVEMENT LIMITÉ"
+            bg, color, status = "#EEF1F5", "#536273", "MOUVEMENT LIMITÉ"
         low52 = float(year["Cours"].min()) if not year.empty else None
         high52 = float(year["Cours"].max()) if not year.empty else None
         proximity = ((prices[-1] - low52) / (high52 - low52) * 100) if low52 is not None and high52 and high52 > low52 else None
         rows_html = ""
         for _, row in recent.iterrows():
             date_label = pd.to_datetime(row["Date"]).strftime("%d %b")
-            rows_html += f"<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #ffffff20;color:#eee'><span>{date_label}</span><b>{float(row['Cours']):,.2f} {asset['currency']}</b></div>"
+            rows_html += f"<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #D8DEE8;color:#344054'><span>{date_label}</span><b>{float(row['Cours']):,.2f} {asset['currency']}</b></div>"
         range_html = f"{low52:,.2f} – {high52:,.2f} {asset['currency']}" if low52 is not None and high52 is not None else "Indisponible"
         proximity_html = f"Position dans la fourchette : {proximity:.0f} % au-dessus du plus bas" if proximity is not None else ""
         with cols[idx]:
             st.markdown(f"""
             <div style="background:{bg};border:1px solid {color}80;border-radius:14px;padding:15px;margin:4px 0 10px">
-              <div style="font-size:17px;font-weight:800;color:#fff">{asset['name']}</div>
+              <div style="font-size:17px;font-weight:800;color:#263445">{asset['name']}</div>
               <div style="font-size:28px;font-weight:900;color:{color};margin:6px 0">{two_day:+.1f} %</div>
               <div style="font-size:13px;font-weight:800;color:{color}">{status} · 2 dernières séances</div>
               <div style="margin-top:12px">{rows_html}</div>
-              <div style="margin-top:10px;color:#eee;font-size:13px"><b>Fourchette 52 semaines :</b> {range_html}<br>{proximity_html}</div>
-              <div style="margin-top:10px;color:#eee;font-size:13px"><b>P/E :</b> {asset['pe']} · <b>Forward P/E :</b> {asset['forward_pe']}<br><span style="color:#c7c7c7">{asset['note']}</span></div>
-              <div style="margin-top:8px;color:#aaa;font-size:11px">Cours : Yahoo Finance · fondamentaux indicatifs : Stock Analysis, référence {asset['fundamentals_date']}</div>
+              <div style="margin-top:10px;color:#344054;font-size:13px"><b>Fourchette 52 semaines :</b> {range_html}<br>{proximity_html}</div>
+              <div style="margin-top:10px;color:#344054;font-size:13px"><b>P/E :</b> {asset['pe']} · <b>Forward P/E :</b> {asset['forward_pe']}<br><span style="color:#667085">{asset['note']}</span></div>
+              <div style="margin-top:8px;color:#667085;font-size:11px">Cours : Yahoo Finance · fondamentaux indicatifs : Stock Analysis, référence {asset['fundamentals_date']}</div>
             </div>
             """, unsafe_allow_html=True)
     st.caption("Les variations, dates, cours et fourchettes 52 semaines sont recalculés à chaque actualisation depuis Yahoo Finance. Les multiples P/E affichés sont des références datées et doivent être actualisés séparément ; ils ne sont pas présentés comme des données temps réel.")
@@ -1100,15 +1100,15 @@ def executive_dashboard(df):
     """Executive view: common quote source, portfolio watch and candidate supports."""
     st.markdown("""
     <style>
-    .risk-shell{background:#050505;border:1px solid #242424;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
+    .risk-shell{background:#F4F6FA;border:1px solid #DCE3ED;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
     .risk-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-    .risk-title{font-size:22px;font-weight:800;color:#eee}.risk-sub{font-size:14px;color:#bdbdbd;margin-top:4px}
+    .risk-title{font-size:22px;font-weight:800;color:#263445}.risk-sub{font-size:14px;color:#667085;margin-top:4px}
     .risk-pill{border-radius:20px;padding:6px 12px;font-size:13px;font-weight:700}
     .risk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
     .risk-card{border-radius:16px;padding:14px;min-height:112px}
-    .risk-card.red{background:#26090b}.risk-card.amber{background:#211907}.risk-card.green{background:#071b10}
-    .risk-label{font-size:16px;font-weight:700;color:#eee}.risk-level{font-size:20px;font-weight:800;margin-top:8px}
-    .risk-detail{font-size:13px;color:#d0d0d0;margin-top:8px}
+    .risk-card.red{background:#FCE8E8}.risk-card.amber{background:#FFF3D9}.risk-card.green{background:#E5F4E9}
+    .risk-label{font-size:16px;font-weight:700;color:#344054}.risk-level{font-size:20px;font-weight:800;margin-top:8px}
+    .risk-detail{font-size:13px;color:#596579;margin-top:8px}
     @media(max-width:650px){.risk-grid{grid-template-columns:1fr}}
     </style>
     """, unsafe_allow_html=True)
@@ -1158,19 +1158,19 @@ def executive_dashboard(df):
 
     market_level = "VOLATIL" if any(abs(v) >= 2.0 for v in market_moves.values()) else ("CALME / MODÉRÉ" if market_moves else "INDISPONIBLE")
     if war_level == "À QUALIFIER EN PRIORITÉ" or france_level == "À QUALIFIER EN PRIORITÉ":
-        global_level, pill_style = "ÉVÉNEMENT À QUALIFIER", "background:#321706;color:#ff9a45"
+        global_level, pill_style = "ÉVÉNEMENT À QUALIFIER", "background:#FCE8DC;color:#9A3412"
     elif war_level == "À SURVEILLER" or france_level == "À SURVEILLER" or market_level == "VOLATIL":
-        global_level, pill_style = "VIGILANCE RENFORCÉE", "background:#2a2107;color:#ffc04d"
+        global_level, pill_style = "VIGILANCE RENFORCÉE", "background:#FFF1D6;color:#8A5200"
     elif not market_moves:
-        global_level, pill_style = "DONNÉES INCOMPLÈTES", "background:#252525;color:#ddd"
+        global_level, pill_style = "DONNÉES INCOMPLÈTES", "background:#EEF1F5;color:#475467"
     else:
-        global_level, pill_style = "RISQUE MODÉRÉ", "background:#092313;color:#43d17a"
+        global_level, pill_style = "RISQUE MODÉRÉ", "background:#E3F3E8;color:#216E3A"
 
     stamp = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M %Z")
     def card_class(level):
         return "red" if level == "À QUALIFIER EN PRIORITÉ" else ("green" if level == "AUCUN SIGNAL QUALIFIÉ" else "amber")
     def level_color(level):
-        return "#ff6565" if level == "À QUALIFIER EN PRIORITÉ" else ("#43d17a" if level == "AUCUN SIGNAL QUALIFIÉ" else "#ffbd55")
+        return "#B42318" if level == "À QUALIFIER EN PRIORITÉ" else ("#237A45" if level == "AUCUN SIGNAL QUALIFIÉ" else "#A86100")
 
     st.markdown(f"""
     <div class="risk-shell">
@@ -1198,26 +1198,26 @@ def executive_dashboard(df):
     for idx, item in enumerate(kpi_rows):
         label, daily, weekly = item["label"], item["daily"], item["weekly"]
         if daily is None:
-            bg, accent, status = "#252525", "#b8b8b8", "DONNÉES INDISPONIBLES"
+            bg, accent, status = "#EEF1F5", "#667085", "DONNÉES INDISPONIBLES"
         elif label == "EUR/CHF":
-            bg, accent, status = ("#082c19", "#4cdb88", "ZONE PLUS FAVORABLE CHF") if item["value"] and float(item["value"].replace(",", ".")) >= 0.93 else (("#332407", "#ffbd55", "ZONE INTERMÉDIAIRE") if float(item["value"].replace(",", ".")) >= 0.91 else ("#3a090d", "#ff626b", "CHF CHER EN EUR"))
+            bg, accent, status = ("#E5F4E9", "#237A45", "ZONE PLUS FAVORABLE CHF") if item["value"] and float(item["value"].replace(",", ".")) >= 0.93 else (("#FFF3D9", "#A86100", "ZONE INTERMÉDIAIRE") if float(item["value"].replace(",", ".")) >= 0.91 else ("#FCE8E8", "#B42318", "CHF CHER EN EUR"))
         elif label == "EUR/AED":
             fx_value = float(item["value"].replace(",", "."))
-            bg, accent, status = ("#082c19", "#4cdb88", "ZONE PLUS FAVORABLE AED") if fx_value >= 4.20 else (("#332407", "#ffbd55", "ZONE INTERMÉDIAIRE") if fx_value >= 4.14 else ("#3a090d", "#ff626b", "CONVERSION PEU FAVORABLE"))
+            bg, accent, status = ("#E5F4E9", "#237A45", "ZONE PLUS FAVORABLE AED") if fx_value >= 4.20 else (("#FFF3D9", "#A86100", "ZONE INTERMÉDIAIRE") if fx_value >= 4.14 else ("#FCE8E8", "#B42318", "CONVERSION PEU FAVORABLE"))
         elif label in ("Nasdaq Composite", "S&P 500", "Dow Jones"):
-            bg, accent = ("#3a090d", "#ff626b") if weekly <= -4 else (("#332407", "#ffbd55") if weekly <= -2 else ("#082c19", "#4cdb88"))
+            bg, accent = ("#FCE8E8", "#B42318") if weekly <= -4 else (("#FFF3D9", "#A86100") if weekly <= -2 else ("#E5F4E9", "#237A45"))
             status = "CORRECTION / FORTE BAISSE" if weekly <= -4 else ("BAISSE À SURVEILLER" if weekly <= -2 else ("REBOND" if weekly > 1 else "MOUVEMENT MODÉRÉ"))
         else:
-            bg, accent = ("#332407", "#ffbd55") if abs(weekly) >= 5 or abs(daily) >= 1.5 else ("#202329", "#d7dce5")
+            bg, accent = ("#FFF3D9", "#A86100") if abs(weekly) >= 5 or abs(daily) >= 1.5 else ("#EEF1F5", "#536273")
             status = "FORTE VOLATILITÉ" if abs(weekly) >= 5 or abs(daily) >= 1.5 else "MOUVEMENT MODÉRÉ"
         with kpi_cols[idx % 4]:
             st.markdown(f"""
             <div style="background:{bg};border:1px solid {accent}80;border-radius:13px;padding:13px;margin:0 0 10px;min-height:142px">
-              <div style="font-size:14px;font-weight:800;color:#f3f3f3">{label}</div>
-              <div style="font-size:25px;font-weight:900;color:#fff;margin:8px 0 3px">{item['value']}</div>
+              <div style="font-size:14px;font-weight:800;color:#344054">{label}</div>
+              <div style="font-size:25px;font-weight:900;color:#263445;margin:8px 0 3px">{item['value']}</div>
               <div style="font-size:14px;font-weight:800;color:{accent}">{'—' if daily is None else f'{daily:+.2f}%'} séance</div>
-              <div style="font-size:13px;color:#ddd;margin-top:3px">{'—' if weekly is None else f'{weekly:+.2f}%'} / 5 séances</div>
-              <div style="font-size:11px;color:#bbb;margin-top:7px">{status} · {item['date']}</div>
+              <div style="font-size:13px;color:#596579;margin-top:3px">{'—' if weekly is None else f'{weekly:+.2f}%'} / 5 séances</div>
+              <div style="font-size:11px;color:#667085;margin-top:7px">{status} · {item['date']}</div>
             </div>
             """, unsafe_allow_html=True)
     with st.expander("Voir le tableau détaillé des cours et variations"):
