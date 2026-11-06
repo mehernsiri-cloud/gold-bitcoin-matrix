@@ -63,17 +63,21 @@ TOPICS = {
 MARKET_SYMBOLS = {
     "TotalEnergies": "TTE.PA",
     "Exxon Mobil": "XOM",
-    "Vanguard FTSE All-World (VWRL)": "VWRL.AS",
+    "Vanguard FTSE All-World UCITS ETF Acc (VWCE)": "VWCE.DE",
     "Frontline": "FRO",
     "FTAI Aviation": "FTAI",
     "Thales": "HO.PA",
     "Lockheed Martin": "LMT",
     "Air Liquide": "AI.PA",
-    "ETF utilities XDWU (symbole à vérifier)": "XDWU.L",
+    "Amundi Global Health Care (WELS)": "WELS.DE",
+    "iShares World Utilities (XDWU)": "XDWU.L",
+    "SPDR World Health Care (WHEA)": "WHEA.AS",
+    "VanEck Electrification (PIKA)": "PIKA.DE",
     "Schneider Electric": "SU.PA",
     "Siemens": "SIE.DE",
     "S&P 500": "^GSPC",
-    "MSCI ACWI (ACWI)": "ACWI",
+    "Nasdaq Composite": "^IXIC",
+    "Bitcoin": "BTC-USD",
 }
 FX_SYMBOLS = {"EUR/CHF": "EURCHF=X", "EUR/AED": "EURAED=X"}
 PERIODS = {"1 mois": "1mo", "3 mois": "3mo", "6 mois": "6mo", "1 an": "1y", "2 ans": "2y", "5 ans": "5y"}
@@ -204,7 +208,7 @@ def fetch_article_text(url):
         return ""
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_history(symbol, period="1y"):
     if yf is None or not symbol:
         return pd.DataFrame()
@@ -309,7 +313,7 @@ def markets_page():
         market_summary_card("Bitcoin (USD)", "BTC-USD", period)
 
     st.subheader("Actions et ETF")
-    defaults = ["TotalEnergies", "Exxon Mobil", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Vanguard FTSE All-World (VWRL)"]
+    defaults = ["TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Amundi Global Health Care (WELS)", "iShares World Utilities (XDWU)", "Schneider Electric", "Siemens"]
     selected = st.multiselect("Actifs à comparer", list(MARKET_SYMBOLS), default=defaults, key="market_assets")
     histories, summary = [], []
     progress = st.progress(0, text="Chargement des cours…")
@@ -336,7 +340,7 @@ def markets_page():
         st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
     else:
         st.info("Aucune série de cours disponible pour cette sélection.")
-    st.caption("Les cours peuvent être différés et les devises diffèrent selon les actifs. Vérifiez les symboles ETF auprès de l’émetteur avant toute décision.")
+    st.caption("Cours quotidiens Yahoo Finance : date du dernier point affichée dans le tableau. Les devises de cotation diffèrent ; les performances sont calculées dans la devise de chaque ligne et ne sont pas directement comparables en euros.")
 
 
 def currencies_page():
@@ -420,7 +424,7 @@ def enrich_news_frame(df):
 
 def market_watch_page():
     st.header("📈 Marchés & portefeuille suivi")
-    st.caption("Cours indicatifs via Yahoo Finance ; possibles retards, indisponibilités et erreurs de symbole.")
+    st.caption("Source unique des cours : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible (pas un flux intraday). Chaque ligne indique sa date et sa devise.")
     period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
     period = PERIODS[period_label]
     watch = dict(MARKET_SYMBOLS)
@@ -438,10 +442,11 @@ def market_watch_page():
         if hist.empty: continue
         first, last = float(hist["Cours"].iloc[0]), float(hist["Cours"].iloc[-1])
         prev = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-        summary.append({"Actif": name, "Symbole": watch[name], "Dernier cours": round(last, 4),
-                        "Variation séance (%)": round((last / prev - 1) * 100, 2) if prev else None,
+        summary.append({"Actif": name, "Ticker Yahoo": watch[name], "Dernier point": round(last, 4),
+                        "Devise": "EUR" if watch[name].endswith((".PA", ".DE", ".AS")) else ("GBP" if watch[name].endswith(".L") else "USD"),
+                        "Variation dernière séance (%)": round((last / prev - 1) * 100, 2) if prev else None,
                         "Variation période (%)": round((last / first - 1) * 100, 2) if first else None,
-                        "Date": hist["Date"].iloc[-1]})
+                        "Date du point": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
         if first:
             chart = hist.copy()
             chart["Performance (%)"] = (chart["Cours"] / first - 1) * 100
@@ -471,7 +476,7 @@ def market_watch_page():
     )
 
     holdings = pd.DataFrame([
-        {"Actif": "Vanguard FTSE All-World UCITS ETF", "Type": "ETF", "Exposition": "Actions mondiales"},
+        {"Actif": "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Type": "ETF", "Exposition": "Actions mondiales"},
         {"Actif": "WELS — World Health Care", "Type": "ETF", "Exposition": "Santé mondiale"},
         {"Actif": "XDWU — World Utilities", "Type": "ETF", "Exposition": "Services aux collectivités / électricité"},
         {"Actif": "TotalEnergies", "Type": "Action", "Exposition": "Énergie"},
@@ -1037,27 +1042,25 @@ def enhanced_newsletter_page(df, errors):
 
 
 def executive_dashboard(df):
-    """Article-free executive dashboard: risk indicators and four market quotes."""
+    """Executive view: common quote source, portfolio watch and candidate supports."""
     st.markdown("""
     <style>
     .risk-shell{background:#050505;border:1px solid #242424;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
     .risk-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-    .risk-title{font-size:21px;font-weight:750;color:#eee}
-    .risk-sub{font-size:14px;color:#bdbdbd;margin-top:4px}
-    .risk-pill{border-radius:20px;padding:5px 11px;font-size:13px;font-weight:700}
+    .risk-title{font-size:22px;font-weight:800;color:#eee}.risk-sub{font-size:14px;color:#bdbdbd;margin-top:4px}
+    .risk-pill{border-radius:20px;padding:6px 12px;font-size:13px;font-weight:700}
     .risk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
-    .risk-card{border-radius:16px;padding:13px 12px 10px;min-height:118px}
-    .risk-card.red{background:#1b0708}.risk-card.amber{background:#1c1507}.risk-card.green{background:#07180e}
-    .risk-icon{font-size:21px}.risk-label{font-size:16px;font-weight:700;color:#eee;margin-top:7px}
-    .risk-level{font-size:21px;font-weight:800;margin-top:7px}
+    .risk-card{border-radius:16px;padding:14px;min-height:112px}
+    .risk-card.red{background:#26090b}.risk-card.amber{background:#211907}.risk-card.green{background:#071b10}
+    .risk-label{font-size:16px;font-weight:700;color:#eee}.risk-level{font-size:20px;font-weight:800;margin-top:8px}
     .risk-detail{font-size:13px;color:#d0d0d0;margin-top:8px}
-    @media(max-width:600px){.risk-grid{grid-template-columns:1fr}.risk-card{min-height:95px}}
+    @media(max-width:650px){.risk-grid{grid-template-columns:1fr}}
     </style>
     """, unsafe_allow_html=True)
 
     def rows_for(topic):
-        if df.empty or "Thèmes" not in df.columns:
-            return df
+        if df is None or df.empty or "Thèmes" not in df.columns:
+            return pd.DataFrame()
         return df[df["Thèmes"].apply(lambda tags: topic in tags)]
 
     war = rows_for("Géopolitique / conflit")
@@ -1066,98 +1069,125 @@ def executive_dashboard(df):
 
     def signal_level(rows):
         if rows.empty:
-            return "AUCUN SIGNAL"
+            return "AUCUN SIGNAL QUALIFIÉ"
+        # Article volume alone must never create a high-risk status.
         if "Priorité" in rows.columns and (rows["Priorité"] == "À examiner en priorité").any():
-            return "ÉLEVÉ"
-        if len(rows) >= 4:
-            return "ÉLEVÉ"
-        if len(rows) >= 1:
-            return "À SURVEILLER"
-        return "AUCUN SIGNAL"
+            return "À QUALIFIER EN PRIORITÉ"
+        return "À SURVEILLER"
 
     war_level = signal_level(war)
     france_level = signal_level(supply)
+    snapshot = [
+        ("Brent", "BZ=F", "USD"), ("Or", "GC=F", "USD"),
+        ("S&P 500", "^GSPC", "Index"), ("Nasdaq", "^IXIC", "Index"),
+        ("Bitcoin", "BTC-USD", "USD"), ("EUR/CHF", "EURCHF=X", "FX"),
+        ("EUR/AED", "EURAED=X", "FX")
+    ]
+    quote_rows, market_moves = [], {}
+    for label, symbol, currency in snapshot:
+        hist = fetch_history(symbol, "5d")
+        if hist.empty:
+            quote_rows.append({"Indicateur": label, "Dernier point": "Indisponible", "Variation séance": "—", "Date": "—", "Source": "Yahoo Finance"})
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        delta = (last / previous - 1) * 100 if previous else 0.0
+        market_moves[label] = delta
+        date_label = pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")
+        value = f"{last:,.4f}" if currency == "FX" else (f"{last:,.2f}" if currency == "Index" else f"{last:,.2f} {currency}")
+        quote_rows.append({"Indicateur": label, "Dernier point": value, "Variation séance": f"{delta:+.2f}%", "Date": date_label, "Source": "Yahoo Finance"})
 
-    # Market risk is based on observed daily moves, not the number of news articles.
-    market_moves = {}
-    for label, symbol in [("Brent", "BZ=F"), ("Or", "GC=F"), ("S&P 500", "^GSPC")]:
-        hist = fetch_history(symbol, "1mo")
-        if not hist.empty and len(hist) > 1:
-            last = float(hist["Cours"].iloc[-1])
-            prev = float(hist["Cours"].iloc[-2])
-            market_moves[label] = (last / prev - 1) * 100 if prev else 0.0
-    volatile = any(abs(v) >= 2.0 for v in market_moves.values())
-    market_level = "VOLATILE" if volatile else ("À SURVEILLER" if market_moves else "INDISPONIBLE")
-
-    # A missing feed is not interpreted as a zero-risk situation.
-    global_high = war_level == "ÉLEVÉ" or france_level == "ÉLEVÉ"
-    global_watch = war_level == "À SURVEILLER" or france_level == "À SURVEILLER" or market_level == "VOLATILE"
-    if global_high:
-        global_level, pill_style = "RISQUE ÉLEVÉ", "background:#321706;color:#ff8a32"
-    elif global_watch:
-        global_level, pill_style = "VIGILANCE", "background:#2a2107;color:#ffc04d"
-    elif market_level == "INDISPONIBLE":
+    market_level = "VOLATIL" if any(abs(v) >= 2.0 for v in market_moves.values()) else ("CALME / MODÉRÉ" if market_moves else "INDISPONIBLE")
+    if war_level == "À QUALIFIER EN PRIORITÉ" or france_level == "À QUALIFIER EN PRIORITÉ":
+        global_level, pill_style = "ÉVÉNEMENT À QUALIFIER", "background:#321706;color:#ff9a45"
+    elif war_level == "À SURVEILLER" or france_level == "À SURVEILLER" or market_level == "VOLATIL":
+        global_level, pill_style = "VIGILANCE RENFORCÉE", "background:#2a2107;color:#ffc04d"
+    elif not market_moves:
         global_level, pill_style = "DONNÉES INCOMPLÈTES", "background:#252525;color:#ddd"
     else:
         global_level, pill_style = "RISQUE MODÉRÉ", "background:#092313;color:#43d17a"
 
-    stamp = datetime.now().astimezone().strftime("%d %b %Y")
+    stamp = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M %Z")
     def card_class(level):
-        return "red" if level == "ÉLEVÉ" else ("green" if level == "AUCUN SIGNAL" else "amber")
+        return "red" if level == "À QUALIFIER EN PRIORITÉ" else ("green" if level == "AUCUN SIGNAL QUALIFIÉ" else "amber")
     def level_color(level):
-        return "#ff5d61" if level == "ÉLEVÉ" else ("#43d17a" if level == "AUCUN SIGNAL" else "#ffad48")
+        return "#ff6565" if level == "À QUALIFIER EN PRIORITÉ" else ("#43d17a" if level == "AUCUN SIGNAL QUALIFIÉ" else "#ffbd55")
 
     st.markdown(f"""
     <div class="risk-shell">
-      <div class="risk-head">
-        <div><div class="risk-title">GLOBAL RISK MONITOR</div>
-        <div class="risk-sub">Daily Intelligence Dashboard · {stamp}</div></div>
-        <div class="risk-pill" style="{pill_style}">{global_level}</div>
-      </div>
+      <div class="risk-head"><div><div class="risk-title">GLOBAL RISK MONITOR</div>
+      <div class="risk-sub">Market, War, CHF & New Themes · Mis à jour {stamp}</div></div>
+      <div class="risk-pill" style="{pill_style}">{global_level}</div></div>
       <div class="risk-grid">
-        <div class="risk-card {card_class(war_level)}">
-          <div class="risk-icon">◎</div><div class="risk-label">Géopolitique</div>
+        <div class="risk-card {card_class(war_level)}"><div class="risk-label">Géopolitique</div>
           <div class="risk-level" style="color:{level_color(war_level)}">{war_level}</div>
-          <div class="risk-detail">Conflits · sanctions · routes maritimes</div>
-        </div>
-        <div class="risk-card {'amber' if market_level == 'VOLATILE' else 'green'}">
-          <div class="risk-icon">▥</div><div class="risk-label">Marchés</div>
-          <div class="risk-level" style="color:{'#ffad48' if market_level == 'VOLATILE' else '#43d17a'}">{market_level}</div>
-          <div class="risk-detail">Pétrole · Or · Actions</div>
-        </div>
-        <div class="risk-card {card_class(france_level)}">
-          <div class="risk-icon">♧</div><div class="risk-label">France</div>
+          <div class="risk-detail">{len(war)} article(s) classé(s) · conflits, sanctions, routes maritimes</div></div>
+        <div class="risk-card {'amber' if market_level == 'VOLATIL' else 'green'}"><div class="risk-label">Marchés</div>
+          <div class="risk-level" style="color:{'#ffbd55' if market_level == 'VOLATIL' else '#43d17a'}">{market_level}</div>
+          <div class="risk-detail">Derniers points quotidiens disponibles</div></div>
+        <div class="risk-card {card_class(france_level)}"><div class="risk-label">France / approvisionnement</div>
           <div class="risk-level" style="color:{level_color(france_level)}">{france_level}</div>
-          <div class="risk-detail">Carburant · Énergie · Approvisionnement</div>
-        </div>
+          <div class="risk-detail">{len(supply)} article(s) classé(s) · pénuries, énergie, transports, produits essentiels</div></div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.subheader("Market snapshot")
-    instruments = [
-        ("Brent", "BZ=F", "USD"),
-        ("Or", "GC=F", "USD"),
-        ("EUR / CHF", "EURCHF=X", ""),
-        ("EUR / AED", "EURAED=X", ""),
-    ]
-    cols = st.columns(2)
-    for i, (label, symbol, unit) in enumerate(instruments):
-        hist = fetch_history(symbol, "1mo")
-        with cols[i % 2]:
-            st.caption(label)
-            if hist.empty:
-                st.metric(label, "Indisponible")
-                continue
-            last = float(hist["Cours"].iloc[-1])
-            previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-            delta = (last / previous - 1) * 100 if previous else 0
-            value = f"{last:.4f}" if not unit else f"{last:,.2f} {unit}"
-            st.metric(label, value, f"{delta:+.2f} %")
+    st.subheader("Marchés — instantané commun")
+    st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
+    st.caption("Source unique : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible, pas un cours intraday garanti. Date affichée ligne par ligne. Les pages du dashboard réutilisent la même fonction de collecte.")
 
+    st.subheader("Portefeuille détenu — suivi des cours")
+    held = [
+        ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
+        ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
+        ("Frontline", "FRO", "USD"), ("FTAI Aviation", "FTAI", "USD"),
+        ("Thales", "HO.PA", "EUR"), ("Lockheed Martin", "LMT", "USD"),
+        ("Air Liquide", "AI.PA", "EUR"), ("Amundi Health Care (WELS)", "WELS.DE", "EUR"),
+        ("World Utilities (XDWU)", "XDWU.L", "GBP")
+    ]
+    held_rows = []
+    for name, symbol, currency in held:
+        hist = fetch_history(symbol, "5d")
+        if hist.empty:
+            held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency, "Variation séance": "—", "Date": "—"})
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        change = (last / previous - 1) * 100 if previous else 0.0
+        held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
+                          "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
+    st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
+    st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
+
+    st.subheader("Nouvelles opportunités — santé, électricité et industrie")
+    candidates = [
+        ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
+        ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
+        ("Schneider Electric", "SU.PA", "FR0000121972", "Réseaux, gestion électrique et data centers"),
+        ("Siemens", "SIE.DE", "DE0007236101", "Automatisation, électrification et industrie")
+    ]
+    candidate_rows = []
+    for name, symbol, isin, thesis in candidates:
+        hist = fetch_history(symbol, "5d")
+        if hist.empty:
+            candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": "Indisponible", "Variation séance": "—", "Date": "—", "Thèse / vigilance": thesis})
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        change = (last / previous - 1) * 100 if previous else 0.0
+        candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": round(last, 4),
+                               "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y"),
+                               "Thèse / vigilance": thesis})
+    st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True, hide_index=True)
+    st.markdown(
+        "- **SPDR santé :** exposition mondiale développée, diversifiée entre médicaments, équipements et services ; suivre concentration, valorisation, encours et frais. Comparer avec iShares (IE00BJ5JNZ06, TER indicatif 0,18%).\n"
+        "- **VanEck PIKA :** ETF récent et concentré ; suivre encours, liquidité, spreads, concentration et volatilité. La croissance de la demande électrique IA ne garantit pas un rendement boursier.\n"
+        "- **Schneider / Siemens :** suivre commandes data centers, marges, cash-flow, dette, valorisation et risques d'intégration. Chevauchement important avec VanEck ; éviter une concentration involontaire.\n"
+        "- **Diversification :** la santé diversifie davantage les expositions énergie/industrie ; l'électrification renforce surtout le facteur industriel déjà présent via Air Liquide et l'ETF mondial."
+    )
     if not chf.empty:
-        st.caption(f"CHF : {len(chf)} signal(aux) de presse détecté(s) — voir l'onglet CHF & devises.")
-    st.caption("Cours indicatifs potentiellement différés. Les niveaux de risque sont des indicateurs de veille, pas une évaluation officielle.")
+        st.info(f"Suisse / CHF : {len(chf)} article(s) repéré(s). Les mouvements EUR/CHF et EUR/AED figurent dans l'onglet CHF & devises.")
+    st.caption("Le nombre d'articles n'est jamais utilisé seul pour déclarer une crise. Les signaux géopolitiques et d'approvisionnement doivent être recoupés ; l'absence d'article ne signifie pas absence de risque.")
 
 def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
@@ -1180,8 +1210,9 @@ def main():
         if st.button("Actualiser toutes les données", key="wels_refresh_all"):
             fetch_news.clear()
             fetch_history.clear()
+            fetch_article_text.clear()
             st.rerun()
-        st.caption("Actualités et cours : cache 15 min")
+        st.caption("Actualités : cache 15 min · cours : cache 5 min")
     if page == "Vue d'ensemble & Géopolitique":
         # Keep the original overview first, then show the full geopolitics/supply monitor.
         executive_dashboard(df)
