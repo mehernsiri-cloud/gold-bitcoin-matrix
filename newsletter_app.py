@@ -872,6 +872,13 @@ def fetch_rte_grid_data():
     if not records:
         raise ValueError("Aucune donnée reçue depuis les deux API ODRÉ/RTE. " + " | ".join(failures))
 
+    # Flatten alternate Opendatasoft payloads where fields are nested.
+    records = [
+        row.get("fields", row.get("record", {}).get("fields", row))
+        if isinstance(row, dict) else {}
+        for row in records
+    ]
+
     data = pd.DataFrame(records)
     required = {"date_heure", "consommation"}
     missing = required - set(data.columns)
@@ -886,10 +893,32 @@ def fetch_rte_grid_data():
         if col in data.columns:
             data[col] = pd.to_numeric(data[col], errors="coerce")
 
-    data["date_heure"] = pd.to_datetime(data["date_heure"], utc=True, errors="coerce")
+    # Normalize timestamps and numeric values: CSV exports may contain local date/time,
+    # decimal commas, non-breaking spaces or a separate date + heure pair.
+    data["date_heure"] = pd.to_datetime(data["date_heure"], utc=True, errors="coerce", dayfirst=True)
+    invalid_dates = data["date_heure"].isna()
+    if invalid_dates.any() and {"date", "heure"}.issubset(data.columns):
+        rebuilt = data.loc[invalid_dates, "date"].astype(str).str.strip() + " " + data.loc[invalid_dates, "heure"].astype(str).str.strip()
+        data.loc[invalid_dates, "date_heure"] = pd.to_datetime(rebuilt, utc=True, errors="coerce", dayfirst=True)
+
+    def _rte_number(series):
+        cleaned = series.astype(str).str.replace("\\u202f", "", regex=False).str.replace("\\u00a0", "", regex=False).str.replace(" ", "", regex=False).str.replace(",", ".", regex=False)
+        cleaned = cleaned.replace({"": None, "nan": None, "None": None, "null": None, "nd": None, "ND": None})
+        return pd.to_numeric(cleaned, errors="coerce")
+
+    data["consommation"] = _rte_number(data["consommation"])
+    for col in ["prevision_j", "prevision_j1", "ech_physiques", "nucleaire", "gaz", "eolien", "solaire", "hydraulique", "taux_co2"]:
+        if col in data.columns:
+            data[col] = _rte_number(data[col])
+
     data = data.dropna(subset=["date_heure", "consommation"]).sort_values("date_heure")
     if data.empty:
-        raise ValueError("Les données reçues ne contiennent aucune mesure exploitable (date_heure/consommation).")
+        raise ValueError(
+            "Aucune mesure exploitable après normalisation : "
+            + str(len(records)) + " lignes reçues ; dates reconnues="
+            + str(int(pd.to_datetime(pd.DataFrame(records).get("date_heure"), utc=True, errors="coerce").notna().sum()))
+            + ". Vérifier le format date/heure et consommation de la réponse ODRÉ."
+        )
 
     latest = data.iloc[-1]
     age_hours = max(0, (pd.Timestamp.now(tz="UTC") - latest["date_heure"]).total_seconds() / 3600)
