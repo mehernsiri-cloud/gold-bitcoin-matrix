@@ -46,6 +46,8 @@ RSS_FEEDS = {
     "Deutsche Welle — World": "https://rss.dw.com/rdf/rss-en-all",
     "The Guardian — World": "https://www.theguardian.com/world/rss",
     "Al Jazeera — International": "https://www.aljazeera.com/xml/rss/all.xml",
+    "BleepingComputer — Cyber": "https://www.bleepingcomputer.com/feed/",
+    "The Hacker News — Cyber": "https://feeds.feedburner.com/TheHackersNews",
 }
 
 TOPICS = {
@@ -701,7 +703,19 @@ def qualify_situation(title, summary):
     rules.extend([
         {"id":"airspace_airport","terms":["airspace closure","airport closure","flights suspended","flight cancellations","fermeture de l'espace aérien","aéroport fermé","vols suspendus"],"event":"Fermeture d'espace aérien ou perturbation majeure des vols","impact":"Voyageurs bloqués, déroutements et perturbation du fret aérien ; effet économique local si la fermeture dure.","market":"Surcoûts pour les compagnies, le tourisme et la logistique.","action":"Vérifier les avis de l'aéroport, de la compagnie et des autorités de l'aviation civile avant tout déplacement.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Durée et périmètre à confirmer"},
         {"id":"water_desalination","terms":["water shortage","water supply disruption","desalination plant","water rationing","pénurie d'eau","coupure d'eau","usine de dessalement","restriction d'eau"],"event":"Perturbation de l'accès à l'eau potable","impact":"Risque vital en cas de perturbation prolongée, particulièrement dans les territoires dépendants du dessalement ; conséquences sanitaires et économiques.","market":"Impact opérationnel sur ménages, hôtels, industrie et services.","action":"Vérifier les communiqués des opérateurs et autorités ; suivre les consignes concernant l'eau potable.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Installation, zone et durée à confirmer"},
-        {"id":"cyber_critical","terms":["cyberattack","cyber attack","ransomware attack","critical infrastructure cyber","cyberattaque","attaque informatique","rançongiciel"],"event":"Cyberattaque visant une infrastructure essentielle","impact":"Peut interrompre les services publics, hôpitaux, banques, énergie, eau ou télécommunications ; cible et portée à confirmer.","market":"Coûts de remise en service et interruption d'activité.","action":"Identifier l'opérateur et les services réellement indisponibles ; suivre les communications officielles.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Cible et conséquences à confirmer"},
+        {"id":"cyber_critical","terms":[
+            "cyberattack","cyber attack","cyber incident","cybersecurity incident","ransomware","ransomware attack",
+            "hackers breach","data breach","computer attack","critical infrastructure cyber",
+            "cyberattaque","cyber attaque","attaque informatique","attaque cyber","incident cyber",
+            "rançongiciel","piratage informatique","système frigorifique","frigos","chambres froides",
+            "cold storage","refrigeration systems","cooling systems","Danfoss","Copeland xweb",
+            "Etablissement français du sang","Établissement français du sang","EFS cyber",
+            "Crédit Mutuel Arkéa","Credit Mutuel Arkea","Arkea cyberattack","Binance hack",
+            "Binance security incident","crypto exchange hack","exchange hack",
+            "bank cyberattack","banking cyberattack","hospital cyberattack","blood bank cyberattack",
+            "food supply cyberattack","supermarket cyberattack","industrial control system attack",
+            "operational technology cyber","OT cyberattack","SCADA attack"
+        ],"event":"Cyberattaque ou compromission numérique","impact":"Peut perturber les paiements, les services de santé, les chaînes du froid, l'alimentation, l'énergie, l'eau ou les télécommunications ; l'impact réel doit être qualifié par secteur et territoire.","market":"Risque opérationnel, pertes financières, interruption de service et perturbation logistique selon la cible.","action":"Identifier la cible, le système compromis, les services effectivement interrompus, la durée et les mesures de confinement ; recouper avec CERT-FR, ANSSI, ENISA ou les communiqués de l'organisation.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Incident confirmé ou signalé ; conséquences à qualifier"},
         {"id":"banking_capital","terms":["bank run","bank failure","bank collapse","capital controls","withdrawal limits","deposit freeze","contrôle des capitaux","limitation des retraits","gel des dépôts","faillite bancaire"],"event":"Crise bancaire ou restriction d'accès aux liquidités","impact":"Risque direct pour l'accès aux dépôts, paiements et transferts ; distinguer rumeur, difficulté d'une banque et mesure officielle.","market":"Stress financier et risque de contagion si plusieurs établissements sont concernés.","action":"Vérifier les communications du régulateur et de la banque centrale ; ne pas agir sur des rumeurs.","level":"CRITIQUE","score":4,"polarity":"negative","confidence":"Confirmation réglementaire requise"},
         {"id":"food_supply","terms":["food shortage","food supply disruption","food rationing","grain export ban","food crisis","pénurie alimentaire","rupture d'approvisionnement alimentaire","rationnement alimentaire"],"event":"Risque majeur sur l'approvisionnement alimentaire","impact":"Hausse des prix ou disponibilité réduite de produits essentiels ; conséquences sociales si la crise dure ou s'étend.","market":"Pression possible sur les prix agricoles et l'inflation.","action":"Vérifier les produits, territoires et volumes concernés auprès des autorités et opérateurs ; éviter les achats de panique.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Produits et territoires à préciser"},
         {"id":"sovereign_financial","terms":["sovereign debt crisis","sovereign default","debt restructuring","crise de la dette souveraine","défaut souverain","restructuration de la dette publique"],"event":"Crise de dette souveraine","impact":"Risque de hausse des taux, mesures budgétaires et pression sur les banques et l'activité ; conséquences dépendantes du pays.","market":"Tension possible sur obligations, banques, euro et financement public.","action":"Suivre décisions gouvernementales, banque centrale et régulateurs ; distinguer dégradation de notation et défaut effectif.","level":"ÉLEVÉ","score":3,"polarity":"negative","confidence":"Indicateurs à recouper"},
@@ -885,13 +899,7 @@ def fetch_rte_grid_data():
     if missing:
         raise ValueError(f"Champs absents de la réponse ODRÉ : {', '.join(sorted(missing))}. Champs reçus : {', '.join(map(str, data.columns[:20]))}")
 
-    numeric_cols = [
-        "consommation", "prevision_j", "prevision_j1", "ech_physiques",
-        "nucleaire", "gaz", "eolien", "solaire", "hydraulique", "taux_co2",
-    ]
-    for col in numeric_cols:
-        if col in data.columns:
-            data[col] = pd.to_numeric(data[col], errors="coerce")
+    # Numeric conversion is deliberately deferred until locale separators are normalized.
 
     # Normalize timestamps and numeric values: CSV exports may contain local date/time,
     # decimal commas, non-breaking spaces or a separate date + heure pair.
@@ -1097,6 +1105,7 @@ def geopolitics_supply_dashboard(df, errors=None):
     risk_domains = {
         "Guerre / escalade": {"war_escalation", "shipping_chokepoint", "sanctions_energy", "airspace_airport", "humanitarian_crisis"},
         "Crise financière": {"banking_capital", "sovereign_financial"},
+        "Cyberattaques / services essentiels": {"cyber_critical"},
         "Blackout / infrastructures": {"power_disruption", "cyber_critical", "water_desalination"},
         "Pénuries / approvisionnement": {"fuel_logistics_strike", "fuel_shortage", "refinery_outage", "transport_strike", "medicine_shortage", "food_supply", "gas_market_tightness"},
         "Tensions sociales": {"mass_social_disruption", "transport_strike", "homecare_workforce", "fuel_logistics_strike", "fuel_shortage"},
