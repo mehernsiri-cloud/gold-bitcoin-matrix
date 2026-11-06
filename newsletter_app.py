@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 import html
+import hashlib
+import json
+import os
 import re
 import time
 import threading
@@ -1676,6 +1679,159 @@ def geopolitics_supply_dashboard(df, errors=None):
 
     st.caption("Les couleurs indiquent une priorité de veille, pas une probabilité statistique. Les jauges sont des indices internes de pression documentaire calculés sur les articles qualifiés ; elles ne prédisent pas la survenue d'une guerre, d'un blackout, d'une pénurie ou d'une crise financière. Un article ne confirme pas à lui seul la réalité, l'étendue ou la durée d'un impact. Les événements internationaux ne sont affichés que lorsqu'une règle d'impact les qualifie.")
 
+
+def _newsletter_api_key():
+    """Read the AI provider key from Streamlit secrets or the hosting environment."""
+    try:
+        key = st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        key = ""
+    return str(key or os.environ.get("OPENAI_API_KEY", "")).strip()
+
+
+@st.cache_data(ttl=5400, show_spinner=False)
+def _generate_ai_newsletter(articles_json, api_key):
+    """Generate a source-grounded French briefing; cache by exact source corpus."""
+    articles = json.loads(articles_json)
+    if not articles:
+        return ""
+    system_prompt = (
+        "Tu es analyste senior macroéconomie, marchés, géopolitique et risques systémiques. "
+        "Rédige en français un briefing stratégique précis, nuancé et utile à un investisseur particulier. "
+        "Utilise uniquement les éléments fournis. N'invente aucun cours, chiffre, date, citation, causalité "
+        "ou événement. Distingue explicitement faits rapportés, interprétations et hypothèses. "
+        "Quand les sources divergent ou sont insuffisantes, dis-le. Un titre ou un résumé RSS ne constitue "
+        "pas une confirmation. Ne transforme jamais une absence d'information en absence de risque. "
+        "Ne donne pas d'ordre automatique d'achat ou de vente."
+    )
+    user_prompt = (
+        "À partir des articles ci-dessous, produis un briefing avec :\n"
+        "1. Synthèse exécutive (5 points maximum, importance décroissante).\n"
+        "2. Analyse approfondie des événements majeurs : ce qui s'est passé, mécanismes économiques/financiers, "
+        "éléments confirmés et inconnues.\n"
+        "3. Transmission aux marchés : actions, obligations/taux, dollar, EUR/CHF, pétrole/énergie, or et Bitcoin "
+        "(uniquement si les sources permettent une analyse pertinente).\n"
+        "4. Gagnants/perdants potentiels par secteurs, avec les conditions et risques associés.\n"
+        "5. Scénarios à 1-4 semaines : central, dégradation, détente ; déclencheurs observables, sans probabilités "
+        "chiffrées non justifiées.\n"
+        "6. Implications pour un portefeuille diversifié exposé aux actions mondiales, énergie, défense, santé, "
+        "utilities/électricité, or et liquidités. Pas de conseil personnalisé ni d'ordre de transaction.\n"
+        "7. Tableau de surveillance : indicateur, pourquoi il compte, signal à surveiller.\n"
+        "8. Qualité documentaire : nombre de sources distinctes, corroborations, limites et niveau de confiance "
+        "(élevé/moyen/faible, justifié).\n\n"
+        "Référence chaque affirmation importante avec les identifiants [S1], [S2]… fournis. "
+        "N'affirme pas qu'une séance boursière a chuté ou qu'un mouvement est historique sans données de marché "
+        "chiffrées dans les sources. Si le corpus est trop faible, indique clairement les limites et réduis la portée.\n\n"
+        + json.dumps(articles, ensure_ascii=False)
+    )
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": "gpt-4.1-mini",
+            "temperature": 0.2,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        },
+        timeout=(10, 90),
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
+
+
+def ai_newsletter_page(df, errors):
+    """Automatically create a deep AI briefing from the latest qualified news corpus."""
+    st.header("🧠 Newsletter stratégique — analyse IA")
+    st.caption(
+        "Briefing généré automatiquement à partir des actualités collectées : analyse macroéconomique, "
+        "géopolitique, marchés, scénarios et implications patrimoniales."
+    )
+    if df is None or df.empty:
+        st.warning("Aucune actualité exploitable : le briefing ne peut pas être généré.")
+        if errors:
+            with st.expander("Diagnostic des flux"):
+                for error in errors:
+                    st.write(f"• {error}")
+        return
+
+    api_key = _newsletter_api_key()
+    if not api_key:
+        st.error(
+            "La génération IA n'est pas encore activée. Ajoute la clé OPENAI_API_KEY dans "
+            "les secrets de l'application Streamlit (ou comme variable d'environnement), puis actualise le dashboard."
+        )
+        st.caption("La clé n'est jamais affichée dans le dashboard. Modèle utilisé : gpt-4.1-mini.")
+        return
+
+    recent = df.copy()
+    if "Date" in recent.columns:
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=72)
+        recent = recent[recent["Date"].isna() | (recent["Date"] >= cutoff)]
+    if recent.empty:
+        st.info("Pas de nouvel article sur les dernières 72 heures. Aucun événement ne sera inventé.")
+        return
+
+    # Prioritize distinct publishers and deduplicate near-identical headlines.
+    recent = recent.sort_values("Date_tri", ascending=False, na_position="last") if "Date_tri" in recent else recent
+    recent = recent.drop_duplicates(subset=["Lien"]).head(10)
+    articles = []
+    with st.spinner(f"Lecture des sources et préparation du briefing ({len(recent)} articles)…"):
+        for index, (_, row) in enumerate(recent.iterrows(), start=1):
+            url = str(row.get("Lien", "") or "")
+            body = fetch_article_text(url) if url.startswith("http") else ""
+            summary = str(row.get("Résumé", "") or "")
+            content = body[:9000] if body else summary[:3500]
+            articles.append({
+                "source_id": f"S{index}",
+                "date": str(row.get("Date", "")),
+                "publisher": str(row.get("Source", row.get("Domaine", "Source inconnue"))),
+                "title": str(row.get("Titre", ""))[:400],
+                "content": content,
+                "content_quality": "texte intégral extrait" if body else "résumé RSS uniquement",
+                "url": url,
+            })
+
+    distinct_sources = len({a["publisher"] for a in articles})
+    source_digest = hashlib.sha256(
+        json.dumps(articles, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    st.caption(
+        f"Corpus : {len(articles)} articles · {distinct_sources} sources éditoriales · "
+        f"fenêtre : 72 h · Référence du corpus : {source_digest[:10]}"
+    )
+    try:
+        with st.spinner("L'IA recoupe les informations et rédige l'analyse stratégique…"):
+            briefing = _generate_ai_newsletter(
+                json.dumps(articles, ensure_ascii=False, sort_keys=True), api_key
+            )
+        if briefing:
+            st.markdown(briefing)
+        else:
+            st.warning("Le modèle n'a pas retourné de contenu exploitable.")
+    except requests.exceptions.Timeout:
+        st.error("Le service IA n'a pas répondu dans le délai prévu. Le briefing sera retenté à la prochaine actualisation.")
+    except requests.exceptions.HTTPError as exc:
+        status = getattr(exc.response, "status_code", "inconnu")
+        st.error(f"Erreur du service IA (HTTP {status}). Vérifie la clé API et les droits associés.")
+    except Exception as exc:
+        st.error(f"Génération IA indisponible : {type(exc).__name__}. Le dashboard et les autres modules restent accessibles.")
+
+    with st.expander("Sources utilisées et qualité des contenus", expanded=False):
+        for article in articles:
+            quality = article["content_quality"]
+            st.markdown(
+                f"**[{article['source_id']}] {article['publisher']}** · {article['date']} · {quality}  \\n"
+                f"[{article['title']}]({article['url']})"
+            )
+        st.caption(
+            "Les éditeurs ne permettent pas tous l'extraction du texte intégral. "
+            "Les éléments fondés uniquement sur un résumé RSS sont donc moins solides. "
+            "Les liens ci-dessus permettent de vérifier les articles originaux."
+        )
+
 def enhanced_newsletter_page(df, errors):
     st.header("📰 Newsletter — veille filtrée")
     c1, c2, c3 = st.columns([1, 1, 1.5])
@@ -1953,8 +2109,9 @@ def main():
     with st.sidebar:
         st.title("WELS Actions")
         page = st.radio("Navigation", [
-            "Vue d'ensemble & Géopolitique", "Follow the Money — Investissements", "Marchés & portefeuille", "CHF & devises"
-        ], key="wels_navigation_v3")
+            "Vue d'ensemble & Géopolitique", "Newsletter stratégique — IA",
+            "Follow the Money — Investissements", "Marchés & portefeuille", "CHF & devises"
+        ], key="wels_navigation_v4")
         # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
         # sans effacer la sélection lors des reruns provoqués par un clic régional.
         previous_page = st.session_state.get("_wels_previous_navigation_page")
@@ -1972,6 +2129,7 @@ def main():
         executive_dashboard(df)
         st.divider()
         geopolitics_supply_dashboard(df, errors)
+    elif page == "Newsletter stratégique — IA": ai_newsletter_page(df, errors)
     elif page == "Follow the Money — Investissements": investment_flows_page()
     elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "CHF & devises": fx_chf_page()
