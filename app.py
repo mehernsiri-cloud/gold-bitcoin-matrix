@@ -89,8 +89,7 @@ from newsletter_app import newsletter_dashboard
 # Candlestick Predictions import
 # -------------------------------------------------------------------
 
-from candlestick_predictions import render_candlestick_dashboard
-from candlestick_predictions import render_daily_candlestick_dashboard
+from market_forecast import render_market_forecast_dashboard
 
 # -------------------------------------------------------------------
 # FILE PATHS AND DATA DIRECTORIES
@@ -842,7 +841,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "AI Forecast", "Candlestick Predictions", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
+    ["Gold & Bitcoin — Forecast", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
 )
 
 
@@ -856,168 +855,8 @@ def render_header(title: str, subtitle: Optional[str] = None):
 # -------------------------------------------------------------------
 # GOLD & BITCOIN DASHBOARD (original behavior preserved)
 # -------------------------------------------------------------------
-if menu == "Gold & Bitcoin":
-    render_header("🌸 Gold & Bitcoin Market Dashboard (Pastel Theme)", "Combined view of predictions, actuals and AI forecasts")
-    col1, col2 = st.columns(2)
-
-    for col, df, name, actual_col in zip([col1, col2], [gold_df_adj, btc_df_adj], ["Gold", "Bitcoin"], ["gold_actual", "bitcoin_actual"]):
-        with col:
-            st.subheader(name)
-            if df is not None and not df.empty:
-                last_signal = df.get("signal", pd.Series(["Hold"])).iloc[-1]
-                st.markdown(alert_badge(last_signal, name), unsafe_allow_html=True)
-                last_trend = df.get("trend", pd.Series(["Neutral ⚖️"])).iloc[-1]
-                st.markdown(f"**Market Trend:** {last_trend}")
-                st.markdown(generate_summary(df, name))
-                target_price_card(df["target_price"].iloc[-1] if "target_price" in df.columns else "N/A", name, df["target_horizon"].iloc[-1] if "target_horizon" in df.columns else "Days")
-                try:
-                    explanation_card(df, name)
-                    assumptions_card(df, name)
-                except Exception:
-                    st.info("Error showing explanation or assumptions.")
-
-                n_steps = 7
-                try:
-                    df_ai = predict_next_n(asset_name=name, n_steps=n_steps)
-                except Exception:
-                    df_ai = pd.DataFrame()
-
-                theme = ASSET_THEMES.get(name, ASSET_THEMES["Gold"])
-                fig = go.Figure()
-
-                if "timestamp" in df.columns and "actual" in df.columns:
-                    try:
-                        fig.add_trace(go.Scatter(x=df["timestamp"], y=df["actual"], mode="lines+markers", name="Actual", line=dict(color=theme["chart_actual"], width=2)))
-                    except Exception:
-                        pass
-
-                if "timestamp" in df.columns and "predicted_price" in df.columns:
-                    try:
-                        fig.add_trace(go.Scatter(x=df["timestamp"], y=df["predicted_price"], mode="lines+markers", name="Predicted", line=dict(color=theme["chart_pred"], dash="dash")))
-                    except Exception:
-                        pass
-
-                if not df_ai.empty and "timestamp" in df_ai.columns and "predicted_price" in df_ai.columns:
-                    try:
-                        fig.add_trace(go.Scatter(x=df_ai["timestamp"], y=df_ai["predicted_price"], mode="lines+markers", name="AI Forecast", line=dict(color=theme["chart_ai"], dash="dot")))
-                    except Exception:
-                        pass
-
-                fig.update_layout(title=f"{name} Prices: Actual + Predicted + AI Forecast", xaxis_title="Date", yaxis_title="Price", plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=420)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info(f"No {name} data available yet.")
-
-
-# -------------------------------------------------------------------
-# AI FORECAST DASHBOARD (candlestick detection moved out)
-# -------------------------------------------------------------------
-elif menu == "AI Forecast":
-    render_header("🤖 AI Forecast Dashboard", "AI-predicted prices and historical comparisons")
-
-    n_steps = st.sidebar.number_input("Forecast next days", min_value=1, max_value=30, value=7)
-    col_left, col_right = st.columns(2)
-
-    # GOLD (left)
-    with col_left:
-        asset = "Gold"
-        actual_col = "gold_actual"
-        st.subheader(asset)
-        st.markdown("**Historical AI Predictions vs Actual**")
-        df_hist_actual = pd.DataFrame()
-        if actual_col in df_actual.columns:
-            df_hist_actual = df_actual[["timestamp", actual_col]].rename(columns={actual_col: "actual"}).dropna()
-        df_hist_pred = pd.DataFrame()
-        if "asset" in df_ai_pred_log.columns:
-            df_hist_pred = df_ai_pred_log[df_ai_pred_log["asset"] == asset][["timestamp", "predicted_price"]].dropna()
-
-        if not df_hist_actual.empty and not df_hist_pred.empty:
-            fig_cmp = go.Figure()
-            fig_cmp.add_trace(go.Scatter(x=df_hist_actual["timestamp"], y=df_hist_actual["actual"], mode="lines+markers", name="Actual Price", line=dict(width=2)))
-            fig_cmp.add_trace(go.Scatter(x=df_hist_pred["timestamp"], y=df_hist_pred["predicted_price"], mode="lines+markers", name="Predicted Price", line=dict(dash="dot")))
-            fig_cmp.update_layout(title=f"{asset} – Historical AI Predictions vs Actual", xaxis_title="Date", yaxis_title="Price", template="plotly_white", height=350)
-            st.plotly_chart(fig_cmp, use_container_width=True)
-        else:
-            st.info(f"No historical data available for {asset} or no AI predictions logged.")
-
-        st.markdown("**Future AI Forecast**")
-        try:
-            df_ai_future = predict_next_n(asset_name=asset, n_steps=n_steps)
-        except Exception:
-            df_ai_future = pd.DataFrame()
-
-        if not df_ai_future.empty:
-            fig = go.Figure()
-            if not df_hist_actual.empty:
-                fig.add_trace(go.Scatter(x=df_hist_actual["timestamp"], y=df_hist_actual["actual"], mode="lines+markers", name="Actual", line=dict(width=2)))
-            fig.add_trace(go.Scatter(x=df_ai_future["timestamp"], y=df_ai_future["predicted_price"], mode="lines+markers", name="AI Predicted", line=dict(dash="dash")))
-            fig.update_layout(title=f"{asset} AI Forecast vs Actual", xaxis_title="Date", yaxis_title="Price", plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=420)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info(f"No AI forecast available for {asset}.")
-
-    # BITCOIN (right) - Note: candlestick-based predictions & detection have been removed from this menu.
-    with col_right:
-        asset = "Bitcoin"
-        st.subheader(asset)
-
-        # Prepare close time-series for Bitcoin
-        df_close = pd.DataFrame()
-        if "bitcoin_close" in df_actual.columns:
-            df_close = df_actual[["timestamp", "bitcoin_close"]].rename(columns={"bitcoin_close": "actual"}).dropna()
-        elif "bitcoin_actual" in df_actual.columns:
-            df_close = df_actual[["timestamp", "bitcoin_actual"]].rename(columns={"bitcoin_actual": "actual"}).dropna()
-
-        st.markdown("**Price Series (Bitcoin Close) & AI Forecast**")
-        df_hist_pred = df_ai_pred_log[df_ai_pred_log["asset"] == "Bitcoin"][["timestamp", "predicted_price"]].dropna() if "asset" in df_ai_pred_log.columns else pd.DataFrame()
-
-        # Show combined line chart of actual closes and AI predicted points
-        if not df_close.empty or not df_hist_pred.empty:
-            fig_btc = go.Figure()
-            if not df_close.empty:
-                fig_btc.add_trace(go.Scatter(x=df_close["timestamp"], y=df_close["actual"], mode="lines+markers", name="Actual Close", line=dict(width=2)))
-            if not df_hist_pred.empty:
-                fig_btc.add_trace(go.Scatter(x=df_hist_pred["timestamp"], y=df_hist_pred["predicted_price"], mode="lines+markers", name="AI Predictions", line=dict(dash="dot")))
-            try:
-                df_ai_future = predict_next_n(asset_name="Bitcoin", n_steps=n_steps)
-            except Exception:
-                df_ai_future = pd.DataFrame()
-            if not df_ai_future.empty and "timestamp" in df_ai_future.columns and "predicted_price" in df_ai_future.columns:
-                fig_btc.add_trace(go.Scatter(x=df_ai_future["timestamp"], y=df_ai_future["predicted_price"], mode="lines+markers", name="AI Forecast (future)", line=dict(dash="dash")))
-            fig_btc.update_layout(title="Bitcoin – Close Price & AI Forecast", xaxis_title="Date", yaxis_title="Price", plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA", height=480)
-            st.plotly_chart(fig_btc, use_container_width=True)
-        else:
-            st.info("No Bitcoin close-series or AI predictions available for plotting.")
-
-        # Historical comparison small table
-        st.markdown("**Historical AI Predictions vs Actual (table)**")
-        if not df_close.empty and not df_hist_pred.empty:
-            try:
-                joined = pd.merge_asof(df_hist_pred.sort_values("timestamp"), df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}), on="timestamp", direction="backward", tolerance=pd.Timedelta("1D"))
-            except Exception as e:
-                # Force timestamps to datetime and retry
-                df_hist_pred["timestamp"] = pd.to_datetime(df_hist_pred["timestamp"], errors="coerce")
-                df_close["timestamp"] = pd.to_datetime(df_close["timestamp"], errors="coerce")
-                joined = pd.merge(
-                df_hist_pred.sort_values("timestamp"),
-                df_close.sort_values("timestamp").rename(columns={"actual": "actual_price"}),
-                how="left",
-                on="timestamp"
-                )
-                st.dataframe(joined.head(50))
-        else:
-            st.info("Insufficient data to show historical table for Bitcoin.")
-
-
-# -------------------------------------------------------------------
-# CANDLESTICK PREDICTIONS MENU (delegates to candlestick_predictions.py)
-# -------------------------------------------------------------------
-elif menu == "Candlestick Predictions":
-    # This function is implemented in candlestick_predictions.py
-    # It contains all candlestick pattern detection, weekly aggregation,
-    # synthetic candle generation, plotting and logging features.
-    render_candlestick_dashboard(df_actual)
-    render_daily_candlestick_dashboard(df_actual)    
+if menu == "Gold & Bitcoin — Forecast":
+    render_market_forecast_dashboard()
 
 
 # -------------------------------------------------------------------
