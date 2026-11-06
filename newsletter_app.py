@@ -232,6 +232,61 @@ def fetch_history(symbol, period="1y"):
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_gold_eur_gram(period="1y"):
+    """Estimation du cours EUR/g depuis les futures or USD/once et EUR/USD."""
+    gold = fetch_history("GC=F", period)
+    eurusd = fetch_history("EURUSD=X", period)  # USD pour 1 EUR
+    if gold.empty or eurusd.empty:
+        return pd.DataFrame()
+    gold = gold.rename(columns={"Cours": "Or_USD_oz"})
+    eurusd = eurusd.rename(columns={"Cours": "USD_par_EUR"})
+    merged = pd.merge(gold, eurusd, on="Date", how="inner")
+    merged = merged[(merged["USD_par_EUR"] > 0) & (merged["Or_USD_oz"] > 0)].copy()
+    merged["Cours"] = merged["Or_USD_oz"] / merged["USD_par_EUR"] / 31.1034768
+    return merged[["Date", "Cours"]].dropna()
+
+
+def fx_conversion_assessment(symbol, amount_eur=1000):
+    """Un taux EUR/devise élevé signifie davantage de devise étrangère reçue par euro."""
+    hist = fetch_history(symbol, "1y")
+    if hist.empty or len(hist) < 20:
+        return None
+    rates = pd.to_numeric(hist["Cours"], errors="coerce").dropna()
+    if len(rates) < 20:
+        return None
+    current = float(rates.iloc[-1])
+    percentile = float((rates <= current).mean() * 100)
+    if percentile >= 75:
+        label, color, bg = "FAVORABLE", "#237A45", "#E5F4E9"
+        explanation = "L'euro achète plus de cette devise que lors d'au moins 75 % des séances de l'année."
+    elif percentile <= 25:
+        label, color, bg = "PEU FAVORABLE", "#B42318", "#FCE8E8"
+        explanation = "L'euro achète moins de cette devise que lors d'au moins 75 % des séances de l'année."
+    else:
+        label, color, bg = "INTERMÉDIAIRE", "#A86100", "#FFF3D9"
+        explanation = "Le taux se situe dans la zone intermédiaire de sa fourchette annuelle."
+    return {"current": current, "amount": amount_eur * current, "percentile": percentile,
+            "avg30": float(rates.tail(30).mean()), "avg1y": float(rates.mean()),
+            "low": float(rates.min()), "high": float(rates.max()),
+            "label": label, "color": color, "bg": bg, "explanation": explanation}
+
+
+def render_fx_assessment(symbol, name, amount_eur=1000):
+    a = fx_conversion_assessment(symbol, amount_eur)
+    if a is None:
+        st.info(f"Évaluation indisponible pour {name} : historique de change insuffisant.")
+        return
+    st.markdown(f"""
+    <div style="background:{a['bg']};border:1px solid {a['color']}80;border-radius:12px;padding:13px;margin:8px 0">
+      <div style="font-size:17px;font-weight:800;color:{a['color']}">{a['label']} pour convertir des euros en {name}</div>
+      <div style="font-size:14px;color:#344054;margin:5px 0">{a['explanation']}</div>
+      <div style="font-size:22px;font-weight:900;color:#263445">1 000 € ≈ {a['amount']:,.2f} {name}</div>
+      <div style="font-size:12px;color:#596579">Taux actuel {a['current']:.4f} · percentile annuel {a['percentile']:.0f}% · moyenne 30 séances {a['avg30']:.4f} · moyenne 1 an {a['avg1y']:.4f}</div>
+      <div style="font-size:12px;color:#596579">Fourchette 1 an : {a['low']:.4f} – {a['high']:.4f}</div>
+    </div>""", unsafe_allow_html=True)
+
+
 def show_news_cards(df, limit=30, full_text=False):
     if df.empty:
         st.info("Aucun article ne correspond aux filtres. Élargissez la période ou changez de thème.")
@@ -310,7 +365,17 @@ def markets_page():
     st.subheader("Or et Bitcoin")
     c1, c2 = st.columns(2)
     with c1:
-        market_summary_card("Or (USD/once)", "GC=F", period)
+        gold_hist = fetch_gold_eur_gram(period)
+        if gold_hist.empty:
+            st.warning("Cours de l'or en EUR/g indisponible.")
+        else:
+            last_gold = float(gold_hist["Cours"].iloc[-1])
+            prev_gold = float(gold_hist["Cours"].iloc[-2]) if len(gold_hist) > 1 else last_gold
+            st.metric("🥇 Or — euro / gramme", f"{last_gold:,.2f} €", f"{(last_gold / prev_gold - 1) * 100:+.2f}% dernière séance")
+            st.caption("Estimation indicative depuis les futures or COMEX en USD/once convertis en EUR via EUR/USD ; hors prime et frais.")
+            fig = px.line(gold_hist, x="Date", y="Cours", title=f"Or — EUR par gramme · {period_label}")
+            fig.update_layout(height=260, yaxis_title="EUR / gramme")
+            st.plotly_chart(fig, use_container_width=True)
     with c2:
         market_summary_card("Bitcoin (USD)", "BTC-USD", period)
 
@@ -347,23 +412,25 @@ def markets_page():
 
 def currencies_page():
     st.header("💱 Change EUR/CHF et EUR/AED")
+    st.caption("Lecture du taux pour savoir combien de devises tu reçois en échange de tes euros.")
     period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="fx_period")
     period = PERIODS[period_label]
-    c1, c2 = st.columns(2)
-    for col, (name, symbol) in zip([c1, c2], FX_SYMBOLS.items()):
-        with col:
-            hist = fetch_history(symbol, period)
-            if hist.empty:
-                st.warning(f"Cours indisponible pour {name} ({symbol}).")
-                continue
-            last = float(hist["Cours"].iloc[-1])
-            previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-            st.metric(name, f"{last:.4f}", f"{(last / previous - 1) * 100:+.2f}% dernière séance")
-            fig = px.line(hist, x="Date", y="Cours", title=f"{name} — {period_label}")
-            fig.update_layout(height=300)
-            st.plotly_chart(fig, use_container_width=True)
-    st.caption("L’AED est arrimé au dollar américain. Les cours de change peuvent être indisponibles selon le fournisseur de données.")
-
+    for name, symbol in FX_SYMBOLS.items():
+        hist = fetch_history(symbol, period)
+        st.subheader("🇨🇭 EUR/CHF" if name == "EUR/CHF" else "🇦🇪 EUR/AED")
+        if hist.empty:
+            st.warning(f"Cours indisponible pour {name} ({symbol}).")
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        c1, c2 = st.columns(2)
+        c1.metric("Dernier cours", f"{last:.4f}")
+        c2.metric("Dernière séance", f"{(last / previous - 1) * 100:+.2f}%")
+        render_fx_assessment(symbol, "CHF" if name == "EUR/CHF" else "AED")
+        fig = px.line(hist, x="Date", y="Cours", title=f"{name} — {period_label}")
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    st.caption("Un taux EUR/CHF ou EUR/AED plus élevé est plus favorable à l'achat de devises avec des euros. Le signal compare le cours au percentile de son historique sur un an ; il ne prédit pas son évolution et n'intègre pas les frais bancaires. L'AED est arrimé au dollar américain.")
 
 
 WAR_TERMS = ["war", "invasion", "airstrike", "missile", "drone attack", "armed conflict",
@@ -548,15 +615,8 @@ def fx_chf_page():
         fig = px.line(hist, x="Date", y="Cours", title=f"{name} — {period_label}")
         fig.update_layout(height=300)
         st.plotly_chart(fig, use_container_width=True)
-        if name == "EUR/CHF":
-            if change >= 2.0:
-                st.success(f"Signal CHF : EUR/CHF a progressé de {change:+.2f}% sur {period_label}. Un euro achète davantage de CHF qu’au début de la période ; une conversion fractionnée peut être étudiée.")
-            elif change <= -2.0:
-                st.warning(f"Signal CHF : EUR/CHF a reculé de {change:+.2f}% sur {period_label}. Le CHF s’est renforcé face à l’euro ; convertir des euros en CHF coûte davantage.")
-            else:
-                st.info(f"Pas de signal de change marqué : variation EUR/CHF de {change:+.2f}% sur {period_label} (seuil indicatif ±2%).")
-            st.info("Pour acheter des CHF : une baisse d'EUR/CHF signifie que chaque euro achète moins de francs ; une hausse signifie que l'euro achète davantage. Des conversions fractionnées limitent le risque de chercher le point bas.")
-        else:
+        render_fx_assessment(symbol, "CHF" if name == "EUR/CHF" else "AED")
+        if name == "EUR/AED":
             st.caption("L'AED est arrimé au dollar américain ; EUR/AED dépend donc largement de l'évolution de l'euro face au dollar.")
     st.subheader("Répartition CHF de référence — scénarios discutés")
     allocations = pd.DataFrame([
@@ -1496,14 +1556,14 @@ def executive_dashboard(df):
     war_level = signal_level(war)
     france_level = signal_level(supply)
     snapshot = [
-        ("Brent", "BZ=F", "USD"), ("Or spot (proxy futures)", "GC=F", "USD"),
+        ("Brent", "BZ=F", "USD"), ("Or (€/g)", "GC=F", "EUR/g"),
         ("Nasdaq Composite", "^IXIC", "Index"), ("S&P 500", "^GSPC", "Index"),
         ("Dow Jones", "^DJI", "Index"), ("EUR/CHF", "EURCHF=X", "FX"),
         ("EUR/AED", "EURAED=X", "FX"), ("Bitcoin", "BTC-USD", "USD")
     ]
     quote_rows, market_moves, kpi_rows = [], {}, []
     for label, symbol, currency in snapshot:
-        hist = fetch_history(symbol, "1mo")
+        hist = fetch_gold_eur_gram("1mo") if label == "Or (€/g)" else fetch_history(symbol, "1mo")
         if hist.empty:
             quote_rows.append({"Indicateur": label, "Dernier point": "Indisponible", "Variation séance": "—", "Variation 5 séances": "—", "Date": "—", "Source": "Yahoo Finance"})
             kpi_rows.append({"label": label, "value": "Indisponible", "daily": None, "weekly": None, "date": "—", "currency": currency})
@@ -1515,7 +1575,7 @@ def executive_dashboard(df):
         weekly = (last / week_base - 1) * 100 if week_base else 0.0
         market_moves[label] = delta
         date_label = pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")
-        value = f"{last:,.4f}" if currency == "FX" else f"{last:,.2f}" + (f" {currency}" if currency == "USD" else "")
+        value = f"{last:,.4f}" if currency == "FX" else (f"{last:,.2f} € /g" if currency == "EUR/g" else f"{last:,.2f}" + (f" {currency}" if currency == "USD" else ""))
         quote_rows.append({"Indicateur": label, "Dernier point": value, "Variation séance": f"{delta:+.2f}%", "Variation 5 séances": f"{weekly:+.2f}%", "Date": date_label, "Source": "Yahoo Finance"})
         kpi_rows.append({"label": label, "value": value, "daily": delta, "weekly": weekly, "date": date_label, "currency": currency})
 
@@ -1567,11 +1627,13 @@ def executive_dashboard(df):
         label, daily, weekly = item["label"], item["daily"], item["weekly"]
         if daily is None:
             bg, accent, status = "#EEF1F5", "#667085", "DONNÉES INDISPONIBLES"
-        elif label == "EUR/CHF":
-            bg, accent, status = ("#E5F4E9", "#237A45", "ZONE PLUS FAVORABLE CHF") if item["value"] and float(item["value"].replace(",", ".")) >= 0.93 else (("#FFF3D9", "#A86100", "ZONE INTERMÉDIAIRE") if float(item["value"].replace(",", ".")) >= 0.91 else ("#FCE8E8", "#B42318", "CHF CHER EN EUR"))
-        elif label == "EUR/AED":
-            fx_value = float(item["value"].replace(",", "."))
-            bg, accent, status = ("#E5F4E9", "#237A45", "ZONE PLUS FAVORABLE AED") if fx_value >= 4.20 else (("#FFF3D9", "#A86100", "ZONE INTERMÉDIAIRE") if fx_value >= 4.14 else ("#FCE8E8", "#B42318", "CONVERSION PEU FAVORABLE"))
+        elif label in ("EUR/CHF", "EUR/AED"):
+            fx_symbol = "EURCHF=X" if label == "EUR/CHF" else "EURAED=X"
+            assessment = fx_conversion_assessment(fx_symbol)
+            if assessment:
+                bg, accent, status = assessment["bg"], assessment["color"], f"{assessment['label']} · {assessment['percentile']:.0f}% annuel"
+            else:
+                bg, accent, status = "#EEF1F5", "#667085", "ÉVALUATION INDISPONIBLE"
         elif label in ("Nasdaq Composite", "S&P 500", "Dow Jones"):
             bg, accent = ("#FCE8E8", "#B42318") if weekly <= -4 else (("#FFF3D9", "#A86100") if weekly <= -2 else ("#E5F4E9", "#237A45"))
             status = "CORRECTION / FORTE BAISSE" if weekly <= -4 else ("BAISSE À SURVEILLER" if weekly <= -2 else ("REBOND" if weekly > 1 else "MOUVEMENT MODÉRÉ"))
@@ -1586,11 +1648,12 @@ def executive_dashboard(df):
               <div style="font-size:14px;font-weight:800;color:{accent}">{'—' if daily is None else f'{daily:+.2f}%'} séance</div>
               <div style="font-size:13px;color:#596579;margin-top:3px">{'—' if weekly is None else f'{weekly:+.2f}%'} / 5 séances</div>
               <div style="font-size:11px;color:#667085;margin-top:7px">{status} · {item['date']}</div>
+              {f"<div style='font-size:12px;color:#344054;margin-top:4px'>1 000 € ≈ {assessment['amount']:,.2f} {('CHF' if label == 'EUR/CHF' else 'AED')}</div>" if label in ("EUR/CHF", "EUR/AED") and assessment else ""}
             </div>
             """, unsafe_allow_html=True)
     with st.expander("Voir le tableau détaillé des cours et variations"):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
-    st.caption("Source : Yahoo Finance · cache 5 min · dernier point quotidien disponible (pas un flux intraday garanti). Or : contrat futures utilisé comme proxy, et non cotation spot. Les taux EUR/CHF et EUR/AED sont des indications de marché, pas des taux garantis par ta banque.")
+    st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
 
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
