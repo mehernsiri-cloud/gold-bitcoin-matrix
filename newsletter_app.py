@@ -1088,11 +1088,14 @@ def geopolitics_supply_dashboard(df, errors=None):
         key = (event["id"], re.sub(r"[^a-z0-9]+", " ", event["title"].lower())[:100])
         if key not in unique_events:
             event["sources"] = [event["source"]] if event["source"] else []
+            event["source_links"] = [{"source": event["source"], "url": event["url"]}] if event["url"].startswith("http") else []
             unique_events[key] = event
         else:
             current = unique_events[key]
             if event["source"] and event["source"] not in current["sources"]:
                 current["sources"].append(event["source"])
+            if event["url"].startswith("http") and not any(link["url"] == event["url"] for link in current.get("source_links", [])):
+                current.setdefault("source_links", []).append({"source": event["source"], "url": event["url"]})
             if event["score"] > current["score"]:
                 current["score"] = event["score"]
             if event.get("date_raw") and (not current.get("date_raw") or event["date_raw"] > current["date_raw"]):
@@ -1231,30 +1234,40 @@ def geopolitics_supply_dashboard(df, errors=None):
               <div style="font-size:11px;color:#667085">{event_count} événement(s) · {source_count} source(s)</div>
             </div>""", unsafe_allow_html=True)
 
-            with st.expander("Voir les événements qui expliquent ce score", expanded=False):
-                if not data_available:
-                    st.warning("Données indisponibles : aucun commentaire fiable sur ce score.")
-                elif not ranked_events:
-                    st.info("Aucun événement qualifié dans cette famille sur la période analysée. Cela ne signifie pas une absence de risque.")
-                else:
-                    st.caption("Événements classés selon leur poids indicatif (gravité, fraîcheur et corroboration). Un même événement peut alimenter plusieurs jauges.")
-                    for contribution, age_days, event in ranked_events[:4]:
-                        st.markdown(f"**{event.get('title', 'Événement sans titre')}**")
-                        meta = f"{event.get('date', 'Date inconnue')} · {event.get('severity', 'Niveau non classé')} · poids indicatif {contribution}/60"
-                        st.caption(meta)
-                        if event.get("summary"):
-                            st.write(event["summary"])
-                        if event.get("impact"):
-                            st.markdown(f"**Impact potentiel :** {event['impact']}")
-                        elif event.get("market"):
-                            st.markdown(f"**Impact :** {event['market']}")
-                        sources = event.get("sources", [])
-                        if sources:
-                            st.caption("Sources : " + ", ".join(sources))
-                        url = str(event.get("url", "")).strip()
-                        if url.startswith("https://") or url.startswith("http://"):
-                            st.markdown(f"[Ouvrir la source]({url})")
-                        st.divider()
+            # Top events are visible without opening a panel.
+            if not data_available:
+                st.warning("Données indisponibles : score non qualifiable.")
+            elif not ranked_events:
+                st.caption("Aucun événement qualifié dans cette famille sur la période. Cela ne signifie pas une absence de risque.")
+            else:
+                st.markdown("**Événements principaux à l'origine du score**")
+                for contribution, age_days, event in ranked_events[:2]:
+                    st.markdown(f"**{str(event.get('title', 'Événement sans titre'))[:150]}**")
+                    age_label = "âge inconnu" if age_days >= 29 else (f"il y a {age_days * 24:.0f} h" if age_days < 1 else f"il y a {age_days:.1f} j")
+                    st.caption(f"{event.get('date', 'Date inconnue')} · {event.get('severity', 'Non classé')} · {age_label} · {event.get('source_count', 1)} source(s) · poids indicatif {contribution}/60")
+                    if event.get("summary"):
+                        st.write(str(event["summary"])[:420])
+                    if event.get("impact"):
+                        st.markdown(f"**Pourquoi c'est important :** {event['impact']}")
+                    for link in event.get("source_links", [])[:4]:
+                        if str(link.get("url", "")).startswith(("https://", "http://")):
+                            st.markdown(f"[{link.get('source', 'Ouvrir la source')}]({link['url']})")
+                    st.divider()
+
+                if len(ranked_events) > 2:
+                    with st.expander(f"Voir les {len(ranked_events) - 2} autres événements et le détail du calcul", expanded=False):
+                        st.caption("Le poids indicatif combine gravité, fraîcheur et corroboration. Le score global ajoute aussi un bonus de répétition : les poids individuels ne sont donc pas des parts exactes du total.")
+                        for contribution, age_days, event in ranked_events[2:]:
+                            st.markdown(f"**{event.get('title', 'Événement sans titre')}**")
+                            st.caption(f"{event.get('date', 'Date inconnue')} · {event.get('severity', 'Non classé')} · poids indicatif {contribution}/60")
+                            if event.get("summary"):
+                                st.write(str(event["summary"])[:700])
+                            if event.get("impact"):
+                                st.markdown(f"**Impact potentiel :** {event['impact']}")
+                            for link in event.get("source_links", [])[:4]:
+                                if str(link.get("url", "")).startswith(("https://", "http://")):
+                                    st.markdown(f"[{link.get('source', 'Ouvrir la source')}]({link['url']})")
+                            st.divider()
 
     st.caption("Lecture : 0–19 bas, 20–39 faible, 40–59 à surveiller, 60–79 élevé, 80–100 très élevé. Les seuils sont des conventions de veille. Le poids indicatif affiché par événement n'est pas une part exacte du score total : le score inclut aussi un bonus de répétition.")
     
