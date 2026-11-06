@@ -425,6 +425,7 @@ def enrich_news_frame(df):
 def market_watch_page():
     st.header("📈 Marchés & portefeuille suivi")
     st.caption("Source unique des cours : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible (pas un flux intraday). Chaque ligne indique sa date et sa devise.")
+    render_drawdown_alerts()
     period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
     period = PERIODS[period_label]
     watch = dict(MARKET_SYMBOLS)
@@ -1041,6 +1042,60 @@ def enhanced_newsletter_page(df, errors):
     render_alert_articles(selected, 50)
 
 
+def render_drawdown_alerts():
+    """Highlight sharp portfolio drawdowns using the latest three daily closes."""
+    st.subheader("🚨 Alertes de baisse — positions à surveiller")
+    st.caption("Détection automatique sur les deux dernières séances disponibles. Rouge : baisse ≥ 8 % · orange : baisse de 4 à 8 %. Une alerte signale un mouvement, pas un ordre de vente.")
+    assets = [
+        {"name": "FTAI Aviation", "ticker": "FTAI", "currency": "USD", "pe": "32,93", "forward_pe": "15,07",
+         "fundamentals_date": "05/11/2026",
+         "note": "Le forward P/E repose sur des estimations bénéficiaires futures, pas sur un bénéfice déjà réalisé."},
+        {"name": "Lockheed Martin", "ticker": "LMT", "currency": "USD", "pe": "≈ 20,5", "forward_pe": "≈ 18",
+         "fundamentals_date": "05/11/2026",
+         "note": "Valorisation indicative rapportée au 05/11/2026 ; à revalider avec les résultats et le cours du jour."}
+    ]
+    cols = st.columns(2)
+    for idx, asset in enumerate(assets):
+        hist = fetch_history(asset["ticker"], "1mo")
+        year = fetch_history(asset["ticker"], "1y")
+        if hist.empty or len(hist) < 3:
+            with cols[idx]:
+                st.warning(f"{asset['name']} : historique de cours insuffisant pour calculer la variation sur deux séances.")
+            continue
+        recent = hist.tail(3).copy()
+        prices = [float(x) for x in recent["Cours"].tolist()]
+        two_day = (prices[-1] / prices[0] - 1) * 100 if prices[0] else 0
+        if two_day <= -8:
+            bg, color, status = "#3a090d", "#ff626b", "BAISSE FORTE"
+        elif two_day <= -4:
+            bg, color, status = "#392408", "#ffbd55", "BAISSE À SURVEILLER"
+        elif two_day >= 4:
+            bg, color, status = "#092b18", "#4cdb88", "REBOND"
+        else:
+            bg, color, status = "#202329", "#d7dce5", "MOUVEMENT LIMITÉ"
+        low52 = float(year["Cours"].min()) if not year.empty else None
+        high52 = float(year["Cours"].max()) if not year.empty else None
+        proximity = ((prices[-1] - low52) / (high52 - low52) * 100) if low52 is not None and high52 and high52 > low52 else None
+        rows_html = ""
+        for _, row in recent.iterrows():
+            date_label = pd.to_datetime(row["Date"]).strftime("%d %b")
+            rows_html += f"<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #ffffff20;color:#eee'><span>{date_label}</span><b>{float(row['Cours']):,.2f} {asset['currency']}</b></div>"
+        range_html = f"{low52:,.2f} – {high52:,.2f} {asset['currency']}" if low52 is not None and high52 is not None else "Indisponible"
+        proximity_html = f"Position dans la fourchette : {proximity:.0f} % au-dessus du plus bas" if proximity is not None else ""
+        with cols[idx]:
+            st.markdown(f"""
+            <div style="background:{bg};border:1px solid {color}80;border-radius:14px;padding:15px;margin:4px 0 10px">
+              <div style="font-size:17px;font-weight:800;color:#fff">{asset['name']}</div>
+              <div style="font-size:28px;font-weight:900;color:{color};margin:6px 0">{two_day:+.1f} %</div>
+              <div style="font-size:13px;font-weight:800;color:{color}">{status} · 2 dernières séances</div>
+              <div style="margin-top:12px">{rows_html}</div>
+              <div style="margin-top:10px;color:#eee;font-size:13px"><b>Fourchette 52 semaines :</b> {range_html}<br>{proximity_html}</div>
+              <div style="margin-top:10px;color:#eee;font-size:13px"><b>P/E :</b> {asset['pe']} · <b>Forward P/E :</b> {asset['forward_pe']}<br><span style="color:#c7c7c7">{asset['note']}</span></div>
+              <div style="margin-top:8px;color:#aaa;font-size:11px">Cours : Yahoo Finance · fondamentaux indicatifs : Stock Analysis, référence {asset['fundamentals_date']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    st.caption("Les variations, dates, cours et fourchettes 52 semaines sont recalculés à chaque actualisation depuis Yahoo Finance. Les multiples P/E affichés sont des références datées et doivent être actualisés séparément ; ils ne sont pas présentés comme des données temps réel.")
+
 def executive_dashboard(df):
     """Executive view: common quote source, portfolio watch and candidate supports."""
     st.markdown("""
@@ -1132,6 +1187,7 @@ def executive_dashboard(df):
     </div>
     """, unsafe_allow_html=True)
 
+    render_drawdown_alerts()
     st.subheader("Marchés — instantané commun")
     st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source unique : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible, pas un cours intraday garanti. Date affichée ligne par ligne. Les pages du dashboard réutilisent la même fonction de collecte.")
