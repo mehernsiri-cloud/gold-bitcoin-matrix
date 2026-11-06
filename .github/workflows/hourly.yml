@@ -52,11 +52,8 @@ jobs:
       - name: Fetch actual data
         run: python fetch_data.py || echo "⚠️ fetch_data.py failed, continuing"
 
-      - name: Run headless prediction script
-        run: python predict_headless.py || echo "⚠️ predict_headless.py failed, continuing"
-
-      - name: Generate AI predictions & backtest
-        run: python run_ai_predictions.py || echo "⚠️ run_ai_predictions.py failed, continuing"
+      - name: Generate unified Gold & Bitcoin forecasts
+        run: python market_forecast.py --batch
 
       - name: Update ROI data safely (max 90 seconds)
         run: timeout 90s python update_roi_data.py || echo "⚠️ ROI refresh unavailable or timed out; keeping the last valid ROI data and continuing"
