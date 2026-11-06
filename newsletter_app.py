@@ -952,11 +952,11 @@ def fetch_rte_grid_data():
     }
 
 def operational_risk_panel():
-    st.subheader("Données opérationnelles — indicateurs mesurés")
+    st.subheader("📡 Données opérationnelles — indicateurs mesurés")
     st.caption("Sources directes, indépendantes des articles. Les seuils affichés sont des repères de veille, pas des seuils officiels de déclenchement de crise.")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Stress financier — zone euro**")
+        st.markdown("**🏦 🇪🇺 Stress financier — zone euro**")
         try:
             ciss = fetch_ecb_ciss()
             if ciss["percentile"] >= 95 and ciss["change_5d"] > 0:
@@ -973,7 +973,7 @@ def operational_risk_panel():
         except Exception as exc:
             st.warning(f"BCE CISS indisponible : {type(exc).__name__}. Indicateur non qualifié.")
     with col2:
-        st.markdown("**Réseau électrique — France**")
+        st.markdown("**⚡ 🇫🇷 Réseau électrique — France**")
         try:
             rte = fetch_rte_grid_data()
             if rte["age_hours"] > 3:
@@ -1175,6 +1175,15 @@ def geopolitics_supply_dashboard(df, errors=None):
         event["severity"] = severity(event)
 
     regions = ["France", "Dubaï", "Europe", "Moyen-Orient", "International"]
+    region_icons = {"France": "🇫🇷", "Dubaï": "🇦🇪", "Europe": "🇪🇺", "Moyen-Orient": "🌍", "International": "🌐"}
+    domain_icons = {
+        "Guerre / escalade": "⚔️",
+        "Crise financière": "🏦",
+        "Cyberattaques / services essentiels": "🛡️",
+        "Blackout / infrastructures": "⚡",
+        "Pénuries / approvisionnement": "🛢️",
+        "Tensions sociales": "👥",
+    }
     source_coverage = selected["Source"].nunique() if data_available and "Source" in selected.columns else 0
     st.markdown(f"**{len(events)} signaux qualifiés** · {len(selected)} articles analysés · {source_coverage} source(s) distincte(s) · fenêtre de {days} jour(s)")
     if errors:
@@ -1227,7 +1236,7 @@ def geopolitics_supply_dashboard(df, errors=None):
         with gauge_cols[index % 3]:
             st.markdown(f"""
             <div style="background:{bg};border:1px solid {fg}55;border-radius:13px;padding:13px;min-height:145px">
-              <div style="font-size:14px;font-weight:800;color:#344054;min-height:35px">{domain}</div>
+              <div style="font-size:14px;font-weight:800;color:#344054;min-height:35px"><span style="font-size:22px;margin-right:7px">{domain_icons.get(domain, "📌")}</span>{domain}</div>
               <div style="font-size:29px;font-weight:900;color:{fg};margin:5px 0">{value if data_available else "—"}<span style="font-size:13px">/100</span></div>
               <div style="height:9px;background:#DDE3EB;border-radius:8px;overflow:hidden"><div style="height:9px;width:{value if data_available else 0}%;background:{fg};border-radius:8px"></div></div>
               <div style="font-size:12px;font-weight:700;color:{fg};margin-top:9px">{label}</div>
@@ -1296,7 +1305,7 @@ def geopolitics_supply_dashboard(df, errors=None):
         count_label = f"{len(regional)} événement(s)" if data_available else "Données indisponibles"
         breakdown = " · ".join(f"{level}: {counts[level]}" for level in severity_order if counts[level])
         gauge_label = f"Indice signaux {regional_score}/100" if data_available else "Indice INCONNU"
-        button_label = f"{status_icon}  {region}\n{status} · {count_label}\n{gauge_label}"
+        button_label = f"{region_icons.get(region, '🌐')}  {status_icon}  {region}\n{status} · {count_label}\n{gauge_label}"
         with region_cols[index % 2]:
             st.button(
                 button_label,
@@ -1319,7 +1328,7 @@ def geopolitics_supply_dashboard(df, errors=None):
                 st.session_state["wels_selected_risk_region"] = None
                 st.rerun()
         with title_col:
-            st.subheader(f"Événements — {selected_region}")
+            st.subheader(f"{region_icons.get(selected_region, '🌐')} Événements — {selected_region}")
 
         regional = [event for event in events if event["region"] == selected_region]
         if not data_available:
@@ -1532,13 +1541,13 @@ def executive_dashboard(df):
       <div class="risk-sub">Market, War, CHF & New Themes · Mis à jour {stamp}</div></div>
       <div class="risk-pill" style="{pill_style}">{global_level}</div></div>
       <div class="risk-grid">
-        <div class="risk-card {card_class(war_level)}"><div class="risk-label">Géopolitique</div>
+        <div class="risk-card {card_class(war_level)}"><div class="risk-label">⚔️ Géopolitique</div>
           <div class="risk-level" style="color:{level_color(war_level)}">{war_level}</div>
           <div class="risk-detail">{len(war)} article(s) classé(s) · conflits, sanctions, routes maritimes</div></div>
-        <div class="risk-card {'amber' if market_level == 'VOLATIL' else 'green'}"><div class="risk-label">Marchés</div>
+        <div class="risk-card {'amber' if market_level == 'VOLATIL' else 'green'}"><div class="risk-label">📈 Marchés</div>
           <div class="risk-level" style="color:{'#ffbd55' if market_level == 'VOLATIL' else '#43d17a'}">{market_level}</div>
           <div class="risk-detail">Derniers points quotidiens disponibles</div></div>
-        <div class="risk-card {card_class(france_level)}"><div class="risk-label">France / approvisionnement</div>
+        <div class="risk-card {card_class(france_level)}"><div class="risk-label">🇫🇷 🛢️ France / approvisionnement</div>
           <div class="risk-level" style="color:{level_color(france_level)}">{france_level}</div>
           <div class="risk-detail">{len(supply)} article(s) classé(s) · pénuries, énergie, transports, produits essentiels</div></div>
       </div>
@@ -1546,7 +1555,12 @@ def executive_dashboard(df):
     """, unsafe_allow_html=True)
 
     render_drawdown_alerts()
-    st.subheader("🌍 Marchés & indicateurs macro — vue rapide")
+    st.subheader("📊 Marchés & indicateurs macro — vue rapide")
+    market_icons = {
+        "Or": "🥇", "Bitcoin": "₿", "Nasdaq Composite": "💻",
+        "S&P 500": "🇺🇸", "Dow Jones": "🏛️", "EUR/CHF": "🇨🇭",
+        "EUR/AED": "🇦🇪", "Pétrole": "🛢️", "Brent": "🛢️",
+    }
     st.caption("Les tuiles affichent le dernier cours disponible, la variation de la dernière séance et celle des cinq dernières séances. Les couleurs signalent un mouvement ou une zone de change à surveiller, pas une prévision.")
     kpi_cols = st.columns(4)
     for idx, item in enumerate(kpi_rows):
@@ -1567,7 +1581,7 @@ def executive_dashboard(df):
         with kpi_cols[idx % 4]:
             st.markdown(f"""
             <div style="background:{bg};border:1px solid {accent}80;border-radius:13px;padding:13px;margin:0 0 10px;min-height:142px">
-              <div style="font-size:14px;font-weight:800;color:#344054">{label}</div>
+              <div style="font-size:14px;font-weight:800;color:#344054"><span style="font-size:20px;margin-right:6px">{market_icons.get(label, "📈")}</span>{label}</div>
               <div style="font-size:25px;font-weight:900;color:#263445;margin:8px 0 3px">{item['value']}</div>
               <div style="font-size:14px;font-weight:800;color:{accent}">{'—' if daily is None else f'{daily:+.2f}%'} séance</div>
               <div style="font-size:13px;color:#596579;margin-top:3px">{'—' if weekly is None else f'{weekly:+.2f}%'} / 5 séances</div>
