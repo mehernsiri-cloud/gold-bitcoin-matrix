@@ -1617,7 +1617,7 @@ def executive_dashboard(df):
     render_drawdown_alerts()
     st.subheader("📊 Marchés & indicateurs macro — vue rapide")
     market_icons = {
-        "Or": "🥇", "Bitcoin": "₿", "Nasdaq Composite": "💻",
+        "Or": "🥇", "Or (€/g)": "🥇", "Bitcoin": "₿", "Nasdaq Composite": "💻",
         "S&P 500": "🇺🇸", "Dow Jones": "🏛️", "EUR/CHF": "🇨🇭",
         "EUR/AED": "🇦🇪", "Pétrole": "🛢️", "Brent": "🛢️",
     }
@@ -1625,6 +1625,7 @@ def executive_dashboard(df):
     kpi_cols = st.columns(4)
     for idx, item in enumerate(kpi_rows):
         label, daily, weekly = item["label"], item["daily"], item["weekly"]
+        assessment = None
         if daily is None:
             bg, accent, status = "#EEF1F5", "#667085", "DONNÉES INDISPONIBLES"
         elif label in ("EUR/CHF", "EUR/AED"):
