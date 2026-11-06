@@ -35,7 +35,7 @@ except ImportError:
 
 # --- Auto-refresh every 30 minutes if available ---
 if AUTOREFRESH_AVAILABLE:
-    st_autorefresh(interval=1800000, key="datarefresh")  # 30 min in milliseconds
+    st_autorefresh(interval=600000, key="datarefresh")  # 10 min in milliseconds
 else:
     st.sidebar.warning("Auto-refresh disabled (install 'streamlit-autorefresh' to enable).")
 
@@ -46,7 +46,7 @@ if st.sidebar.button("Refresh Now"):
     st.experimental_rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.sidebar.caption(f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · auto-refresh 10 min")
 
 # Preserve original external imports but provide safe fallbacks
 try:
