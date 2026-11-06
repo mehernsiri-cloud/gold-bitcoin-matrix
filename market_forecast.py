@@ -70,6 +70,7 @@ def fetch_asset_market_data(asset: str) -> dict:
     quote = None
     quote_time = None
     quote_source = "Yahoo Finance"
+    change_24h = None
     if asset == "Bitcoin":
         try:
             response = requests.get(
@@ -81,6 +82,7 @@ def fetch_asset_market_data(asset: str) -> dict:
             response.raise_for_status()
             payload = response.json()["bitcoin"]
             quote = float(payload["usd"])
+            change_24h = float(payload.get("usd_24h_change")) if payload.get("usd_24h_change") is not None else None
             quote_time = datetime.fromtimestamp(int(payload.get("last_updated_at", _utc_now().timestamp())), timezone.utc)
             quote_source = "CoinGecko spot"
         except Exception:
@@ -103,12 +105,14 @@ def fetch_asset_market_data(asset: str) -> dict:
     if quote is None or history.empty:
         raise RuntimeError(f"Données de marché indisponibles pour {asset}.")
 
-    change_24h = None
     try:
-        if intraday is not None and len(intraday) > 1:
-            series = pd.to_numeric(intraday["Close"], errors="coerce").dropna()
-            if len(series) > 1:
-                change_24h = (float(series.iloc[-1]) / float(series.iloc[0]) - 1) * 100
+        if change_24h is None and intraday is not None and len(intraday) > 1:
+            intraday_close = pd.to_numeric(intraday["Close"], errors="coerce").dropna()
+            if len(intraday_close) > 1:
+                cutoff = pd.Timestamp(intraday_close.index[-1]) - pd.Timedelta(hours=24)
+                recent = intraday_close[intraday_close.index >= cutoff]
+                if len(recent) > 1:
+                    change_24h = (float(recent.iloc[-1]) / float(recent.iloc[0]) - 1) * 100
     except Exception:
         pass
     if change_24h is None and len(history) > 1:
@@ -166,7 +170,7 @@ def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macr
     rsi_delta = close.diff()
     gains = rsi_delta.clip(lower=0).rolling(14).mean().iloc[-1]
     losses = (-rsi_delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-    rsi = 50.0 if pd.isna(gains) or pd.isna(losses) or losses == 0 else float(100 - 100 / (1 + gains / losses))
+    rsi = 50.0 if pd.isna(gains) or pd.isna(losses) else (100.0 if losses == 0 and gains > 0 else 50.0 if losses == 0 else float(100 - 100 / (1 + gains / losses)))
 
     momentum_10 = float(returns.tail(10).mean())
     momentum_20 = float(returns.tail(20).mean())
@@ -195,6 +199,8 @@ def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macr
         "RSI 14": (rsi - 50.0) / 50.0,
         "Volatilité 20 séances": daily_vol,
     }
+    for macro_name, macro_value in macro.items():
+        factors[f"Macro · {macro_name}"] = float(macro_value)
     forecasts = []
     for horizon in HORIZONS:
         expected = float(current_price * np.exp(drift * horizon))
@@ -271,7 +277,7 @@ def resolve_forecasts(market_data: dict) -> int:
     for asset, payload in market_data.items():
         hist = payload["history"].copy()
         hist["day"] = pd.to_datetime(hist["timestamp"], utc=True).dt.date
-        hist = hist.sort_values("day")
+        hist = hist[hist["day"] < now.date()].sort_values("day")
         pending = df[(df["asset"] == asset) & (df["status"] == "pending")]
         for idx, row in pending.iterrows():
             target = pd.to_datetime(row["target_date"], utc=True).date()
@@ -402,9 +408,11 @@ def render_market_forecast_dashboard() -> None:
                 factor_rows = []
                 for label, value in result["factors"].items():
                     if "Volatilité" in label:
-                        detail = f"{value*100:.2f}%"
+                        detail = f"{value*100:.2f}% / jour"
                     elif "RSI" in label:
                         detail = f"{50 + value*50:.1f}/100"
+                    elif label.startswith("Macro ·"):
+                        detail = f"{value:+.3f} (score pondéré)"
                     else:
                         detail = f"{value*100:+.3f}% / jour"
                     factor_rows.append({"Facteur": label, "Signal": detail})
