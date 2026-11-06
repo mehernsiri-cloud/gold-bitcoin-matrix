@@ -776,11 +776,11 @@ def investment_flows_page():
             fig.add_annotation(
                 x=1.5, y=y, xref="x", yref="y", text=detail,
                 showarrow=False, xanchor="left", yanchor="middle",
-                align="left", font=dict(size=12, color="#26384A")
+                align="left", font=dict(family="Arial, sans-serif", size=16, color="#26384A")
             )
 
         fig.update_layout(
-            barmode="overlay", height=770,
+            barmode="overlay", height=850,
             margin=dict(l=4, r=4, t=8, b=8),
             bargap=0.22,
             xaxis=dict(range=[0, 100], visible=False, fixedrange=True),
