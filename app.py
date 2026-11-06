@@ -33,20 +33,20 @@ try:
 except ImportError:
     AUTOREFRESH_AVAILABLE = False
 
-# --- Auto-refresh every 30 minutes if available ---
+# --- Auto-refresh every 10 minutes (single timer for the whole application) ---
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=600000, key="datarefresh")  # 10 min in milliseconds
 else:
-    st.sidebar.warning("Auto-refresh disabled (install 'streamlit-autorefresh' to enable).")
+    st.sidebar.error("Rafraîchissement automatique indisponible : dépendance streamlit-autorefresh manquante. Vérifier requirements.txt et le déploiement.")
 
 # --- Manual Refresh Button ---
 st.sidebar.markdown("### 🔁 Data Refresh")
 if st.sidebar.button("Refresh Now"):
     st.success("Refreshing dashboard... please wait ⏳")
-    st.experimental_rerun()
+    st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · auto-refresh 10 min")
+st.sidebar.caption(f"Dernier recalcul de la page : {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} · rafraîchissement automatique toutes les 10 min")
 
 # Preserve original external imports but provide safe fallbacks
 try:
