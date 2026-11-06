@@ -717,38 +717,85 @@ def investment_flows_page():
         },
     ]
 
-    # Les montants sont affichés comme indicateurs de taille, sans classement arithmétique
-    # entre des dépenses publiques, des flux de VC, des FDI et des capacités potentielles.
-    st.subheader("Les grandes masses de capitaux")
-    cols = st.columns(3)
-    for idx, item in enumerate(flows):
-        with cols[idx % 3]:
-            st.markdown(
-                f"""<div style="background:#F4F7FA;border:1px solid #D9E2EC;border-radius:13px;padding:14px;margin-bottom:12px;min-height:168px">
-                <div style="font-size:14px;font-weight:800;color:#344054">{item['icon']} {item['sector']}</div>
-                <div style="font-size:25px;font-weight:900;color:#1D3557;margin:10px 0 3px">{item['headline']}</div>
-                <div style="font-size:12px;color:#526173">{item['sub']}</div>
-                <div style="font-size:11px;color:#667085;margin-top:9px">{item['horizon']}</div>
-                </div>""",
-                unsafe_allow_html=True
-            )
+    # Valeurs converties en Md$ uniquement pour ordonner et représenter les grandeurs.
+    # Elles restent de natures différentes : le graphique ne constitue pas un total consolidé.
+    value_map = {
+        "IA, data centers & semi-conducteurs": 900,
+        "Énergie, réseaux & stockage": 3400,
+        "Défense & industrie militaire": 2887,
+        "Capital-risque & startups": 427.1,
+        "Entreprises mondiales & investissements directs": 1600,
+        "Santé, biotech & pharmacie": 60,
+        "Food, agriculture & sécurité alimentaire": 630,
+    }
+    sorted_flows = sorted(flows, key=lambda x: value_map.get(x["sector"], 0), reverse=True)
 
-    st.divider()
-    st.subheader("Où va l'argent — détail, durée et effets attendus")
-    selected = st.selectbox(
-        "Secteur à analyser",
-        ["Tous les secteurs"] + [x["sector"] for x in flows],
-        key="capital_flow_sector"
+    st.subheader("Les grandes masses de capitaux — du plus élevé au plus faible")
+    st.caption(
+        "Barres classées selon le montant indicatif en Md$. La longueur représente l'ordre de grandeur ; "
+        "chaque ligne rassemble le secteur, le chiffre, sa nature, sa source et son horizon."
     )
-    selected_flows = flows if selected == "Tous les secteurs" else [x for x in flows if x["sector"] == selected]
-    for item in selected_flows:
-        with st.expander(f"{item['icon']} {item['sector']} — {item['headline']}", expanded=(selected != "Tous les secteurs")):
-            st.markdown(f"**Nature du chiffre :** {item['status']} · **Type :** {item['kind']}")
-            st.markdown(f"**Projection / précision :** {item['extra']}")
-            st.markdown(f"**Horizon :** {item['horizon']}")
-            st.markdown(f"**Pourquoi c'est important :** {item['impact']}")
-            st.markdown(f"**Indicateurs à surveiller :** {item['watch']}")
-            st.markdown(f"**Source :** [{item['source']}]({item['url']})")
+
+    # Une ligne pleine largeur par secteur : le segment coloré matérialise le volume relatif,
+    # tandis que le texte reste lisible même pour les montants les plus faibles.
+    fig = go.Figure()
+    max_value = max(value_map.values())
+    row_count = len(sorted_flows)
+    y_positions = list(range(row_count))
+    for y, item in zip(y_positions, sorted_flows):
+        value = value_map[item["sector"]]
+        ratio = value / max_value * 100
+        fig.add_shape(
+            type="rect", x0=0, x1=100, y0=y - 0.39, y1=y + 0.39,
+            line=dict(color="#D9E2EC", width=1), fillcolor="#F3F6FA", layer="below"
+        )
+        fig.add_shape(
+            type="rect", x0=0, x1=ratio, y0=y - 0.39, y1=y + 0.39,
+            line=dict(width=0), fillcolor="#B8D8E8", layer="below"
+        )
+        amount_text = item["headline"]
+        detail = (
+            f'{item["icon"]}  {item["sector"]}  ·  {amount_text}\n'
+            f'{item["sub"]}\n'
+            f'{item["source"]}  |  {item["horizon"]}'
+        )
+        fig.add_annotation(
+            x=1.2, y=y, xref="x", yref="y", text=detail,
+            showarrow=False, xanchor="left", yanchor="middle",
+            align="left", font=dict(size=12, color="#18324B")
+        )
+        hover = (
+            f'<b>{item["icon"]} {item["sector"]}</b><br>'
+            f'<b>{amount_text}</b><br>{item["sub"]}<br>'
+            f'<b>Nature :</b> {item["status"]} · {item["kind"]}<br>'
+            f'<b>Horizon :</b> {item["horizon"]}<br>'
+            f'<b>Précision :</b> {item["extra"]}<br>'
+            f'<b>Impact :</b> {item["impact"]}<br>'
+            f'<b>À surveiller :</b> {item["watch"]}<br>'
+            f'<b>Source :</b> {item["source"]}'
+        )
+        fig.add_trace(go.Scatter(
+            x=[100], y=[y], mode="markers",
+            marker=dict(size=1, opacity=0), hovertemplate=hover + "<extra></extra>",
+            showlegend=False
+        ))
+
+    fig.update_layout(
+        height=620, margin=dict(l=8, r=8, t=8, b=8),
+        xaxis=dict(range=[0, 100], visible=False, fixedrange=True),
+        yaxis=dict(
+            range=[row_count - 0.5, -0.5], visible=False, fixedrange=True,
+            tickmode="array", tickvals=y_positions, ticktext=[""] * row_count
+        ),
+        plot_bgcolor="white", paper_bgcolor="white",
+        hoverlabel=dict(bgcolor="white", font_size=12),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    st.caption(
+        "Survolez une ligne pour afficher le détail complet : nature du chiffre, précision, impact, "
+        "indicateurs à suivre et source. Les montants ne sont pas additionnables et les secteurs peuvent se chevaucher."
+    )
 
     st.divider()
     st.subheader("Lecture stratégique — ce que les flux de capitaux annoncent")
