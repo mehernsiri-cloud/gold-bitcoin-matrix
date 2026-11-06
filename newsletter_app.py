@@ -1683,10 +1683,10 @@ def geopolitics_supply_dashboard(df, errors=None):
 def _newsletter_api_key():
     """Read the AI provider key from Streamlit secrets or the hosting environment."""
     try:
-        key = st.secrets.get("OPENAI_API_KEY", "")
+        key = st.secrets.get("GROQ_API_KEY", "")
     except Exception:
         key = ""
-    return str(key or os.environ.get("OPENAI_API_KEY", "")).strip()
+    return str(key or os.environ.get("GROQ_API_KEY", "")).strip()
 
 
 @st.cache_data(ttl=5400, show_spinner=False)
@@ -1725,10 +1725,10 @@ def _generate_ai_newsletter(articles_json, api_key, refresh_id):
         + json.dumps(articles, ensure_ascii=False)
     )
     response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
+        "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={
-            "model": "gpt-4.1-mini",
+            "model": "openai/gpt-oss-120b",
             "temperature": 0.2,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -1760,10 +1760,10 @@ def ai_newsletter_page(df, errors):
     api_key = _newsletter_api_key()
     if not api_key:
         st.error(
-            "La génération IA n'est pas encore activée. Ajoute la clé OPENAI_API_KEY dans "
+            "La génération IA gratuite n'est pas encore activée. Crée une clé Groq gratuite et ajoute GROQ_API_KEY dans "
             "les secrets de l'application Streamlit (ou comme variable d'environnement), puis actualise le dashboard."
         )
-        st.caption("La clé n'est jamais affichée dans le dashboard. Modèle utilisé : gpt-4.1-mini.")
+        st.caption("La clé n'est jamais affichée dans le dashboard. Modèle utilisé : openai/gpt-oss-120b (offre gratuite Groq, soumise à quotas).")
         return
 
     recent = df.copy()
@@ -1776,14 +1776,14 @@ def ai_newsletter_page(df, errors):
 
     # Prioritize distinct publishers and deduplicate near-identical headlines.
     recent = recent.sort_values("Date_tri", ascending=False, na_position="last") if "Date_tri" in recent else recent
-    recent = recent.drop_duplicates(subset=["Lien"]).head(10)
+    recent = recent.drop_duplicates(subset=["Lien"]).head(6)
     articles = []
     with st.spinner(f"Lecture des sources et préparation du briefing ({len(recent)} articles)…"):
         for index, (_, row) in enumerate(recent.iterrows(), start=1):
             url = str(row.get("Lien", "") or "")
             body = fetch_article_text(url) if url.startswith("http") else ""
             summary = str(row.get("Résumé", "") or "")
-            content = body[:9000] if body else summary[:3500]
+            content = body[:2200] if body else summary[:1200]
             articles.append({
                 "source_id": f"S{index}",
                 "date": str(row.get("Date", "")),
@@ -1816,7 +1816,7 @@ def ai_newsletter_page(df, errors):
         st.error("Le service IA n'a pas répondu dans le délai prévu. Le briefing sera retenté à la prochaine actualisation.")
     except requests.exceptions.HTTPError as exc:
         status = getattr(exc.response, "status_code", "inconnu")
-        st.error(f"Erreur du service IA (HTTP {status}). Vérifie la clé API et les droits associés.")
+        st.error(f"Erreur du service IA (HTTP {status}). Vérifie la clé Groq et les quotas gratuits. Ne passe pas à une offre payante.")
     except Exception as exc:
         st.error(f"Génération IA indisponible : {type(exc).__name__}. Le dashboard et les autres modules restent accessibles.")
 
