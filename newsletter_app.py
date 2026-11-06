@@ -632,6 +632,143 @@ def fx_chf_page():
     st.dataframe(allocations, use_container_width=True, hide_index=True)
     st.caption("Répartitions de travail, non recommandations d'achat. Vérifier frais, fiscalité française, risque de taux/crédit, liquidité et modalités de détention. SIMA est moins liquide qu'un ETF coté.")
 
+def investment_flows_page():
+    st.header("💸 Follow the Money — Global Capital Flows")
+    st.caption(
+        "Cartographie des grandes masses de capitaux qui orientent les capacités industrielles, "
+        "technologiques, militaires et alimentaires. Priorité aux volumes systémiques, pas aux petites levées de fonds."
+    )
+    st.info(
+        "Lecture essentielle : les montants ci-dessous ne sont pas additionnables. "
+        "Certains sont des dépenses annuelles, d'autres des levées de fonds, des investissements annoncés "
+        "ou une capacité de financement estimée. Les chevauchements entre secteurs sont signalés."
+    )
+
+    flows = [
+        {
+            "sector": "IA, data centers & semi-conducteurs", "icon": "🧠",
+            "headline": "≈ 900 Md$ en 2026", "sub": "Investissement mondial lié à l'IA estimé par J.P. Morgan",
+            "extra": "Projection : 5 500 Md$ cumulés d'ici 2030 selon J.P. Morgan. Les dépenses des grands hyperscalers sont le moteur principal.",
+            "horizon": "2026–2030 · immédiat à 4 ans",
+            "status": "Estimation 2026 + projection", "kind": "Capex / infrastructures",
+            "impact": "Accélération des centres de données, GPU, mémoire, réseaux, électricité et refroidissement. Pression sur le financement, le réseau électrique et les chaînes de semi-conducteurs.",
+            "watch": "Capex annoncé vs réalisé, commandes GPU/mémoire, raccordements électriques, dette et cash-flow des hyperscalers.",
+            "source": "J.P. Morgan — 19 octobre 2026", "url": "https://www.jpmorgan.com/insights/global-research/artificial-intelligence/ai-capex"
+        },
+        {
+            "sector": "Énergie, réseaux & stockage", "icon": "⚡",
+            "headline": "3 400 Md$ en 2026", "sub": "Investissement mondial attendu dans l'énergie (IEA)",
+            "extra": "Environ 2 200 Md$ vers les renouvelables, le nucléaire, les réseaux, le stockage, l'efficacité et l'électrification ; 1 200 Md$ vers pétrole, gaz et charbon.",
+            "horizon": "2026–2035 · 5 à 10 ans et plus",
+            "status": "Prévision annuelle 2026", "kind": "Investissement énergétique",
+            "impact": "Renforce la sécurité énergétique et la capacité électrique. Les réseaux, transformateurs, batteries et centrales deviennent des goulets d'étranglement stratégiques.",
+            "watch": "Dépenses réseau, stockage, nucléaire, contrats d'approvisionnement, retards de raccordement et investissements fossiles.",
+            "source": "IEA — World Energy Investment 2026", "url": "https://www.iea.org/topics/investment"
+        },
+        {
+            "sector": "Défense & industrie militaire", "icon": "🛡️",
+            "headline": "2 887 Md$ en 2025", "sub": "Dépenses militaires mondiales mesurées par SIPRI (+2,9 % réels)",
+            "extra": "11e année consécutive de hausse. Europe : 864 Md$ (+14 %) ; Asie-Océanie : 681 Md$ (+8,1 %). Il s'agit de dépenses militaires totales, pas uniquement de commandes d'armement.",
+            "horizon": "2025–2030 · budgets pluriannuels",
+            "status": "Dépense observée 2025", "kind": "Budgets publics récurrents",
+            "impact": "Soutient la montée en cadence des industriels, les stocks de munitions, la défense aérienne, les drones, le cyber et les capacités spatiales.",
+            "watch": "Budgets votés, commandes fermes, délais de livraison, capacités industrielles et reconstitution des stocks.",
+            "source": "SIPRI — 27 avril 2026", "url": "https://www.sipri.org/media/press-release/2026/global-military-spending-rise-continues-european-and-asian-expenditures-surge"
+        },
+        {
+            "sector": "Capital-risque & startups", "icon": "🚀",
+            "headline": "427,1 Md$ en 2025", "sub": "Investissement mondial en venture capital (OCDE)",
+            "extra": "L'IA a capté 258,7 Md$, soit 61 % du total. Les financements se concentrent dans les méga-tours et les entreprises déjà avancées.",
+            "horizon": "2025–2028 · 2 à 5 ans",
+            "status": "Investissement observé 2025", "kind": "Capital privé / VC",
+            "impact": "Oriente les futurs leaders technologiques et la création de capacités. Mais une levée de fonds n'est pas encore une capacité industrielle rentable.",
+            "watch": "Part de l'IA, taille des méga-tours, financement des phases précoces, sorties/IPO et taux de survie des startups.",
+            "source": "OCDE — 17 février 2026", "url": "https://www.oecd.org/en/about/news/announcements/2026/02/ai-firms-capture-61-percent-of-global-venture-capital-in-2025.html"
+        },
+        {
+            "sector": "Entreprises mondiales & investissements directs", "icon": "🏭",
+            "headline": "1 600 Md$ en 2025", "sub": "Investissements directs étrangers mondiaux (UNCTAD)",
+            "extra": "Les projets greenfield annoncés dans cinq secteurs stratégiques ont atteint 576 Md$ en 2025, contre 109 Md$ en 2020. L'IA et les infrastructures numériques dominent ; les 20 premiers pays hôtes captent plus de 80 % des flux.",
+            "horizon": "2025–2030 · 3 à 7 ans",
+            "status": "Estimation FDI 2025 / projets annoncés", "kind": "Investissement productif transfrontalier",
+            "impact": "Révèle où les groupes et investisseurs construisent de nouvelles capacités : usines, data centers, semi-conducteurs, énergie et technologies stratégiques.",
+            "watch": "Annonces converties en chantiers, décisions finales d'investissement, pays hôtes, annulations et délais de construction.",
+            "source": "UNCTAD — World Investment Report 2026", "url": "https://unctad.org/publication/world-investment-report-2026-international-investment-turbulent-era"
+        },
+        {
+            "sector": "Santé, biotech & pharmacie", "icon": "🧬",
+            "headline": "60 Md$ en 2025", "sub": "Investissement mondial de venture capital dans la santé (HSBC)",
+            "extra": "Hausse depuis 45,4 Md$ en 2024. HSBC anticipait 65–70 Md$ en 2026 ; les financements se concentrent sur les biotechs, les dispositifs médicaux et les entreprises proches de la commercialisation.",
+            "horizon": "2025–2035+ · 5 à 15 ans",
+            "status": "Observé 2025 + prévision 2026", "kind": "VC / innovation médicale",
+            "impact": "Peut accélérer les traitements, diagnostics, plateformes biotech et capacités de production pharmaceutique. Les retours sont longs et le risque clinique/réglementaire élevé.",
+            "watch": "Financements late-stage, essais cliniques, autorisations, capacités de production, acquisitions et ruptures d'approvisionnement.",
+            "source": "HSBC Innovation Banking — 13 janvier 2026", "url": "https://www.about.us.hsbc.com/newsroom/press-releases/healthcare-venture-markets-regain-momentum-as-capital-returns"
+        },
+        {
+            "sector": "Food, agriculture & sécurité alimentaire", "icon": "🌾",
+            "headline": "≈ 630 Md$ / an", "sub": "Capacité potentielle estimée de financement privé de l'agroalimentaire",
+            "extra": "Ce chiffre correspond à une capacité de financement estimée, pas à un flux annuel effectivement investi. Le financement climatique nécessaire aux systèmes agroalimentaires est estimé à 1 100 Md$ par an.",
+            "horizon": "2026–2035 · 5 à 10 ans",
+            "status": "Capacité estimée / besoin de financement", "kind": "Potentiel privé et besoin structurel",
+            "impact": "Détermine la résilience des chaînes alimentaires : irrigation, stockage, engrais, semences, transformation, logistique et adaptation climatique.",
+            "watch": "Investissements réellement déployés, eau/irrigation, stocks céréaliers, engrais, capacités de stockage et financement des producteurs.",
+            "source": "Food and Land Use Coalition — rapport 2026", "url": "https://www.foodandlandusecoalition.org/knowledge-hub/re-wire-agricultural-resilience/"
+        },
+    ]
+
+    # Les montants sont affichés comme indicateurs de taille, sans classement arithmétique
+    # entre des dépenses publiques, des flux de VC, des FDI et des capacités potentielles.
+    st.subheader("Les grandes masses de capitaux")
+    cols = st.columns(3)
+    for idx, item in enumerate(flows):
+        with cols[idx % 3]:
+            st.markdown(
+                f"""<div style="background:#F4F7FA;border:1px solid #D9E2EC;border-radius:13px;padding:14px;margin-bottom:12px;min-height:168px">
+                <div style="font-size:14px;font-weight:800;color:#344054">{item['icon']} {item['sector']}</div>
+                <div style="font-size:25px;font-weight:900;color:#1D3557;margin:10px 0 3px">{item['headline']}</div>
+                <div style="font-size:12px;color:#526173">{item['sub']}</div>
+                <div style="font-size:11px;color:#667085;margin-top:9px">{item['horizon']}</div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+
+    st.divider()
+    st.subheader("Où va l'argent — détail, durée et effets attendus")
+    selected = st.selectbox(
+        "Secteur à analyser",
+        ["Tous les secteurs"] + [x["sector"] for x in flows],
+        key="capital_flow_sector"
+    )
+    selected_flows = flows if selected == "Tous les secteurs" else [x for x in flows if x["sector"] == selected]
+    for item in selected_flows:
+        with st.expander(f"{item['icon']} {item['sector']} — {item['headline']}", expanded=(selected != "Tous les secteurs")):
+            st.markdown(f"**Nature du chiffre :** {item['status']} · **Type :** {item['kind']}")
+            st.markdown(f"**Projection / précision :** {item['extra']}")
+            st.markdown(f"**Horizon :** {item['horizon']}")
+            st.markdown(f"**Pourquoi c'est important :** {item['impact']}")
+            st.markdown(f"**Indicateurs à surveiller :** {item['watch']}")
+            st.markdown(f"**Source :** [{item['source']}]({item['url']})")
+
+    st.divider()
+    st.subheader("Lecture stratégique — ce que les flux de capitaux annoncent")
+    st.markdown(
+        """
+        - **Course aux capacités physiques :** l'IA ne finance pas seulement des logiciels. Elle tire les centres de données, les semi-conducteurs, l'électricité, les réseaux et le refroidissement.
+        - **Réarmement durable :** les budgets militaires sont récurrents et les commandes industrielles s'étalent sur plusieurs années ; les annonces politiques ne deviennent toutefois des revenus industriels qu'après contractualisation.
+        - **Capital concentré :** les investissements directs et le capital-risque se concentrent dans un nombre limité de pays, de secteurs et de grandes opérations.
+        - **Santé et alimentation :** les cycles sont plus longs, mais ils touchent des besoins fondamentaux. Il faut suivre les capacités de production et les infrastructures, pas seulement les valorisations boursières.
+        - **Risque de surinvestissement :** un volume de capitaux élevé peut annoncer une capacité future, mais aussi une bulle, un excès d'endettement ou des actifs qui ne seront pas rentables.
+        """
+    )
+    st.warning(
+        "Méthode : les indicateurs sont volontairement séparés et non additionnés. "
+        "Les montants de VC santé et IA sont inclus dans le total VC ; les projets IA peuvent aussi apparaître dans les FDI et les capex des entreprises. "
+        "Les horizons sont des fenêtres d'impact indicatives, pas des dates certaines de rendement."
+    )
+    st.caption("Base documentaire initiale : publications 2026 disponibles au 6 novembre 2026. Actualisation recommandée à chaque nouvelle publication annuelle ou trimestrielle des organismes cités ; les montants ne sont pas un flux temps réel.")
+
+
 def war_risk_page(df):
     st.header("🌍 Guerres & risques géopolitiques")
     st.caption("Indicateurs de veille : un titre ou un mot-clé ne confirme pas seul un événement.")
@@ -1721,7 +1858,7 @@ def main():
     with st.sidebar:
         st.title("WELS Actions")
         page = st.radio("Navigation", [
-            "Vue d'ensemble & Géopolitique", "Marchés & portefeuille", "CHF & devises"
+            "Vue d'ensemble & Géopolitique", "Follow the Money — Investissements", "Marchés & portefeuille", "CHF & devises"
         ], key="wels_navigation_v3")
         # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
         # sans effacer la sélection lors des reruns provoqués par un clic régional.
@@ -1740,6 +1877,7 @@ def main():
         executive_dashboard(df)
         st.divider()
         geopolitics_supply_dashboard(df, errors)
+    elif page == "Follow the Money — Investissements": investment_flows_page()
     elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "CHF & devises": fx_chf_page()
 
