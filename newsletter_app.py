@@ -1183,8 +1183,22 @@ def geopolitics_supply_dashboard(df, errors=None):
     operational_risk_panel()
 
     st.subheader("Jauges de pression — signaux précurseurs observés")
-    st.caption("Score 0–100 calculé à partir de la gravité attribuée à chaque signal, de sa fraîcheur, du nombre de sources distinctes et de la répétition de signaux. Un score élevé signifie davantage de signaux documentés, pas une probabilité de crise.")
-    gauge_cols = st.columns(len(risk_domains))
+    st.caption("Chaque jauge est accompagnée des événements qui expliquent son niveau. Le score 0–100 mesure la pression documentaire (gravité, fraîcheur, corroboration et répétition), pas une probabilité de crise.")
+
+    def event_pressure_contribution(item):
+        raw_date = item.get("date_raw")
+        if raw_date is None or pd.isna(raw_date):
+            age_days = 30
+        else:
+            if raw_date.tzinfo is None:
+                raw_date = raw_date.tz_localize("UTC")
+            age_days = max(0, (pd.Timestamp.now(tz="UTC") - raw_date).total_seconds() / 86400)
+        freshness = 1.0 if age_days <= 1 else (0.8 if age_days <= 3 else (0.55 if age_days <= 7 else 0.25))
+        base = min(48, int(item.get("score", 0)) * 12) * freshness
+        corroboration = min(12, max(0, int(item.get("source_count", 1)) - 1) * 6)
+        return round(base + corroboration), age_days
+
+    gauge_cols = st.columns(3)
     for index, domain in enumerate(risk_domains):
         domain_events = [event for event in events if domain in event.get("domains", [])]
         value, event_count, source_count = pressure_index(domain_events)
@@ -1200,18 +1214,50 @@ def geopolitics_supply_dashboard(df, errors=None):
             bg, fg, label = "#EAF1FB", "#315B91", pressure_label(value)
         else:
             bg, fg, label = "#E5F4E9", "#237A45", pressure_label(value)
-        with gauge_cols[index]:
+
+        ranked_events = []
+        for event in domain_events:
+            contribution, age_days = event_pressure_contribution(event)
+            ranked_events.append((contribution, age_days, event))
+        ranked_events.sort(key=lambda item: (item[0], item[2].get("score", 0), item[2].get("source_count", 1)), reverse=True)
+
+        with gauge_cols[index % 3]:
             st.markdown(f"""
-            <div style="background:{bg};border:1px solid {fg}55;border-radius:13px;padding:12px;min-height:132px">
-              <div style="font-size:13px;font-weight:800;color:#344054;min-height:34px">{domain}</div>
-              <div style="font-size:27px;font-weight:900;color:{fg};margin:5px 0">{value if data_available else "—"}<span style="font-size:13px">/100</span></div>
-              <div style="height:8px;background:#DDE3EB;border-radius:8px;overflow:hidden"><div style="height:8px;width:{value if data_available else 0}%;background:{fg};border-radius:8px"></div></div>
-              <div style="font-size:11px;color:#596579;margin-top:8px">{label}</div>
-              <div style="font-size:10px;color:#667085">{event_count} signal(aux) · {source_count} source(s)</div>
+            <div style="background:{bg};border:1px solid {fg}55;border-radius:13px;padding:13px;min-height:145px">
+              <div style="font-size:14px;font-weight:800;color:#344054;min-height:35px">{domain}</div>
+              <div style="font-size:29px;font-weight:900;color:{fg};margin:5px 0">{value if data_available else "—"}<span style="font-size:13px">/100</span></div>
+              <div style="height:9px;background:#DDE3EB;border-radius:8px;overflow:hidden"><div style="height:9px;width:{value if data_available else 0}%;background:{fg};border-radius:8px"></div></div>
+              <div style="font-size:12px;font-weight:700;color:{fg};margin-top:9px">{label}</div>
+              <div style="font-size:11px;color:#667085">{event_count} événement(s) · {source_count} source(s)</div>
             </div>""", unsafe_allow_html=True)
 
-    st.caption("Lecture : 0–19 bas, 20–39 faible, 40–59 à surveiller, 60–79 élevé, 80–100 très élevé. Les seuils sont des conventions de veille, non des seuils scientifiques. L’absence de signal ou de données ne vaut jamais garantie de sécurité.")
+            with st.expander("Voir les événements qui expliquent ce score", expanded=False):
+                if not data_available:
+                    st.warning("Données indisponibles : aucun commentaire fiable sur ce score.")
+                elif not ranked_events:
+                    st.info("Aucun événement qualifié dans cette famille sur la période analysée. Cela ne signifie pas une absence de risque.")
+                else:
+                    st.caption("Événements classés selon leur poids indicatif (gravité, fraîcheur et corroboration). Un même événement peut alimenter plusieurs jauges.")
+                    for contribution, age_days, event in ranked_events[:4]:
+                        st.markdown(f"**{event.get('title', 'Événement sans titre')}**")
+                        meta = f"{event.get('date', 'Date inconnue')} · {event.get('severity', 'Niveau non classé')} · poids indicatif {contribution}/60"
+                        st.caption(meta)
+                        if event.get("summary"):
+                            st.write(event["summary"])
+                        if event.get("impact"):
+                            st.markdown(f"**Impact potentiel :** {event['impact']}")
+                        elif event.get("market"):
+                            st.markdown(f"**Impact :** {event['market']}")
+                        sources = event.get("sources", [])
+                        if sources:
+                            st.caption("Sources : " + ", ".join(sources))
+                        url = str(event.get("url", "")).strip()
+                        if url.startswith("https://") or url.startswith("http://"):
+                            st.markdown(f"[Ouvrir la source]({url})")
+                        st.divider()
 
+    st.caption("Lecture : 0–19 bas, 20–39 faible, 40–59 à surveiller, 60–79 élevé, 80–100 très élevé. Les seuils sont des conventions de veille. Le poids indicatif affiché par événement n'est pas une part exacte du score total : le score inclut aussi un bonus de répétition.")
+    
     # Regional widgets are the default view. Event titles are only rendered after a region is selected.
     selected_region = st.session_state.get("wels_selected_risk_region")
     if selected_region not in regions:
