@@ -1794,79 +1794,102 @@ def _newsletter_bullets(markdown_text):
 
 
 def render_newsletter_dashboard(markdown_text):
-    """Render the AI analysis as a visual editorial dashboard, not a long article."""
+    """Render the AI analysis as a colorful, readable editorial dashboard."""
     sections = _newsletter_sections(markdown_text)
     st.markdown("""
     <style>
-    .nl-kicker{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;color:#64748b;margin-bottom:7px}
-    .nl-hero{background:linear-gradient(120deg,#14263d,#243f5c);border-radius:16px;padding:20px 22px;color:#fff;margin:8px 0 18px}
-    .nl-hero p,.nl-hero li{color:#eef4fb!important;font-size:16px;line-height:1.55}
-    .nl-hero strong{color:#fff}
-    .nl-section-title{font-size:21px;font-weight:800;color:var(--text-color);margin:18px 0 10px}
-    .nl-card{background:var(--secondary-background-color);border:1px solid rgba(128,145,166,.22);border-radius:13px;padding:15px 16px;min-height:120px;margin-bottom:10px}
-    .nl-card h4{font-size:15px;margin:0 0 9px 0;color:var(--text-color)}
-    .nl-card p,.nl-card li{font-size:14px;line-height:1.5}
-    .nl-meta{font-size:12px;color:#718096}
+    .nl-section-title{font-size:21px;font-weight:850;color:var(--text-color);margin:20px 0 9px}
+    .nl-band{display:flex;align-items:center;gap:9px;border-radius:10px;padding:9px 12px;margin:7px 0 10px;font-size:13px;font-weight:850;letter-spacing:.35px}
+    .nl-band.blue{background:linear-gradient(90deg,#e8f1ff,#f2f6ff);color:#174ea6;border-left:5px solid #3978d5}
+    .nl-band.violet{background:linear-gradient(90deg,#f0eaff,#f8f5ff);color:#6236a5;border-left:5px solid #8054c7}
+    .nl-band.teal{background:linear-gradient(90deg,#e2f7f4,#f1fbf9);color:#08766c;border-left:5px solid #16a394}
+    .nl-band.green{background:linear-gradient(90deg,#e8f6eb,#f4fbf5);color:#24723a;border-left:5px solid #39a653}
+    .nl-band.amber{background:linear-gradient(90deg,#fff3dc,#fffaf0);color:#925600;border-left:5px solid #e6a23c}
+    .nl-band.red{background:linear-gradient(90deg,#ffebeb,#fff5f5);color:#a52828;border-left:5px solid #d94b4b}
+    .nl-story-tag{display:inline-block;border-radius:20px;padding:4px 9px;font-size:11px;font-weight:850;margin:0 0 8px}
+    .nl-story-tag.blue{background:#e8f1ff;color:#174ea6}
+    .nl-story-tag.violet{background:#f0eaff;color:#6236a5}
+    .nl-story-tag.teal{background:#e2f7f4;color:#08766c}
+    .nl-story-tag.green{background:#e8f6eb;color:#24723a}
+    .nl-story-tag.amber{background:#fff3dc;color:#925600}
+    .nl-story-tag.red{background:#ffebeb;color:#a52828}
+    .nl-note{font-size:12px;color:var(--secondary-text-color);margin-top:4px}
     </style>
     """, unsafe_allow_html=True)
 
     point = sections.get("le point du jour", "")
     if point:
+        st.markdown('<div class="nl-band blue">✦ SYNTHÈSE EXÉCUTIVE · LE POINT DU JOUR</div>', unsafe_allow_html=True)
         with st.container(border=True):
-            st.caption("LE POINT DU JOUR")
             st.markdown(point)
 
     news = sections.get("les 3 informations à retenir", "")
     if news:
         st.markdown('<div class="nl-section-title">Les informations majeures</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nl-note">Les événements sont séparés pour distinguer les faits, leurs conséquences et les points à confirmer.</div>', unsafe_allow_html=True)
         cards = _newsletter_cards(news)
         if cards:
+            palette = ["blue", "violet", "teal"]
             columns = st.columns(min(3, len(cards)), gap="medium")
             for index, (title, body) in enumerate(cards):
+                tone = palette[index % len(palette)]
                 with columns[index % len(columns)]:
                     with st.container(border=True):
+                        st.markdown(f'<span class="nl-story-tag {tone}">ACTUALITÉ {index + 1}</span>', unsafe_allow_html=True)
                         st.markdown(f"**{title}**")
                         st.markdown(body)
         else:
-            st.markdown(news)
+            with st.container(border=True):
+                st.markdown(news)
 
     market = sections.get("répercussions possibles sur les marchés", "")
     if market:
         st.markdown('<div class="nl-section-title">Répercussions sur les marchés</div>', unsafe_allow_html=True)
         bullets = _newsletter_bullets(market)
         if bullets:
+            tones = ["teal", "amber", "blue", "violet", "red", "green"]
             columns = st.columns(2, gap="medium")
             for index, item in enumerate(bullets):
+                tone = tones[index % len(tones)]
                 with columns[index % 2]:
                     with st.container(border=True):
+                        st.markdown(f'<span class="nl-story-tag {tone}">IMPACT MARCHÉ {index + 1}</span>', unsafe_allow_html=True)
                         st.markdown(item)
         else:
+            st.markdown('<div class="nl-band teal">↗ LECTURE DES MARCHÉS</div>', unsafe_allow_html=True)
             with st.container(border=True):
                 st.markdown(market)
 
     portfolio = sections.get("ce que cela change pour le portefeuille", "")
     if portfolio:
         st.markdown('<div class="nl-section-title">Lecture portefeuille</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nl-note">Lecture des expositions et des risques — pas de signal automatique d’achat ou de vente.</div>', unsafe_allow_html=True)
         bullets = _newsletter_bullets(portfolio)
         if bullets:
+            tones = ["green", "amber", "blue"]
             columns = st.columns(min(3, len(bullets)), gap="medium")
             for index, item in enumerate(bullets):
+                tone = tones[index % len(tones)]
                 with columns[index % len(columns)]:
                     with st.container(border=True):
+                        st.markdown(f'<span class="nl-story-tag {tone}">EXPOSITION {index + 1}</span>', unsafe_allow_html=True)
                         st.markdown(item)
         else:
+            st.markdown('<div class="nl-band green">◎ CONSÉQUENCES POUR LE PORTEFEUILLE</div>', unsafe_allow_html=True)
             with st.container(border=True):
                 st.markdown(portfolio)
 
     watch = sections.get("scénario et veille", "")
     if watch:
         st.markdown('<div class="nl-section-title">Scénario & indicateurs à surveiller</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nl-band amber">◉ POINTS DE VIGILANCE · SCÉNARIO À CONFIRMER</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown(watch)
 
     quality = sections.get("fiabilité des informations", "")
     if quality:
         st.markdown('<div class="nl-section-title">Fiabilité des informations</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nl-band violet">✓ SOURCES · DEGRÉ DE CERTITUDE · LIMITES</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown(quality)
 
