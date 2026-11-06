@@ -26,8 +26,8 @@ FORECAST_FILE = DATA_DIR / "market_forecasts.csv"
 WEIGHT_FILE = Path("weight.yaml")
 HORIZONS = (1, 3, 7, 14, 30)
 ASSETS = {
-    "Gold": {"ticker": "GC=F", "history_ticker": "GC=F", "unit": "USD/oz", "color": "#D6A84B"},
-    "Bitcoin": {"ticker": "BTC-USD", "history_ticker": "BTC-USD", "unit": "USD", "color": "#E58B35"},
+    "Gold": {"ticker": "GC=F", "history_ticker": "GC=F", "unit": "USD/oz · futures GC=F", "color": "#D6A84B"},
+    "Bitcoin": {"ticker": "BTC-USD", "history_ticker": "BTC-USD", "unit": "USD · spot", "color": "#E58B35"},
 }
 FORECAST_COLUMNS = [
     "forecast_id", "asset", "issued_at", "target_date", "horizon_days",
