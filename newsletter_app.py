@@ -1133,24 +1133,28 @@ def executive_dashboard(df):
     war_level = signal_level(war)
     france_level = signal_level(supply)
     snapshot = [
-        ("Brent", "BZ=F", "USD"), ("Or", "GC=F", "USD"),
-        ("S&P 500", "^GSPC", "Index"), ("Nasdaq", "^IXIC", "Index"),
-        ("Bitcoin", "BTC-USD", "USD"), ("EUR/CHF", "EURCHF=X", "FX"),
-        ("EUR/AED", "EURAED=X", "FX")
+        ("Brent", "BZ=F", "USD"), ("Or spot (proxy futures)", "GC=F", "USD"),
+        ("Nasdaq Composite", "^IXIC", "Index"), ("S&P 500", "^GSPC", "Index"),
+        ("Dow Jones", "^DJI", "Index"), ("EUR/CHF", "EURCHF=X", "FX"),
+        ("EUR/AED", "EURAED=X", "FX"), ("Bitcoin", "BTC-USD", "USD")
     ]
-    quote_rows, market_moves = [], {}
+    quote_rows, market_moves, kpi_rows = [], {}, []
     for label, symbol, currency in snapshot:
-        hist = fetch_history(symbol, "5d")
+        hist = fetch_history(symbol, "1mo")
         if hist.empty:
-            quote_rows.append({"Indicateur": label, "Dernier point": "Indisponible", "Variation séance": "—", "Date": "—", "Source": "Yahoo Finance"})
+            quote_rows.append({"Indicateur": label, "Dernier point": "Indisponible", "Variation séance": "—", "Variation 5 séances": "—", "Date": "—", "Source": "Yahoo Finance"})
+            kpi_rows.append({"label": label, "value": "Indisponible", "daily": None, "weekly": None, "date": "—", "currency": currency})
             continue
         last = float(hist["Cours"].iloc[-1])
         previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+        week_base = float(hist["Cours"].iloc[-6]) if len(hist) > 5 else float(hist["Cours"].iloc[0])
         delta = (last / previous - 1) * 100 if previous else 0.0
+        weekly = (last / week_base - 1) * 100 if week_base else 0.0
         market_moves[label] = delta
         date_label = pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")
-        value = f"{last:,.4f}" if currency == "FX" else (f"{last:,.2f}" if currency == "Index" else f"{last:,.2f} {currency}")
-        quote_rows.append({"Indicateur": label, "Dernier point": value, "Variation séance": f"{delta:+.2f}%", "Date": date_label, "Source": "Yahoo Finance"})
+        value = f"{last:,.4f}" if currency == "FX" else f"{last:,.2f}" + (f" {currency}" if currency == "USD" else "")
+        quote_rows.append({"Indicateur": label, "Dernier point": value, "Variation séance": f"{delta:+.2f}%", "Variation 5 séances": f"{weekly:+.2f}%", "Date": date_label, "Source": "Yahoo Finance"})
+        kpi_rows.append({"label": label, "value": value, "daily": delta, "weekly": weekly, "date": date_label, "currency": currency})
 
     market_level = "VOLATIL" if any(abs(v) >= 2.0 for v in market_moves.values()) else ("CALME / MODÉRÉ" if market_moves else "INDISPONIBLE")
     if war_level == "À QUALIFIER EN PRIORITÉ" or france_level == "À QUALIFIER EN PRIORITÉ":
@@ -1188,9 +1192,37 @@ def executive_dashboard(df):
     """, unsafe_allow_html=True)
 
     render_drawdown_alerts()
-    st.subheader("Marchés — instantané commun")
-    st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
-    st.caption("Source unique : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible, pas un cours intraday garanti. Date affichée ligne par ligne. Les pages du dashboard réutilisent la même fonction de collecte.")
+    st.subheader("🌍 Marchés & indicateurs macro — vue rapide")
+    st.caption("Les tuiles affichent le dernier cours disponible, la variation de la dernière séance et celle des cinq dernières séances. Les couleurs signalent un mouvement ou une zone de change à surveiller, pas une prévision.")
+    kpi_cols = st.columns(4)
+    for idx, item in enumerate(kpi_rows):
+        label, daily, weekly = item["label"], item["daily"], item["weekly"]
+        if daily is None:
+            bg, accent, status = "#252525", "#b8b8b8", "DONNÉES INDISPONIBLES"
+        elif label == "EUR/CHF":
+            bg, accent, status = ("#082c19", "#4cdb88", "ZONE PLUS FAVORABLE CHF") if item["value"] and float(item["value"].replace(",", ".")) >= 0.93 else (("#332407", "#ffbd55", "ZONE INTERMÉDIAIRE") if float(item["value"].replace(",", ".")) >= 0.91 else ("#3a090d", "#ff626b", "CHF CHER EN EUR"))
+        elif label == "EUR/AED":
+            fx_value = float(item["value"].replace(",", "."))
+            bg, accent, status = ("#082c19", "#4cdb88", "ZONE PLUS FAVORABLE AED") if fx_value >= 4.20 else (("#332407", "#ffbd55", "ZONE INTERMÉDIAIRE") if fx_value >= 4.14 else ("#3a090d", "#ff626b", "CONVERSION PEU FAVORABLE"))
+        elif label in ("Nasdaq Composite", "S&P 500", "Dow Jones"):
+            bg, accent = ("#3a090d", "#ff626b") if weekly <= -4 else (("#332407", "#ffbd55") if weekly <= -2 else ("#082c19", "#4cdb88"))
+            status = "CORRECTION / FORTE BAISSE" if weekly <= -4 else ("BAISSE À SURVEILLER" if weekly <= -2 else ("REBOND" if weekly > 1 else "MOUVEMENT MODÉRÉ"))
+        else:
+            bg, accent = ("#332407", "#ffbd55") if abs(weekly) >= 5 or abs(daily) >= 1.5 else ("#202329", "#d7dce5")
+            status = "FORTE VOLATILITÉ" if abs(weekly) >= 5 or abs(daily) >= 1.5 else "MOUVEMENT MODÉRÉ"
+        with kpi_cols[idx % 4]:
+            st.markdown(f"""
+            <div style="background:{bg};border:1px solid {accent}80;border-radius:13px;padding:13px;margin:0 0 10px;min-height:142px">
+              <div style="font-size:14px;font-weight:800;color:#f3f3f3">{label}</div>
+              <div style="font-size:25px;font-weight:900;color:#fff;margin:8px 0 3px">{item['value']}</div>
+              <div style="font-size:14px;font-weight:800;color:{accent}">{'—' if daily is None else f'{daily:+.2f}%'} séance</div>
+              <div style="font-size:13px;color:#ddd;margin-top:3px">{'—' if weekly is None else f'{weekly:+.2f}%'} / 5 séances</div>
+              <div style="font-size:11px;color:#bbb;margin-top:7px">{status} · {item['date']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    with st.expander("Voir le tableau détaillé des cours et variations"):
+        st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
+    st.caption("Source : Yahoo Finance · cache 5 min · dernier point quotidien disponible (pas un flux intraday garanti). Or : contrat futures utilisé comme proxy, et non cotation spot. Les taux EUR/CHF et EUR/AED sont des indications de marché, pas des taux garantis par ta banque.")
 
     st.subheader("Portefeuille détenu — suivi des cours")
     held = [
