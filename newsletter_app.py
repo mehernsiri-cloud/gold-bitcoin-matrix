@@ -635,236 +635,186 @@ def fx_chf_page():
     st.dataframe(allocations, use_container_width=True, hide_index=True)
     st.caption("Répartitions de travail, non recommandations d'achat. Vérifier frais, fiscalité française, risque de taux/crédit, liquidité et modalités de détention. SIMA est moins liquide qu'un ETF coté.")
 
-def investment_flows_page():
-    st.header("💸 Follow the Money — Global Capital Flows")
-    st.caption(
-        "Cartographie des grandes masses de capitaux qui orientent les capacités industrielles, "
-        "technologiques, militaires et alimentaires. Priorité aux volumes systémiques, pas aux petites levées de fonds."
-    )
-    st.info(
-        "Lecture essentielle : les montants ci-dessous ne sont pas additionnables. "
-        "Certains sont des dépenses annuelles, d'autres des levées de fonds, des investissements annoncés "
-        "ou une capacité de financement estimée. Les chevauchements entre secteurs sont signalés."
-    )
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_investment_breaking_news(days=30):
+    """Fetch recent, concrete investment mobilisation announcements from Google News RSS."""
+    if feedparser is None:
+        return pd.DataFrame(), ["Le module feedparser n'est pas installé."]
 
-    flows = [
-        {
-            "sector": "IA, data centers & semi-conducteurs", "icon": "🧠",
-            "headline": "≈ 900 Md$ en 2026", "sub": "Investissement mondial lié à l'IA estimé par J.P. Morgan",
-            "extra": "Projection : 5 500 Md$ cumulés d'ici 2030 selon J.P. Morgan. Les dépenses des grands hyperscalers sont le moteur principal.",
-            "horizon": "2026–2030 · immédiat à 4 ans",
-            "status": "Estimation 2026 + projection", "kind": "Capex / infrastructures",
-            "impact": "Accélération des centres de données, GPU, mémoire, réseaux, électricité et refroidissement. Pression sur le financement, le réseau électrique et les chaînes de semi-conducteurs.",
-            "watch": "Capex annoncé vs réalisé, commandes GPU/mémoire, raccordements électriques, dette et cash-flow des hyperscalers.",
-            "source": "J.P. Morgan — 19 octobre 2026", "url": "https://www.jpmorgan.com/insights/global-research/artificial-intelligence/ai-capex"
-        },
-        {
-            "sector": "Énergie, réseaux & stockage", "icon": "⚡",
-            "headline": "3 400 Md$ en 2026", "sub": "Investissement mondial attendu dans l'énergie (IEA)",
-            "extra": "Environ 2 200 Md$ vers les renouvelables, le nucléaire, les réseaux, le stockage, l'efficacité et l'électrification ; 1 200 Md$ vers pétrole, gaz et charbon.",
-            "horizon": "2026–2035 · 5 à 10 ans et plus",
-            "status": "Prévision annuelle 2026", "kind": "Investissement énergétique",
-            "impact": "Renforce la sécurité énergétique et la capacité électrique. Les réseaux, transformateurs, batteries et centrales deviennent des goulets d'étranglement stratégiques.",
-            "watch": "Dépenses réseau, stockage, nucléaire, contrats d'approvisionnement, retards de raccordement et investissements fossiles.",
-            "source": "IEA — World Energy Investment 2026", "url": "https://www.iea.org/topics/investment"
-        },
-        {
-            "sector": "Défense & industrie militaire", "icon": "🛡️",
-            "headline": "2 887 Md$ en 2025", "sub": "Dépenses militaires mondiales mesurées par SIPRI (+2,9 % réels)",
-            "extra": "11e année consécutive de hausse. Europe : 864 Md$ (+14 %) ; Asie-Océanie : 681 Md$ (+8,1 %). Il s'agit de dépenses militaires totales, pas uniquement de commandes d'armement.",
-            "horizon": "2025–2030 · budgets pluriannuels",
-            "status": "Dépense observée 2025", "kind": "Budgets publics récurrents",
-            "impact": "Soutient la montée en cadence des industriels, les stocks de munitions, la défense aérienne, les drones, le cyber et les capacités spatiales.",
-            "watch": "Budgets votés, commandes fermes, délais de livraison, capacités industrielles et reconstitution des stocks.",
-            "source": "SIPRI — 27 avril 2026", "url": "https://www.sipri.org/media/press-release/2026/global-military-spending-rise-continues-european-and-asian-expenditures-surge"
-        },
-        {
-            "sector": "Capital-risque & startups", "icon": "🚀",
-            "headline": "427,1 Md$ en 2025", "sub": "Investissement mondial en venture capital (OCDE)",
-            "extra": "L'IA a capté 258,7 Md$, soit 61 % du total. Les financements se concentrent dans les méga-tours et les entreprises déjà avancées.",
-            "horizon": "2025–2028 · 2 à 5 ans",
-            "status": "Investissement observé 2025", "kind": "Capital privé / VC",
-            "impact": "Oriente les futurs leaders technologiques et la création de capacités. Mais une levée de fonds n'est pas encore une capacité industrielle rentable.",
-            "watch": "Part de l'IA, taille des méga-tours, financement des phases précoces, sorties/IPO et taux de survie des startups.",
-            "source": "OCDE — 17 février 2026", "url": "https://www.oecd.org/en/about/news/announcements/2026/02/ai-firms-capture-61-percent-of-global-venture-capital-in-2025.html"
-        },
-        {
-            "sector": "Entreprises mondiales & investissements directs", "icon": "🏭",
-            "headline": "1 600 Md$ en 2025", "sub": "Investissements directs étrangers mondiaux (UNCTAD)",
-            "extra": "Les projets greenfield annoncés dans cinq secteurs stratégiques ont atteint 576 Md$ en 2025, contre 109 Md$ en 2020. L'IA et les infrastructures numériques dominent ; les 20 premiers pays hôtes captent plus de 80 % des flux.",
-            "horizon": "2025–2030 · 3 à 7 ans",
-            "status": "Estimation FDI 2025 / projets annoncés", "kind": "Investissement productif transfrontalier",
-            "impact": "Révèle où les groupes et investisseurs construisent de nouvelles capacités : usines, data centers, semi-conducteurs, énergie et technologies stratégiques.",
-            "watch": "Annonces converties en chantiers, décisions finales d'investissement, pays hôtes, annulations et délais de construction.",
-            "source": "UNCTAD — World Investment Report 2026", "url": "https://unctad.org/publication/world-investment-report-2026-international-investment-turbulent-era"
-        },
-        {
-            "sector": "Santé, biotech & pharmacie", "icon": "🧬",
-            "headline": "60 Md$ en 2025", "sub": "Investissement mondial de venture capital dans la santé (HSBC)",
-            "extra": "Hausse depuis 45,4 Md$ en 2024. HSBC anticipait 65–70 Md$ en 2026 ; les financements se concentrent sur les biotechs, les dispositifs médicaux et les entreprises proches de la commercialisation.",
-            "horizon": "2025–2035+ · 5 à 15 ans",
-            "status": "Observé 2025 + prévision 2026", "kind": "VC / innovation médicale",
-            "impact": "Peut accélérer les traitements, diagnostics, plateformes biotech et capacités de production pharmaceutique. Les retours sont longs et le risque clinique/réglementaire élevé.",
-            "watch": "Financements late-stage, essais cliniques, autorisations, capacités de production, acquisitions et ruptures d'approvisionnement.",
-            "source": "HSBC Innovation Banking — 13 janvier 2026", "url": "https://www.about.us.hsbc.com/newsroom/press-releases/healthcare-venture-markets-regain-momentum-as-capital-returns"
-        },
-        {
-            "sector": "Food, agriculture & sécurité alimentaire", "icon": "🌾",
-            "headline": "≈ 630 Md$ / an", "sub": "Capacité potentielle estimée de financement privé de l'agroalimentaire",
-            "extra": "Ce chiffre correspond à une capacité de financement estimée, pas à un flux annuel effectivement investi. Le financement climatique nécessaire aux systèmes agroalimentaires est estimé à 1 100 Md$ par an.",
-            "horizon": "2026–2035 · 5 à 10 ans",
-            "status": "Capacité estimée / besoin de financement", "kind": "Potentiel privé et besoin structurel",
-            "impact": "Détermine la résilience des chaînes alimentaires : irrigation, stockage, engrais, semences, transformation, logistique et adaptation climatique.",
-            "watch": "Investissements réellement déployés, eau/irrigation, stocks céréaliers, engrais, capacités de stockage et financement des producteurs.",
-            "source": "Food and Land Use Coalition — rapport 2026", "url": "https://www.foodandlandusecoalition.org/knowledge-hub/re-wire-agricultural-resilience/"
-        },
+    queries = [
+        '("investment" OR "invests" OR "investment plan" OR "capital expenditure" OR capex) (announces OR commits OR plans OR approves OR launches OR signs) when:30d',
+        '("billion investment" OR "million investment" OR "funding agreement" OR "project financing" OR "final investment decision") when:30d',
+        '("data center" OR semiconductor OR AI infrastructure OR electricity grid OR battery) (investment OR invests OR funding OR construction) when:30d',
+        '("defence industry" OR defense industry OR arms production OR military manufacturing) (investment OR factory OR contract OR funding) when:30d',
+        '("investissement" OR "investit" OR "plan d’investissement" OR "milliards" OR "financement") (annonce OR prévoit OR approuve OR signe OR lance OR construction) when:30d',
+        '("usine" OR "centre de données" OR "centrale" OR "réseau électrique" OR "infrastructure") (investissement OR financement OR milliards) when:30d',
     ]
+    rows, errors = [], []
+    for query in queries:
+        try:
+            response = requests.get(
+                "https://news.google.com/rss/search",
+                params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                headers=REQUEST_HEADERS,
+                timeout=(4, 10),
+            )
+            response.raise_for_status()
+            parsed = feedparser.parse(response.content)
+            for entry in parsed.entries:
+                title = clean_html(entry.get("title", ""))
+                link = entry.get("link", "")
+                summary = clean_html(entry.get("summary", entry.get("description", "")))
+                published = parse_date(entry.get("published", entry.get("updated", "")))
+                if not title or not link or published is None:
+                    continue
+                age = datetime.utcnow() - published
+                if age < timedelta(minutes=-30) or age > timedelta(days=days):
+                    continue
+                source = clean_html(entry.get("source", {}).get("title", "")) or "Google Actualités"
+                text_blob = f"{title} {summary}".lower()
 
-    # Valeurs en Md$ utilisées pour le tri et la longueur relative des barres.
-    value_map = {
-        "IA, data centers & semi-conducteurs": 900,
-        "Énergie, réseaux & stockage": 3400,
-        "Défense & industrie militaire": 2887,
-        "Capital-risque & startups": 427.1,
-        "Entreprises mondiales & investissements directs": 1600,
-        "Santé, biotech & pharmacie": 60,
-        "Food, agriculture & sécurité alimentaire": 630,
-    }
-    sorted_flows = sorted(flows, key=lambda x: value_map.get(x["sector"], 0), reverse=True)
-    # Palette pastel : une teinte douce et distincte par secteur.
-    colors = ["#A9C9E8", "#F2C98A", "#C5CBD3", "#C9B6E4", "#A8D5C2", "#E8B8CC", "#C9D99B"]
-    max_value = max(value_map.values())
-    row_count = len(sorted_flows)
-    y_positions = list(range(row_count))
-    # Les barres de volume sont volontairement plafonnées à 62 % de la piste.
-    ratios = [value_map[item["sector"]] / max_value * 62 for item in sorted_flows]
-    sectors = [item["sector"] for item in sorted_flows]
+                # Require an actual mobilisation action, not a historical annual total or broad trend report.
+                action_terms = (
+                    "invest", "fund", "financ", "capex", "capital expenditure", "build",
+                    "construct", "factory", "plant", "data center", "data centre",
+                    "project", "contract", "commit", "launch", "approve", "acquire",
+                    "usine", "construction", "investissement", "financement", "engage",
+                    "annonce", "milliard", "centrale", "infrastructure"
+                )
+                if not any(term in text_blob for term in action_terms):
+                    continue
+                noise_terms = (
+                    "annual report", "year in review", "market outlook", "investment outlook",
+                    "top investors", "best investments", "stock picks", "how to invest",
+                    "historical data", "five-year trend", "five year trend"
+                )
+                if any(term in text_blob for term in noise_terms):
+                    continue
 
-    st.subheader("Les grandes masses de capitaux — du plus élevé au plus faible")
+                if any(term in text_blob for term in ("data center", "data centre", "semiconductor", "artificial intelligence", " ai ", "chip")):
+                    sector = "IA, data centers & semi-conducteurs"
+                    icon = "🧠"
+                elif any(term in text_blob for term in ("energy", "electricity", "power grid", "renewable", "solar", "wind", "nuclear", "battery", "hydrogen", "énergie", "électricité", "réseau électrique")):
+                    sector = "Énergie, réseaux & stockage"
+                    icon = "⚡"
+                elif any(term in text_blob for term in ("defence", "defense", "military", "missile", "ammunition", "arms", "naval", "militaire", "armement")):
+                    sector = "Défense & industrie"
+                    icon = "🛡️"
+                elif any(term in text_blob for term in ("health", "healthcare", "biotech", "pharma", "hospital", "médical", "santé", "pharmaceutique")):
+                    sector = "Santé & biotechnologies"
+                    icon = "🧬"
+                elif any(term in text_blob for term in ("factory", "manufacturing", "industrial", "automotive", "semiconductor plant", "usine", "industrie")):
+                    sector = "Industrie & relocalisation"
+                    icon = "🏭"
+                elif any(term in text_blob for term in ("port", "rail", "airport", "logistics", "shipping", "transport", "water", "food", "agriculture", "infrastructure")):
+                    sector = "Infrastructures & approvisionnement"
+                    icon = "🚢"
+                else:
+                    sector = "Investissements stratégiques"
+                    icon = "💶"
+
+                amount_match = re.search(
+                    r'(?i)(?:[$€£]\s?\d[\d,.]*(?:\s?(?:bn|billion|million|m|bn\b))?|\d[\d,.]*\s?(?:billion|million|bn|b|m)\s?(?:USD|EUR|GBP|dollars|euros)?)',
+                    title
+                )
+                amount = amount_match.group(0) if amount_match else ""
+                rows.append({
+                    "Date": published,
+                    "Titre": title,
+                    "Résumé": summary,
+                    "Source": source,
+                    "Lien": link,
+                    "Secteur": sector,
+                    "Icône": icon,
+                    "Montant": amount,
+                })
+        except Exception as exc:
+            errors.append(f"Recherche actualités : {type(exc).__name__}.")
+
+    if not rows:
+        return pd.DataFrame(), errors
+    result = pd.DataFrame(rows).drop_duplicates(subset=["Lien"])
+    result = result.sort_values("Date", ascending=False)
+    return result, errors
+
+
+def investment_flows_page():
+    st.header("💸 Follow the Money — Breaking Investments")
     st.caption(
-        "Vue en deux panneaux : sélectionnez une barre à gauche pour afficher la fiche complète à droite. "
-        "Les barres sont volontairement raccourcies pour laisser respirer les libellés."
+        "Actualités récentes sur les capitaux qui passent à l'action : annonces de projets, "
+        "engagements financiers, décisions finales d'investissement, nouvelles usines, data centers, "
+        "réseaux électriques, défense, santé et infrastructures. Aucun cumul annuel."
     )
 
-    left_panel, right_panel = st.columns([1, 1], gap="medium")
-
-    with left_panel:
-        st.markdown("**Répartition par secteur**")
-        fig = go.Figure()
-        # Piste cliquable de largeur constante, y compris pour les petits montants.
-        fig.add_trace(go.Bar(
-            x=[72] * row_count, y=y_positions, orientation="h",
-            width=0.82,
-            marker=dict(color=colors, opacity=0.24, line=dict(color=colors, width=1)),
-            customdata=sectors, hoverinfo="skip", showlegend=False,
-            selected=dict(marker=dict(opacity=0.45)),
-            unselected=dict(marker=dict(opacity=0.24)),
-        ))
-        # Barre pastel représentant le montant relatif.
-        fig.add_trace(go.Bar(
-            x=ratios, y=y_positions, orientation="h",
-            width=0.82,
-            marker=dict(color=colors, line=dict(color=colors, width=1)),
-            customdata=sectors,
-            hovertemplate="<b>%{customdata}</b><br>Longueur relative : %{x:.1f} %<extra>Cliquez pour le détail</extra>",
-            showlegend=False,
-        ))
-
-        for y, item in zip(y_positions, sorted_flows):
-            detail = (
-                f'<b>{item["icon"]} {item["sector"]}</b><br>'
-                f'<b>{item["headline"]}</b><br>'
-                f'{item["source"]} · {item["horizon"]}'
-            )
-            fig.add_annotation(
-                x=1.5, y=y, xref="x", yref="y", text=detail,
-                showarrow=False, xanchor="left", yanchor="middle",
-                align="left", font=dict(family="Arial, sans-serif", size=16, color="#26384A")
-            )
-
-        fig.update_layout(
-            barmode="overlay", height=850,
-            margin=dict(l=4, r=4, t=8, b=8),
-            bargap=0.22,
-            xaxis=dict(range=[0, 100], visible=False, fixedrange=True),
-            yaxis=dict(
-                range=[row_count - 0.5, -0.5], visible=False, fixedrange=True,
-                tickmode="array", tickvals=y_positions, ticktext=[""] * row_count
-            ),
-            plot_bgcolor="white", paper_bgcolor="white",
-            hoverlabel=dict(bgcolor="white", font_size=12),
-            clickmode="event+select", dragmode=False,
+    controls = st.columns([1, 1, 1.3])
+    with controls[0]:
+        days = st.selectbox("Fraîcheur", [3, 7, 14, 30], index=1, format_func=lambda x: f"{x} derniers jours", key="wels_invest_news_days")
+    with controls[1]:
+        sector_filter = st.selectbox(
+            "Secteur",
+            ["Tous", "IA, data centers & semi-conducteurs", "Énergie, réseaux & stockage",
+             "Défense & industrie", "Santé & biotechnologies", "Industrie & relocalisation",
+             "Infrastructures & approvisionnement", "Investissements stratégiques"],
+            key="wels_invest_news_sector"
         )
-        chart_event = st.plotly_chart(
-            fig, use_container_width=True, config={"displayModeBar": False},
-            key="capital_flows_chart", on_select="rerun", selection_mode="points"
-        )
+    with controls[2]:
+        if st.button("🔄 Actualiser les breaking news", key="wels_invest_news_refresh", use_container_width=True):
+            fetch_investment_breaking_news.clear()
+            st.rerun()
 
-    # Le clic sur une barre sélectionne le secteur via sa donnée personnalisée.
-    selected_sector = None
-    try:
-        selected_points = chart_event.selection.points
-        if selected_points:
-            point = selected_points[-1]
-            selected_sector = point.get("customdata")
-            if isinstance(selected_sector, (list, tuple)) and selected_sector:
-                selected_sector = selected_sector[0]
-    except Exception:
-        selected_sector = None
+    with st.spinner("Recherche des annonces d'investissement récentes…"):
+        news, errors = fetch_investment_breaking_news(days)
 
-    selected_item = next(
-        (item for item in sorted_flows if item["sector"] == selected_sector), None
-    )
+    if news.empty:
+        st.warning("Aucune annonce d'investissement récente n'a été qualifiée sur cette période.")
+        st.caption("Cela ne signifie pas qu'aucun investissement n'a été annoncé : les flux RSS peuvent être incomplets ou momentanément indisponibles.")
+        if errors:
+            with st.expander("Diagnostic des sources"):
+                for error in errors:
+                    st.write(f"- {error}")
+        return
 
-    with right_panel:
-        st.markdown("**Détail de l'investissement sélectionné**")
-        if selected_item:
-            st.markdown(f"### {selected_item['icon']} {selected_item['sector']}")
-            st.markdown(f"## {selected_item['headline']}")
-            st.markdown(f"**{selected_item['sub']}**")
-            st.markdown("---")
-            st.markdown(
-                f'**Nature du chiffre :** {selected_item["status"]}  \n'
-                f'**Type :** {selected_item["kind"]}'
-            )
-            st.markdown(f'**Horizon :** {selected_item["horizon"]}')
-            st.markdown("**Précision / projection**")
-            st.write(selected_item["extra"])
-            st.markdown("**Pourquoi c'est important**")
-            st.write(selected_item["impact"])
-            st.markdown("**Indicateurs à surveiller**")
-            st.write(selected_item["watch"])
-            st.markdown(f'**Source :** [{selected_item["source"]}]({selected_item["url"]})')
-        else:
-            st.info(
-                "Cliquez sur l'une des barres du graphique pour afficher ici "
-                "le montant, la source, l'horizon, les projections, les impacts "
-                "et les indicateurs à surveiller."
-            )
+    if sector_filter != "Tous":
+        news = news[news["Secteur"] == sector_filter]
 
-    st.caption(
-        "Les longueurs sont proportionnelles aux montants indicatifs en Md$, avec une échelle visuelle "
-        "raccourcie. Les chiffres ne sont pas additionnables : dépenses publiques, investissements, "
-        "capital-risque et capacités potentielles sont des catégories différentes qui peuvent se chevaucher."
-    )
+    if news.empty:
+        st.info("Aucune annonce trouvée pour ce secteur sur la période sélectionnée. Élargis la période ou sélectionne « Tous ».")
+        return
+
+    # The indicators count announcements, not money; amounts are shown only when present in the source headline.
+    distinct_sources = news["Source"].nunique()
+    latest = news["Date"].max()
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Annonces qualifiées", len(news))
+    k2.metric("Sources distinctes", distinct_sources)
+    k3.metric("Annonce la plus récente", latest.strftime("%d/%m · %H:%M UTC"))
+    st.caption("Une annonce, un engagement, un financement signé et une dépense effectivement déployée sont des étapes différentes. Les montants ne sont jamais additionnés et ne sont affichés que lorsqu'ils figurent dans le titre source.")
+
+    for _, item in news.iterrows():
+        date_label = item["Date"].strftime("%d/%m/%Y · %H:%M UTC")
+        amount_label = f" · **Montant annoncé : {item['Montant']}**" if item["Montant"] else ""
+        with st.container(border=True):
+            top = st.columns([1.3, 3.7])
+            with top[0]:
+                st.markdown(f"**{item['Icône']} {item['Secteur']}**")
+                st.caption(date_label)
+            with top[1]:
+                st.markdown(f"### {item['Titre']}")
+                st.caption(f"{item['Source']}{amount_label}")
+            if item["Résumé"]:
+                st.write(item["Résumé"][:700] + ("…" if len(item["Résumé"]) > 700 else ""))
+            st.markdown(f"[Lire l'article original ↗]({item['Lien']})")
 
     st.divider()
-    st.subheader("Lecture stratégique — ce que les flux de capitaux annoncent")
+    st.subheader("Comment lire ces annonces")
     st.markdown(
-        """
-        - **Course aux capacités physiques :** l'IA ne finance pas seulement des logiciels. Elle tire les centres de données, les semi-conducteurs, l'électricité, les réseaux et le refroidissement.
-        - **Réarmement durable :** les budgets militaires sont récurrents et les commandes industrielles s'étalent sur plusieurs années ; les annonces politiques ne deviennent toutefois des revenus industriels qu'après contractualisation.
-        - **Capital concentré :** les investissements directs et le capital-risque se concentrent dans un nombre limité de pays, de secteurs et de grandes opérations.
-        - **Santé et alimentation :** les cycles sont plus longs, mais ils touchent des besoins fondamentaux. Il faut suivre les capacités de production et les infrastructures, pas seulement les valorisations boursières.
-        - **Risque de surinvestissement :** un volume de capitaux élevé peut annoncer une capacité future, mais aussi une bulle, un excès d'endettement ou des actifs qui ne seront pas rentables.
-        """
+        "- **Annonce politique ou intention :** signal précoce, pas encore un investissement exécuté.\n"
+        "- **Financement approuvé / décision finale d'investissement :** engagement plus concret, à suivre jusqu'au démarrage du projet.\n"
+        "- **Contrat signé / chantier lancé :** matérialisation plus avancée, avec des retombées potentielles pour les fournisseurs.\n"
+        "- **Mise en service / capacité opérationnelle :** preuve que le capital a effectivement créé une capacité productive."
     )
-    st.warning(
-        "Méthode : les indicateurs sont volontairement séparés et non additionnés. "
-        "Les montants de VC santé et IA sont inclus dans le total VC ; les projets IA peuvent aussi apparaître dans les FDI et les capex des entreprises. "
-        "Les horizons sont des fenêtres d'impact indicatives, pas des dates certaines de rendement."
-    )
-    st.caption("Base documentaire initiale : publications 2026 disponibles au 6 novembre 2026. Actualisation recommandée à chaque nouvelle publication annuelle ou trimestrielle des organismes cités ; les montants ne sont pas un flux temps réel.")
+    if errors:
+        st.caption(f"Collecte partielle : {len(errors)} requête(s) ont rencontré une erreur. Les résultats affichés ne représentent donc pas nécessairement toutes les annonces.")
 
 
 def war_risk_page(df):
