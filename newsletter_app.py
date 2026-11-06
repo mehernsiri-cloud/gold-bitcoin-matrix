@@ -1635,7 +1635,8 @@ def executive_dashboard(df):
 def main():
     # Do not call set_page_config here: app.py configures the parent Streamlit page.
     st.title("📰 WELS Actions — Market, War & CHF Monitor")
-    st.caption("Briefing financier et veille des risques patrimoniaux · actualités : cache 10 min · cours : cache 5 min")
+    st.caption("Briefing financier et veille des risques patrimoniaux · actualisation automatique toutes les 10 minutes · actualités : cache 10 min · cours : cache 5 min")
+    st.caption("Dernier recalcul affiché : " + datetime.now().astimezone().strftime("%d/%m/%Y à %H:%M:%S %Z"))
     with st.spinner("Collecte des flux d'actualité…"):
         df, errors = fetch_news()
     df = enrich_news_frame(df) if not df.empty else df
