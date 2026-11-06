@@ -798,6 +798,106 @@ def qualify_situation(title, summary):
     return matches
 
 
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_ecb_ciss():
+    """ECB New CISS: daily systemic-stress series; return percentile vs its own 5y history."""
+    url = "https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CIN.IDX"
+    response = requests.get(url, params={"startPeriod": (datetime.utcnow() - timedelta(days=1825)).strftime("%Y-%m-%d"), "format": "csvdata"}, headers=REQUEST_HEADERS, timeout=20)
+    response.raise_for_status()
+    from io import StringIO
+    data = pd.read_csv(StringIO(response.text))
+    if not {"TIME_PERIOD", "OBS_VALUE"}.issubset(data.columns):
+        raise ValueError("Format inattendu de l'API BCE")
+    data["OBS_VALUE"] = pd.to_numeric(data["OBS_VALUE"], errors="coerce")
+    data = data.dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
+    if data.empty:
+        raise ValueError("Série CISS vide")
+    current = float(data["OBS_VALUE"].iloc[-1])
+    history = data["OBS_VALUE"].tail(1260)
+    percentile = float((history <= current).mean() * 100)
+    previous = float(data["OBS_VALUE"].iloc[-6]) if len(data) > 5 else current
+    change = current - previous
+    return {"value": current, "percentile": percentile, "change_5d": change,
+            "date": str(data["TIME_PERIOD"].iloc[-1]), "observations": len(data)}
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_rte_grid_data():
+    """Latest French national RTE/ODRE éCO2mix observations (15-minute dataset)."""
+    url = "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records"
+    response = requests.get(url, params={"limit": 48, "order_by": "date_heure desc"}, headers=REQUEST_HEADERS, timeout=20)
+    response.raise_for_status()
+    records = response.json().get("results", [])
+    if not records:
+        raise ValueError("Aucun enregistrement RTE")
+    data = pd.DataFrame(records)
+    for col in ["consommation", "prevision_j", "ech_physiques", "nucleaire", "gaz", "eolien", "solaire", "hydraulique", "taux_co2"]:
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col], errors="coerce")
+    data["date_heure"] = pd.to_datetime(data["date_heure"], utc=True, errors="coerce")
+    data = data.dropna(subset=["date_heure", "consommation"]).sort_values("date_heure")
+    if data.empty:
+        raise ValueError("Mesures RTE non exploitables")
+    latest = data.iloc[-1]
+    age_hours = max(0, (pd.Timestamp.now(tz="UTC") - latest["date_heure"]).total_seconds() / 3600)
+    demand = float(latest["consommation"])
+    forecast = float(latest["prevision_j"]) if pd.notna(latest.get("prevision_j")) else None
+    deviation = ((demand / forecast) - 1) * 100 if forecast and forecast > 0 else None
+    physical_exchange = float(latest["ech_physiques"]) if pd.notna(latest.get("ech_physiques")) else None
+    import_share = max(0, -physical_exchange) / demand * 100 if physical_exchange is not None and demand > 0 else None
+    return {"date": latest["date_heure"].strftime("%d/%m/%Y %H:%M UTC"), "age_hours": age_hours,
+            "demand": demand, "forecast": forecast, "deviation": deviation,
+            "exchange": physical_exchange, "import_share": import_share,
+            "carbon": float(latest["taux_co2"]) if pd.notna(latest.get("taux_co2")) else None}
+
+
+def operational_risk_panel():
+    st.subheader("Données opérationnelles — indicateurs mesurés")
+    st.caption("Sources directes, indépendantes des articles. Les seuils affichés sont des repères de veille, pas des seuils officiels de déclenchement de crise.")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Stress financier — zone euro**")
+        try:
+            ciss = fetch_ecb_ciss()
+            if ciss["percentile"] >= 95 and ciss["change_5d"] > 0:
+                st.error("Stress financier très élevé vs historique récent")
+            elif ciss["percentile"] >= 80:
+                st.warning("Stress financier élevé vs historique récent")
+            elif ciss["percentile"] >= 60:
+                st.info("Stress financier à surveiller")
+            else:
+                st.success("Pas de stress exceptionnel détecté par cet indicateur")
+            st.metric("BCE New CISS", f'{ciss["value"]:.3f}', f'{ciss["change_5d"]:+.3f} sur 5 obs.')
+            st.caption(f"Percentile {ciss['percentile']:.0f} sur l'historique 5 ans · dernière observation : {ciss['date']} · série quotidienne, publication avec décalage.")
+            st.caption("Le percentile compare le niveau courant à l'historique de la série ; il ne représente pas une probabilité de crise.")
+        except Exception as exc:
+            st.warning(f"BCE CISS indisponible : {type(exc).__name__}. Indicateur non qualifié.")
+    with col2:
+        st.markdown("**Réseau électrique — France**")
+        try:
+            rte = fetch_rte_grid_data()
+            if rte["age_hours"] > 3:
+                st.warning("Données RTE trop anciennes pour qualifier la situation actuelle")
+            elif rte["deviation"] is not None and rte["deviation"] >= 5:
+                st.error("Consommation supérieure de plus de 5 % à la prévision")
+            elif rte["import_share"] is not None and rte["import_share"] >= 20:
+                st.warning("Dépendance aux importations élevée à cet instant")
+            else:
+                st.success("Aucun signal de tension simple détecté sur ces mesures")
+            st.metric("Consommation", f'{rte["demand"]:,.0f} MW',
+                      f'{rte["deviation"]:+.1f}% vs prévision J' if rte["deviation"] is not None else "Prévision indisponible")
+            m1, m2 = st.columns(2)
+            m1.metric("Part importée estimée", f'{rte["import_share"]:.1f}%' if rte["import_share"] is not None else "—")
+            m2.metric("Intensité carbone", f'{rte["carbon"]:.0f} gCO₂/kWh' if rte["carbon"] is not None else "—")
+            st.caption(f"Dernier point : {rte['date']} · âge des données : {rte['age_hours']:.1f} h · RTE / ODRÉ, données temps réel estimées.")
+            st.caption("La part importée est calculée à partir des échanges physiques nets. Ce n'est pas une mesure de marge de réserve ni une prévision de blackout.")
+        except Exception as exc:
+            st.warning(f"Données RTE indisponibles : {type(exc).__name__}. Indicateur non qualifié.")
+    st.caption("Couverture opérationnelle actuelle : finance zone euro (BCE CISS) et réseau électrique français (RTE). Les indicateurs opérationnels directs pour carburants, médicaments, eau, gaz, tensions sociales et opérations militaires restent à intégrer ; ces domaines ne doivent pas être considérés comme couverts par les seules actualités.")
+
+
 def geopolitics_supply_dashboard(df, errors=None):
     """Regional risk dashboard: compact regional blocks, severity colors and click-to-open details."""
     st.header("🌍 Regional Risk Monitor")
@@ -980,6 +1080,8 @@ def geopolitics_supply_dashboard(df, errors=None):
 
     # Indices par famille de risque. Ils synthétisent uniquement les signaux RSS
     # qualifiés et leur recoupement ; ils ne sont jamais des probabilités de crise.
+    operational_risk_panel()
+
     st.subheader("Jauges de pression — signaux précurseurs observés")
     st.caption("Score 0–100 calculé à partir de la gravité attribuée à chaque signal, de sa fraîcheur, du nombre de sources distinctes et de la répétition de signaux. Un score élevé signifie davantage de signaux documentés, pas une probabilité de crise.")
     gauge_cols = st.columns(5)
@@ -1317,55 +1419,57 @@ def executive_dashboard(df):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · dernier point quotidien disponible (pas un flux intraday garanti). Or : contrat futures utilisé comme proxy, et non cotation spot. Les taux EUR/CHF et EUR/AED sont des indications de marché, pas des taux garantis par ta banque.")
 
-    st.subheader("Portefeuille détenu — suivi des cours")
-    held = [
-        ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
-        ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
-        ("Frontline", "FRO", "USD"), ("FTAI Aviation", "FTAI", "USD"),
-        ("Thales", "HO.PA", "EUR"), ("Lockheed Martin", "LMT", "USD"),
-        ("Air Liquide", "AI.PA", "EUR"), ("Amundi Health Care (WELS)", "WELS.DE", "EUR"),
-        ("World Utilities (XDWU)", "XDWU.L", "GBP")
-    ]
-    held_rows = []
-    for name, symbol, currency in held:
-        hist = fetch_history(symbol, "5d")
-        if hist.empty:
-            held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency, "Variation séance": "—", "Date": "—"})
-            continue
-        last = float(hist["Cours"].iloc[-1])
-        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-        change = (last / previous - 1) * 100 if previous else 0.0
-        held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
-                          "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
-    st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
-    st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
+    with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
+        st.subheader("Portefeuille détenu — suivi des cours")
+        held = [
+            ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
+            ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
+            ("Frontline", "FRO", "USD"), ("FTAI Aviation", "FTAI", "USD"),
+            ("Thales", "HO.PA", "EUR"), ("Lockheed Martin", "LMT", "USD"),
+            ("Air Liquide", "AI.PA", "EUR"), ("Amundi Health Care (WELS)", "WELS.DE", "EUR"),
+            ("World Utilities (XDWU)", "XDWU.L", "GBP")
+        ]
+        held_rows = []
+        for name, symbol, currency in held:
+            hist = fetch_history(symbol, "5d")
+            if hist.empty:
+                held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency, "Variation séance": "—", "Date": "—"})
+                continue
+            last = float(hist["Cours"].iloc[-1])
+            previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+            change = (last / previous - 1) * 100 if previous else 0.0
+            held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
+                              "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
+        st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
+        st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
+    
+        st.subheader("Nouvelles opportunités — santé, électricité et industrie")
+        candidates = [
+            ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
+            ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
+            ("Schneider Electric", "SU.PA", "FR0000121972", "Réseaux, gestion électrique et data centers"),
+            ("Siemens", "SIE.DE", "DE0007236101", "Automatisation, électrification et industrie")
+        ]
+        candidate_rows = []
+        for name, symbol, isin, thesis in candidates:
+            hist = fetch_history(symbol, "5d")
+            if hist.empty:
+                candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": "Indisponible", "Variation séance": "—", "Date": "—", "Thèse / vigilance": thesis})
+                continue
+            last = float(hist["Cours"].iloc[-1])
+            previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
+            change = (last / previous - 1) * 100 if previous else 0.0
+            candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": round(last, 4),
+                                   "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y"),
+                                   "Thèse / vigilance": thesis})
+        st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True, hide_index=True)
+        st.markdown(
+            "- **SPDR santé :** exposition mondiale développée, diversifiée entre médicaments, équipements et services ; suivre concentration, valorisation, encours et frais. Comparer avec iShares (IE00BJ5JNZ06, TER indicatif 0,18%).\n"
+            "- **VanEck PIKA :** ETF récent et concentré ; suivre encours, liquidité, spreads, concentration et volatilité. La croissance de la demande électrique IA ne garantit pas un rendement boursier.\n"
+            "- **Schneider / Siemens :** suivre commandes data centers, marges, cash-flow, dette, valorisation et risques d'intégration. Chevauchement important avec VanEck ; éviter une concentration involontaire.\n"
+            "- **Diversification :** la santé diversifie davantage les expositions énergie/industrie ; l'électrification renforce surtout le facteur industriel déjà présent via Air Liquide et l'ETF mondial."
+        )
 
-    st.subheader("Nouvelles opportunités — santé, électricité et industrie")
-    candidates = [
-        ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
-        ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
-        ("Schneider Electric", "SU.PA", "FR0000121972", "Réseaux, gestion électrique et data centers"),
-        ("Siemens", "SIE.DE", "DE0007236101", "Automatisation, électrification et industrie")
-    ]
-    candidate_rows = []
-    for name, symbol, isin, thesis in candidates:
-        hist = fetch_history(symbol, "5d")
-        if hist.empty:
-            candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": "Indisponible", "Variation séance": "—", "Date": "—", "Thèse / vigilance": thesis})
-            continue
-        last = float(hist["Cours"].iloc[-1])
-        previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-        change = (last / previous - 1) * 100 if previous else 0.0
-        candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": round(last, 4),
-                               "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y"),
-                               "Thèse / vigilance": thesis})
-    st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True, hide_index=True)
-    st.markdown(
-        "- **SPDR santé :** exposition mondiale développée, diversifiée entre médicaments, équipements et services ; suivre concentration, valorisation, encours et frais. Comparer avec iShares (IE00BJ5JNZ06, TER indicatif 0,18%).\n"
-        "- **VanEck PIKA :** ETF récent et concentré ; suivre encours, liquidité, spreads, concentration et volatilité. La croissance de la demande électrique IA ne garantit pas un rendement boursier.\n"
-        "- **Schneider / Siemens :** suivre commandes data centers, marges, cash-flow, dette, valorisation et risques d'intégration. Chevauchement important avec VanEck ; éviter une concentration involontaire.\n"
-        "- **Diversification :** la santé diversifie davantage les expositions énergie/industrie ; l'électrification renforce surtout le facteur industriel déjà présent via Air Liquide et l'ETF mondial."
-    )
     if not chf.empty:
         st.info(f"Suisse / CHF : {len(chf)} article(s) repéré(s). Les mouvements EUR/CHF et EUR/AED figurent dans l'onglet CHF & devises.")
     st.caption("Le nombre d'articles n'est jamais utilisé seul pour déclarer une crise. Les signaux géopolitiques et d'approvisionnement doivent être recoupés ; l'absence d'article ne signifie pas absence de risque.")
