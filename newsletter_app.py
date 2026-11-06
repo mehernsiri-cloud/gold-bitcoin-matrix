@@ -430,7 +430,7 @@ def market_watch_page():
     watch = dict(MARKET_SYMBOLS)
     watch.update({"Schneider Electric": "SU.PA", "Siemens": "SIE.DE"})
     selected = st.multiselect("Actifs suivis", list(watch), default=[
-        "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World (VWRL)",
+        "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)",
         "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
         "Schneider Electric", "Siemens"
     ], key="wels_market_assets")
@@ -1212,7 +1212,7 @@ def main():
             fetch_history.clear()
             fetch_article_text.clear()
             st.rerun()
-        st.caption("Actualités : cache 15 min · cours : cache 5 min")
+        st.caption("Actualités : cache 10 min · cours : cache 5 min")
     if page == "Vue d'ensemble & Géopolitique":
         # Keep the original overview first, then show the full geopolitics/supply monitor.
         executive_dashboard(df)
