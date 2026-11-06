@@ -434,10 +434,16 @@ def render_market_forecast_dashboard() -> None:
             table["p10"] = table["p10"].map(lambda x: f"{x:,.2f}")
             table["p90"] = table["p90"].map(lambda x: f"{x:,.2f}")
             table["expected_return_pct"] = table["expected_return_pct"].map(lambda x: f"{x:+.2f}%")
+            table["calibration"] = table.apply(
+                lambda row: f"{row['calibration_bias_pct']:+.2f}% (n={int(row['calibration_sample'])})"
+                if int(row["calibration_sample"]) >= 20 else "En apprentissage",
+                axis=1,
+            )
             table = table.rename(columns={
                 "horizon_days": "Horizon (jours)", "target_date": "Date cible",
                 "predicted_price": "Projection centrale", "p10": "Borne basse P10",
                 "p90": "Borne haute P90", "expected_return_pct": "Variation estimée",
+                "calibration": "Biais historique détecté",
             })
             st.dataframe(table, use_container_width=True, hide_index=True)
 
@@ -457,7 +463,7 @@ def render_market_forecast_dashboard() -> None:
                     factor_rows.append({"Facteur": label, "Signal": detail})
                 st.dataframe(pd.DataFrame(factor_rows), use_container_width=True, hide_index=True)
                 if macro:
-                    st.caption(f"Scores macro pondérés issus de weight.yaml · dernière modification : {macro_updated or 'inconnue'}")
+                    st.caption(f"Scores macro pondérés issus de weight.yaml · dernière modification : {macro_updated or 'inconnue'}. Les rubriques adoption, réglementation et géopolitique restent des proxys, pas des mesures directes d'événements.")
                 else:
                     st.warning("Aucun score macro disponible : la projection repose principalement sur les facteurs de marché.")
             with right:
