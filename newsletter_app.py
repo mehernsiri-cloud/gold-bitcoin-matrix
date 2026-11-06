@@ -825,33 +825,92 @@ def fetch_ecb_ciss():
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_rte_grid_data():
-    """Latest French national RTE/ODRE éCO2mix observations (15-minute dataset)."""
-    url = "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records"
-    response = requests.get(url, params={"limit": 48, "order_by": "date_heure desc"}, headers=REQUEST_HEADERS, timeout=20)
-    response.raise_for_status()
-    records = response.json().get("results", [])
+    """Latest French national RTE/ODRE éCO2mix observations, with API-domain fallback."""
+    from io import StringIO
+    import json
+
+    endpoints = [
+        "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records",
+        "https://reseaux-energies-rte.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records",
+    ]
+    failures = []
+    records = []
+    for url in endpoints:
+        try:
+            response = requests.get(
+                url,
+                params={"limit": 100, "order_by": "date_heure DESC"},
+                headers=REQUEST_HEADERS,
+                timeout=25,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            records = payload.get("results", [])
+            if records:
+                break
+            failures.append(f"{url.split('/')[2]}: réponse sans enregistrements")
+        except Exception as exc:
+            failures.append(f"{url.split('/')[2]}: {type(exc).__name__} {str(exc)[:160]}")
+
+    # CSV fallback: ODRÉ also publishes the same national real-time dataset as CSV.
     if not records:
-        raise ValueError("Aucun enregistrement RTE")
+        csv_urls = [
+            "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/exports/csv",
+            "https://reseaux-energies-rte.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/exports/csv",
+        ]
+        for url in csv_urls:
+            try:
+                response = requests.get(url, params={"limit": 100}, headers=REQUEST_HEADERS, timeout=30)
+                response.raise_for_status()
+                data = pd.read_csv(StringIO(response.text), sep=None, engine="python")
+                if not data.empty:
+                    records = data.to_dict("records")
+                    break
+            except Exception as exc:
+                failures.append(f"{url.split('/')[2]} CSV: {type(exc).__name__} {str(exc)[:160]}")
+
+    if not records:
+        raise ValueError("Aucune donnée reçue depuis les deux API ODRÉ/RTE. " + " | ".join(failures))
+
     data = pd.DataFrame(records)
-    for col in ["consommation", "prevision_j", "ech_physiques", "nucleaire", "gaz", "eolien", "solaire", "hydraulique", "taux_co2"]:
+    required = {"date_heure", "consommation"}
+    missing = required - set(data.columns)
+    if missing:
+        raise ValueError(f"Champs absents de la réponse ODRÉ : {', '.join(sorted(missing))}. Champs reçus : {', '.join(map(str, data.columns[:20]))}")
+
+    numeric_cols = [
+        "consommation", "prevision_j", "prevision_j1", "ech_physiques",
+        "nucleaire", "gaz", "eolien", "solaire", "hydraulique", "taux_co2",
+    ]
+    for col in numeric_cols:
         if col in data.columns:
             data[col] = pd.to_numeric(data[col], errors="coerce")
+
     data["date_heure"] = pd.to_datetime(data["date_heure"], utc=True, errors="coerce")
     data = data.dropna(subset=["date_heure", "consommation"]).sort_values("date_heure")
     if data.empty:
-        raise ValueError("Mesures RTE non exploitables")
+        raise ValueError("Les données reçues ne contiennent aucune mesure exploitable (date_heure/consommation).")
+
     latest = data.iloc[-1]
     age_hours = max(0, (pd.Timestamp.now(tz="UTC") - latest["date_heure"]).total_seconds() / 3600)
     demand = float(latest["consommation"])
-    forecast = float(latest["prevision_j"]) if pd.notna(latest.get("prevision_j")) else None
-    deviation = ((demand / forecast) - 1) * 100 if forecast and forecast > 0 else None
-    physical_exchange = float(latest["ech_physiques"]) if pd.notna(latest.get("ech_physiques")) else None
-    import_share = max(0, -physical_exchange) / demand * 100 if physical_exchange is not None and demand > 0 else None
-    return {"date": latest["date_heure"].strftime("%d/%m/%Y %H:%M UTC"), "age_hours": age_hours,
-            "demand": demand, "forecast": forecast, "deviation": deviation,
-            "exchange": physical_exchange, "import_share": import_share,
-            "carbon": float(latest["taux_co2"]) if pd.notna(latest.get("taux_co2")) else None}
+    forecast_value = latest.get("prevision_j")
+    if pd.isna(forecast_value):
+        forecast_value = latest.get("prevision_j1")
+    forecast = float(forecast_value) if forecast_value is not None and pd.notna(forecast_value) and float(forecast_value) > 0 else None
+    deviation = ((demand / forecast) - 1) * 100 if forecast else None
+    physical_exchange = float(latest["ech_physiques"]) if "ech_physiques" in data.columns and pd.notna(latest.get("ech_physiques")) else None
 
+    # In éCO2mix, negative physical exchanges mean net exports; positive means net imports.
+    import_share = max(0, physical_exchange) / demand * 100 if physical_exchange is not None and demand > 0 else None
+    carbon = float(latest["taux_co2"]) if "taux_co2" in data.columns and pd.notna(latest.get("taux_co2")) else None
+    return {
+        "date": latest["date_heure"].strftime("%d/%m/%Y %H:%M UTC"),
+        "age_hours": age_hours, "demand": demand, "forecast": forecast,
+        "deviation": deviation, "exchange": physical_exchange,
+        "import_share": import_share, "carbon": carbon,
+        "records": len(data), "api_host": url.split("/")[2],
+    }
 
 def operational_risk_panel():
     st.subheader("Données opérationnelles — indicateurs mesurés")
@@ -894,7 +953,8 @@ def operational_risk_panel():
             st.caption(f"Dernier point : {rte['date']} · âge des données : {rte['age_hours']:.1f} h · RTE / ODRÉ, données temps réel estimées.")
             st.caption("La part importée est calculée à partir des échanges physiques nets. Ce n'est pas une mesure de marge de réserve ni une prévision de blackout.")
         except Exception as exc:
-            st.warning(f"Données RTE indisponibles : {type(exc).__name__}. Indicateur non qualifié.")
+            st.warning(f"Données RTE indisponibles : {type(exc).__name__} — {str(exc)[:350]}. Indicateur non qualifié.")
+            st.caption("Diagnostic technique affiché pour distinguer une API inaccessible, un quota dépassé et un changement de format des données.")
     st.caption("Couverture opérationnelle actuelle : finance zone euro (BCE CISS) et réseau électrique français (RTE). Les indicateurs opérationnels directs pour carburants, médicaments, eau, gaz, tensions sociales et opérations militaires restent à intégrer ; ces domaines ne doivent pas être considérés comme couverts par les seules actualités.")
 
 
