@@ -912,7 +912,7 @@ def fetch_rte_grid_data():
         data.loc[invalid_dates, "date_heure"] = pd.to_datetime(rebuilt, utc=True, errors="coerce", dayfirst=True)
 
     def _rte_number(series):
-        cleaned = series.astype(str).str.replace("\\u202f", "", regex=False).str.replace("\\u00a0", "", regex=False).str.replace(" ", "", regex=False).str.replace(",", ".", regex=False)
+        cleaned = series.astype(str).str.replace(r"[\s\u00a0\u202f]", "", regex=True).str.replace(",", ".", regex=False)
         cleaned = cleaned.replace({"": None, "nan": None, "None": None, "null": None, "nd": None, "ND": None})
         return pd.to_numeric(cleaned, errors="coerce")
 
@@ -1184,7 +1184,7 @@ def geopolitics_supply_dashboard(df, errors=None):
 
     st.subheader("Jauges de pression — signaux précurseurs observés")
     st.caption("Score 0–100 calculé à partir de la gravité attribuée à chaque signal, de sa fraîcheur, du nombre de sources distinctes et de la répétition de signaux. Un score élevé signifie davantage de signaux documentés, pas une probabilité de crise.")
-    gauge_cols = st.columns(5)
+    gauge_cols = st.columns(len(risk_domains))
     for index, domain in enumerate(risk_domains):
         domain_events = [event for event in events if domain in event.get("domains", [])]
         value, event_count, source_count = pressure_index(domain_events)
