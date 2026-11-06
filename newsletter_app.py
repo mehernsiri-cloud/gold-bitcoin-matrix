@@ -1715,11 +1715,11 @@ def _generate_ai_newsletter(articles_json, api_key, refresh_id):
         "## Le point du jour\n"
         "En 2 phrases : climat général et facteur dominant. Si le corpus ne permet pas de conclure, dis-le.\n\n"
         "## Les 3 informations à retenir\n"
-        "Maximum 3 sujets, classés par importance réelle. Pour chaque sujet :\n"
-        "- **Ce qui se passe :** 1 phrase factuelle.\n"
-        "- **Pourquoi c'est important :** 1 phrase sur la conséquence économique, stratégique ou humaine.\n"
-        "- **Marchés concernés :** actifs/secteurs réellement exposés, ou 'pas d'impact marché identifiable'.\n"
-        "- **À surveiller :** 1 déclencheur concret.\n"
+        "Maximum 3 sujets, classés par importance réelle. Pour chaque sujet, crée un sous-titre Markdown distinct au format '### 1. Titre court du sujet', puis 4 lignes :\n"
+        "- **FAIT :** 1 phrase factuelle.\n"
+        "- **IMPACT :** 1 phrase sur la conséquence économique ou stratégique.\n"
+        "- **MARCHÉS :** actifs/secteurs réellement exposés, ou 'pas d'impact marché identifiable'.\n"
+        "- **À SURVEILLER :** 1 déclencheur concret.\n"
         "Ne retiens jamais un accident, un fait divers ou une information locale isolée simplement parce qu'elle est récente. "
         "Un événement humain ne mérite une place que s'il révèle un risque systémique, une crise majeure ou une rupture de service essentiel.\n\n"
         "## Répercussions possibles sur les marchés\n"
@@ -1759,6 +1759,127 @@ def _generate_ai_newsletter(articles_json, api_key, refresh_id):
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
+
+
+def _newsletter_sections(markdown_text):
+    """Split the model's Markdown into named dashboard sections."""
+    chunks = re.split(r"(?m)^##\s+(.+?)\s*$", str(markdown_text or ""))
+    sections = {}
+    for index in range(1, len(chunks), 2):
+        title = chunks[index].strip().lower()
+        body = chunks[index + 1].strip() if index + 1 < len(chunks) else ""
+        sections[title] = body
+    return sections
+
+
+def _newsletter_cards(markdown_text):
+    """Extract level-three Markdown blocks as independent story cards."""
+    chunks = re.split(r"(?m)^###\s+(.+?)\s*$", str(markdown_text or ""))
+    cards = []
+    if len(chunks) > 1:
+        for index in range(1, len(chunks), 2):
+            title = chunks[index].strip()
+            body = chunks[index + 1].strip() if index + 1 < len(chunks) else ""
+            cards.append((title, body))
+    return cards
+
+
+def _newsletter_bullets(markdown_text):
+    """Return top-level Markdown bullets for compact dashboard tiles."""
+    return [
+        line.strip()[2:].strip()
+        for line in str(markdown_text or "").splitlines()
+        if re.match(r"^\s*[-*]\s+", line) and not re.match(r"^\s{2,}[-*]\s+", line)
+    ]
+
+
+def render_newsletter_dashboard(markdown_text):
+    """Render the AI analysis as a visual editorial dashboard, not a long article."""
+    sections = _newsletter_sections(markdown_text)
+    st.markdown("""
+    <style>
+    .nl-kicker{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;color:#64748b;margin-bottom:7px}
+    .nl-hero{background:linear-gradient(120deg,#14263d,#243f5c);border-radius:16px;padding:20px 22px;color:#fff;margin:8px 0 18px}
+    .nl-hero p,.nl-hero li{color:#eef4fb!important;font-size:16px;line-height:1.55}
+    .nl-hero strong{color:#fff}
+    .nl-section-title{font-size:21px;font-weight:800;color:var(--text-color);margin:18px 0 10px}
+    .nl-card{background:var(--secondary-background-color);border:1px solid rgba(128,145,166,.22);border-radius:13px;padding:15px 16px;min-height:120px;margin-bottom:10px}
+    .nl-card h4{font-size:15px;margin:0 0 9px 0;color:var(--text-color)}
+    .nl-card p,.nl-card li{font-size:14px;line-height:1.5}
+    .nl-meta{font-size:12px;color:#718096}
+    </style>
+    """, unsafe_allow_html=True)
+
+    point = sections.get("le point du jour", "")
+    if point:
+        st.markdown('<div class="nl-hero"><div class="nl-kicker" style="color:#b9cbe0">LE POINT DU JOUR</div>', unsafe_allow_html=True)
+        st.markdown(point)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    news = sections.get("les 3 informations à retenir", "")
+    if news:
+        st.markdown('<div class="nl-section-title">Les informations majeures</div>', unsafe_allow_html=True)
+        cards = _newsletter_cards(news)
+        if cards:
+            columns = st.columns(min(3, len(cards)), gap="medium")
+            for index, (title, body) in enumerate(cards):
+                with columns[index % len(columns)]:
+                    with st.container(border=True):
+                        st.markdown(f"**{title}**")
+                        st.markdown(body)
+        else:
+            st.markdown(news)
+
+    market = sections.get("répercussions possibles sur les marchés", "")
+    if market:
+        st.markdown('<div class="nl-section-title">Répercussions sur les marchés</div>', unsafe_allow_html=True)
+        bullets = _newsletter_bullets(market)
+        if bullets:
+            columns = st.columns(2, gap="medium")
+            for index, item in enumerate(bullets):
+                with columns[index % 2]:
+                    with st.container(border=True):
+                        st.markdown(item)
+        else:
+            with st.container(border=True):
+                st.markdown(market)
+
+    portfolio = sections.get("ce que cela change pour le portefeuille", "")
+    if portfolio:
+        st.markdown('<div class="nl-section-title">Lecture portefeuille</div>', unsafe_allow_html=True)
+        bullets = _newsletter_bullets(portfolio)
+        if bullets:
+            columns = st.columns(min(3, len(bullets)), gap="medium")
+            for index, item in enumerate(bullets):
+                with columns[index % len(columns)]:
+                    with st.container(border=True):
+                        st.markdown(item)
+        else:
+            with st.container(border=True):
+                st.markdown(portfolio)
+
+    watch = sections.get("scénario et veille", "")
+    if watch:
+        st.markdown('<div class="nl-section-title">Scénario & indicateurs à surveiller</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(watch)
+
+    quality = sections.get("fiabilité des informations", "")
+    if quality:
+        st.markdown('<div class="nl-section-title">Fiabilité des informations</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(quality)
+
+    rendered_names = {
+        "le point du jour", "les 3 informations à retenir",
+        "répercussions possibles sur les marchés",
+        "ce que cela change pour le portefeuille",
+        "scénario et veille", "fiabilité des informations"
+    }
+    for title, body in sections.items():
+        if title not in rendered_names and body:
+            with st.expander(title.capitalize()):
+                st.markdown(body)
 
 
 def ai_newsletter_page(df, errors):
@@ -1884,7 +2005,7 @@ def ai_newsletter_page(df, errors):
                 f"{int(time.time() // 600)}:{st.session_state.get('wels_ai_refresh_id', 'initial')}"
             )
         if briefing:
-            st.markdown(briefing)
+            render_newsletter_dashboard(briefing)
         else:
             st.warning("Le modèle n'a pas retourné de contenu exploitable.")
     except requests.exceptions.Timeout:
