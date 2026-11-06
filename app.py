@@ -1,13 +1,7 @@
 # app.py
-# Rewritten full application file with separate "Candlestick Predictions" menu and
-# next-week synthetic candlestick generation moved to candlestick_predictions.py.
-#
-# Features:
-#  - Gold & Bitcoin dashboards
-#  - AI Forecast dashboard (candlestick-related predictions removed from here)
-#  - Dedicated: Candlestick Predictions menu (calls render_candlestick_dashboard)
-#  - Jobs & Real Estate Bot placeholders preserved
-#  - Logging of predicted daily values into data/ai_predictions_log.csv
+# Unified Gold & Bitcoin market intelligence dashboard.
+# Live market quotes, explainable multi-factor forecasts and immutable forecast tracking.
+# Other application modules (Jobs, Real Estate, Task Planner and Newsletter) remain separate.
 #
 # Author: ChatGPT (generated for user)
 # Date: 2025-10-03
@@ -56,16 +50,6 @@ except Exception:
         st.warning("jobs_app not found — Jobs dashboard unavailable.")
 
 try:
-    from ai_predictor import predict_next_n, compare_predictions_vs_actuals
-except Exception:
-    def predict_next_n(asset_name="Bitcoin", n_steps=7):
-        # fallback: no AI predictions available
-        return pd.DataFrame()
-
-    def compare_predictions_vs_actuals(*args, **kwargs):
-        return {}
-
-try:
     from real_estate_bot import real_estate_dashboard
 except Exception:
     def real_estate_dashboard():
@@ -76,18 +60,6 @@ from newsletter_app import newsletter_dashboard
 
 
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
-
-# -------------------------------------------------------------------
-# NEW: candlestick module import (all candlestick-specific logic moved there)
-# -------------------------------------------------------------------
-#try:
-#    from candlestick_predictions import render_candlestick_dashboard
-#except Exception as e:
-#    def render_candlestick_dashboard(df_actual):
-#        st.error(f"Candlestick module not found: {e}\nPlease ensure candlestick_predictions.py exists.")
-# -------------------------------------------------------------------
-# Candlestick Predictions import
-# -------------------------------------------------------------------
 
 from market_forecast import render_market_forecast_dashboard
 
@@ -102,7 +74,6 @@ if not os.path.exists(DATA_DIR):
         pass  # downstream writes will warn if they fail
 
 PREDICTION_FILE = os.path.join(DATA_DIR, "predictions_log.csv")
-AI_PRED_FILE = os.path.join(DATA_DIR, "ai_predictions_log.csv")
 ACTUAL_FILE = os.path.join(DATA_DIR, "actual_data.csv")
 WEIGHT_FILE = "weight.yaml"
 
@@ -501,7 +472,6 @@ def render_eur_aed_monitor():
 # -------------------------------------------------------------------
 df_pred = load_csv_safe(PREDICTION_FILE, ["timestamp", "asset", "predicted_price", "volatility", "risk"])
 df_actual = load_csv_safe(ACTUAL_FILE, ["timestamp", "gold_actual", "bitcoin_actual", "bitcoin_open", "bitcoin_high", "bitcoin_low", "bitcoin_close"])
-df_ai_pred_log = load_csv_safe(AI_PRED_FILE, ["timestamp", "asset", "predicted_price", "method"])
 
 # normalize timestamp columns where present
 def ensure_timestamp(df: pd.DataFrame, col: str = "timestamp"):
@@ -515,7 +485,6 @@ def ensure_timestamp(df: pd.DataFrame, col: str = "timestamp"):
 
 ensure_timestamp(df_pred)
 ensure_timestamp(df_actual)
-ensure_timestamp(df_ai_pred_log)
 
 # Load weights (assumptions)
 if os.path.exists(WEIGHT_FILE):
@@ -828,16 +797,12 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 
 
 # -------------------------------------------------------------------
-# NOTE: CANDLESTICK PATTERN DETECTION & SYNTHESIS
-# -------------------------------------------------------------------
-# All candlestick pattern detection and synthetic-prediction logic has been moved to
-# candlestick_predictions.py. This file will call render_candlestick_dashboard(...) when
-# the user chooses the "Candlestick Predictions" menu. This keeps app.py stable and short
-# of domain-specific candlestick code.
+# The Gold & Bitcoin menu now delegates all market analysis and forecasting
+# to market_forecast.py. Legacy AI Forecast and synthetic Candlestick menus are retired.
 
 
 # -------------------------------------------------------------------
-# MAIN MENU: add "Candlestick Predictions"
+# MAIN MENU: one unified Gold & Bitcoin market module
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
@@ -853,7 +818,7 @@ def render_header(title: str, subtitle: Optional[str] = None):
 
 
 # -------------------------------------------------------------------
-# GOLD & BITCOIN DASHBOARD (original behavior preserved)
+# UNIFIED GOLD & BITCOIN MARKET INTELLIGENCE
 # -------------------------------------------------------------------
 if menu == "Gold & Bitcoin":
     render_market_forecast_dashboard()
