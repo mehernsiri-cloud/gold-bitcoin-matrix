@@ -1812,9 +1812,9 @@ def render_newsletter_dashboard(markdown_text):
 
     point = sections.get("le point du jour", "")
     if point:
-        st.markdown('<div class="nl-hero"><div class="nl-kicker" style="color:#b9cbe0">LE POINT DU JOUR</div>', unsafe_allow_html=True)
-        st.markdown(point)
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.caption("LE POINT DU JOUR")
+            st.markdown(point)
 
     news = sections.get("les 3 informations à retenir", "")
     if news:
