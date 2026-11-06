@@ -1690,7 +1690,7 @@ def _newsletter_api_key():
 
 
 @st.cache_data(ttl=5400, show_spinner=False)
-def _generate_ai_newsletter(articles_json, api_key):
+def _generate_ai_newsletter(articles_json, api_key, refresh_id):
     """Generate a source-grounded French briefing; cache by exact source corpus."""
     articles = json.loads(articles_json)
     if not articles:
@@ -1805,7 +1805,8 @@ def ai_newsletter_page(df, errors):
     try:
         with st.spinner("L'IA recoupe les informations et rédige l'analyse stratégique…"):
             briefing = _generate_ai_newsletter(
-                json.dumps(articles, ensure_ascii=False, sort_keys=True), api_key
+                json.dumps(articles, ensure_ascii=False, sort_keys=True), api_key,
+                str(st.session_state.get("wels_ai_refresh_id", "initial"))
             )
         if briefing:
             st.markdown(briefing)
@@ -2122,6 +2123,8 @@ def main():
             fetch_news.clear()
             fetch_history.clear()
             fetch_article_text.clear()
+            # Force a fresh AI synthesis even when the incoming RSS corpus is unchanged.
+            st.session_state["wels_ai_refresh_id"] = str(time.time_ns())
             st.rerun()
         st.caption("Actualités : cache 10 min · cours : cache 5 min")
     if page == "Vue d'ensemble & Géopolitique":
