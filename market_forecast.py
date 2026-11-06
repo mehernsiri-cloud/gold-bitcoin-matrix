@@ -383,6 +383,44 @@ def _forecast_chart(result: dict) -> go.Figure:
     return fig
 
 
+def _gold_usd_to_eur_per_gram() -> tuple[float, pd.DataFrame]:
+    """Return latest USD->EUR rate and aligned daily FX history for gold conversion."""
+    fx_raw = yf.Ticker("EURUSD=X").history(period="2y", interval="1d", auto_adjust=True)
+    fx = _clean_history(fx_raw).rename(columns={"close": "eurusd"})
+    if fx.empty:
+        raise RuntimeError("Taux EUR/USD indisponible : conversion de l'or en EUR/g impossible.")
+    fx = fx.sort_values("timestamp")
+    rate = float(fx["eurusd"].iloc[-1])
+    if not np.isfinite(rate) or rate <= 0:
+        raise RuntimeError("Taux EUR/USD invalide.")
+    return rate, fx
+
+
+def _gold_display_result(result: dict, eurusd: float, fx_history: pd.DataFrame) -> dict:
+    """Convert display-only gold values; persisted model data remains USD/oz."""
+    out = dict(result)
+    hist = result["history"].copy().sort_values("timestamp")
+    fx = fx_history.copy().sort_values("timestamp")
+    hist = pd.merge_asof(hist, fx, on="timestamp", direction="backward", tolerance=pd.Timedelta(days=5))
+    hist = hist.dropna(subset=["eurusd"])
+    hist["close"] = hist["close"] / hist["eurusd"] / 31.1034768
+    out["history"] = hist[["timestamp", "close"]].copy()
+    scale = 1.0 / eurusd / 31.1034768
+    out["current_price"] = result["current_price"] * scale
+    out["sma20"] = result["sma20"] * scale
+    out["sma50"] = result["sma50"] * scale
+    out["sma200"] = result["sma200"] * scale
+    out["forecasts"] = [
+        {**row, "predicted_price": row["predicted_price"] * scale,
+         "p10": row["p10"] * scale, "p90": row["p90"] * scale}
+        for row in result["forecasts"]
+    ]
+    out["unit"] = "EUR/g"
+    out["fx_rate"] = eurusd
+    out["color"] = "#D6A84B"
+    return out
+
+
 def render_market_forecast_dashboard() -> None:
     st.title("🪙 Gold & Bitcoin | Market Intelligence & Forecast")
     st.caption("Cours de marché, facteurs explicatifs, projections probabilistes et suivi objectif des erreurs.")
@@ -405,12 +443,21 @@ def render_market_forecast_dashboard() -> None:
             try:
                 result = build_forecast(asset, market["price"], market["history"], macro)
                 save_forecasts(asset, result)
+                if asset == "Gold":
+                    eurusd, fx_history = _gold_usd_to_eur_per_gram()
+                    display_result = _gold_display_result(result, eurusd, fx_history)
+                    display_market_price = display_result["current_price"]
+                    display_unit = "EUR/g"
+                else:
+                    display_result = result
+                    display_market_price = market["price"]
+                    display_unit = market["unit"]
             except Exception as exc:
                 st.error(f"Prévision indisponible pour {asset} : {exc}")
                 continue
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Cours actuel", f"{market['price']:,.2f} {market['unit']}", f"{market['change_24h']:+.2f}%" if market["change_24h"] is not None else None)
+            c1.metric("Cours actuel", f"{display_market_price:,.2f} {display_unit}", f"{market['change_24h']:+.2f}%" if market["change_24h"] is not None else None)
             c2.metric("RSI 14", f"{result['rsi14']:.1f}", "Surachat" if result["rsi14"] >= 70 else "Survente" if result["rsi14"] <= 30 else "Zone neutre")
             c3.metric("Volatilité 20 séances", f"{result['volatility20_pct']:.2f}%")
             c4.metric("Tendance", "Haussière" if result["daily_drift"] > 0.00015 else "Baissière" if result["daily_drift"] < -0.00015 else "Neutre")
@@ -422,14 +469,14 @@ def render_market_forecast_dashboard() -> None:
                 quote_time = quote_time.replace(tzinfo=timezone.utc)
             age_minutes = (datetime.now(timezone.utc) - quote_time).total_seconds() / 60 if quote_time else None
             freshness = f"Cours reçu : {quote_time.astimezone().strftime('%d/%m/%Y %H:%M:%S %Z')}" if quote_time else "Horodatage indisponible"
-            st.caption(f"{freshness} · Source : {market['quote_source']} · {market['unit']}")
+            st.caption(f"{freshness} · Source : {market['quote_source']} · {display_unit}" + (f" · Conversion EUR/USD : {eurusd:.5f} · 1 oz troy = 31,1034768 g" if asset == "Gold" else ""))
             if age_minutes is not None and age_minutes > 60:
                 st.warning(f"Le dernier cours exploitable date de {age_minutes/60:.1f} h : interpréter la projection avec prudence.")
 
-            st.plotly_chart(_forecast_chart({**result, "unit": market["unit"], "color": market["color"]}), use_container_width=True)
+            st.plotly_chart(_forecast_chart({**display_result, "unit": display_unit, "color": market["color"]}), use_container_width=True)
 
             st.subheader("Projections par échéance")
-            table = pd.DataFrame(result["forecasts"])
+            table = pd.DataFrame(display_result["forecasts"])
             table["predicted_price"] = table["predicted_price"].map(lambda x: f"{x:,.2f}")
             table["p10"] = table["p10"].map(lambda x: f"{x:,.2f}")
             table["p90"] = table["p90"].map(lambda x: f"{x:,.2f}")
@@ -489,7 +536,18 @@ def render_market_forecast_dashboard() -> None:
         display = log.sort_values("issued_at", ascending=False).head(40).copy()
         cols = ["asset", "issued_at", "target_date", "horizon_days", "current_price", "predicted_price", "actual_price", "error_pct", "status"]
         display = display[[c for c in cols if c in display.columns]]
+        if not display.empty and (display["asset"] == "Gold").any():
+            try:
+                eurusd, _ = _gold_usd_to_eur_per_gram()
+                gold_rows = display["asset"] == "Gold"
+                for col in ["current_price", "predicted_price", "actual_price"]:
+                    if col in display.columns:
+                        display.loc[gold_rows, col] = pd.to_numeric(display.loc[gold_rows, col], errors="coerce") / eurusd / 31.1034768
+                display.loc[gold_rows, "asset"] = "Or (EUR/g)"
+            except Exception:
+                display.loc[display["asset"] == "Gold", "asset"] = "Or (historique USD/oz — conversion indisponible)"
         st.dataframe(display, use_container_width=True, hide_index=True)
+        st.caption("L'or est affiché en €/g. Les valeurs techniques archivées restent en USD/oz; le journal applique le taux EUR/USD courant à l'affichage.")
 
 
 def run_batch() -> None:
