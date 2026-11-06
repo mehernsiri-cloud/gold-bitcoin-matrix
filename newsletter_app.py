@@ -1696,32 +1696,51 @@ def _generate_ai_newsletter(articles_json, api_key, refresh_id):
     if not articles:
         return ""
     system_prompt = (
-        "Tu es analyste senior macroéconomie, marchés, géopolitique et risques systémiques. "
-        "Rédige en français un briefing stratégique précis, nuancé et utile à un investisseur particulier. "
-        "Utilise uniquement les éléments fournis. N'invente aucun cours, chiffre, date, citation, causalité "
-        "ou événement. Distingue explicitement faits rapportés, interprétations et hypothèses. "
-        "Quand les sources divergent ou sont insuffisantes, dis-le. Un titre ou un résumé RSS ne constitue "
-        "pas une confirmation. Ne transforme jamais une absence d'information en absence de risque. "
-        "Ne donne pas d'ordre automatique d'achat ou de vente."
+        "Tu es un analyste senior des marchés, de la macroéconomie et des risques géopolitiques. "
+        "Tu écris une note de décision claire pour un investisseur, pas un rapport académique. "
+        "Sélectionne uniquement les informations qui changent réellement la compréhension du risque, "
+        "des marchés ou des actifs. Ignore les faits divers, accidents isolés, faits divers judiciaires, "
+        "sport, célébrités et actualités locales sans conséquence plus large. "
+        "Ne remplis jamais une rubrique avec 'aucune information' : omets-la si elle n'apporte rien. "
+        "Utilise uniquement les sources fournies ; n'invente aucun chiffre, cours, causalité ou événement. "
+        "Sépare clairement FAIT, LECTURE et INCERTITUDE. Un titre RSS seul n'est pas une confirmation. "
+        "Ne donne aucun ordre automatique d'achat ou de vente. "
+        "Style : français naturel, phrases courtes, titres explicites, paragraphes très courts, "
+        "pas de grands tableaux, pas de répétitions, pas de jargon non expliqué."
     )
     user_prompt = (
-        "À partir des articles ci-dessous, produis un briefing avec :\n"
-        "1. Synthèse exécutive (5 points maximum, importance décroissante).\n"
-        "2. Analyse approfondie des événements majeurs : ce qui s'est passé, mécanismes économiques/financiers, "
-        "éléments confirmés et inconnues.\n"
-        "3. Transmission aux marchés : actions, obligations/taux, dollar, EUR/CHF, pétrole/énergie, or et Bitcoin "
-        "(uniquement si les sources permettent une analyse pertinente).\n"
-        "4. Gagnants/perdants potentiels par secteurs, avec les conditions et risques associés.\n"
-        "5. Scénarios à 1-4 semaines : central, dégradation, détente ; déclencheurs observables, sans probabilités "
-        "chiffrées non justifiées.\n"
-        "6. Implications pour un portefeuille diversifié exposé aux actions mondiales, énergie, défense, santé, "
-        "utilities/électricité, or et liquidités. Pas de conseil personnalisé ni d'ordre de transaction.\n"
-        "7. Tableau de surveillance : indicateur, pourquoi il compte, signal à surveiller.\n"
-        "8. Qualité documentaire : nombre de sources distinctes, corroborations, limites et niveau de confiance "
-        "(élevé/moyen/faible, justifié).\n\n"
-        "Référence chaque affirmation importante avec les identifiants [S1], [S2]… fournis. "
-        "N'affirme pas qu'une séance boursière a chuté ou qu'un mouvement est historique sans données de marché "
-        "chiffrées dans les sources. Si le corpus est trop faible, indique clairement les limites et réduis la portée.\n\n"
+        "Rédige une newsletter financière et géopolitique facile à parcourir. "
+        "Le lecteur doit comprendre l'essentiel en 90 secondes. Maximum 650 mots.\n\n"
+        "FORMAT OBLIGATOIRE :\n"
+        "## Le point du jour\n"
+        "En 2 phrases : climat général et facteur dominant. Si le corpus ne permet pas de conclure, dis-le.\n\n"
+        "## Les 3 informations à retenir\n"
+        "Maximum 3 sujets, classés par importance réelle. Pour chaque sujet :\n"
+        "- **Ce qui se passe :** 1 phrase factuelle.\n"
+        "- **Pourquoi c'est important :** 1 phrase sur la conséquence économique, stratégique ou humaine.\n"
+        "- **Marchés concernés :** actifs/secteurs réellement exposés, ou 'pas d'impact marché identifiable'.\n"
+        "- **À surveiller :** 1 déclencheur concret.\n"
+        "Ne retiens jamais un accident, un fait divers ou une information locale isolée simplement parce qu'elle est récente. "
+        "Un événement humain ne mérite une place que s'il révèle un risque systémique, une crise majeure ou une rupture de service essentiel.\n\n"
+        "## Répercussions possibles sur les marchés\n"
+        "4 lignes maximum, uniquement pour les actifs ayant un lien crédible avec les faits : actions/tech, taux/dollar, "
+        "pétrole-énergie, EUR/CHF, or, Bitcoin. Distingue mouvement observé et effet potentiel. "
+        "Ne déduis pas un mouvement de marché d'un article qui ne contient aucun cours.\n\n"
+        "## Ce que cela change pour le portefeuille\n"
+        "Maximum 3 puces, parmi actions mondiales, énergie, transport maritime, défense, santé, utilities/électricité, "
+        "or, Bitcoin et liquidités. Indique clairement 'impact direct', 'impact indirect' ou 'pas de signal'. "
+        "Aucune recommandation mécanique de vente/achat.\n\n"
+        "## Scénario et veille\n"
+        "Un scénario central en 1 phrase, puis 3 indicateurs maximum à surveiller avec leur déclencheur. "
+        "Ne donne pas de probabilités non justifiées.\n\n"
+        "## Fiabilité des informations\n"
+        "Une seule ligne : nombre de sources, corroboration (oui/non/partielle) et confiance (élevée/moyenne/faible). "
+        "Mentionne les limites importantes en une phrase maximum.\n\n"
+        "Règles : cite les sources [S1], [S2] immédiatement après les faits concernés. "
+        "N'invente jamais de gagnants/perdants sectoriels si les données ne les étayent pas. "
+        "Ne crée pas de tableau Markdown. Ne répète pas la même nouvelle dans plusieurs rubriques. "
+        "Si aucune actualité ne passe le filtre de pertinence, écris simplement qu'aucun événement majeur qualifié "
+        "n'a été identifié dans le corpus ; ne transforme pas des faits divers en analyse financière.\n\n"
         + json.dumps(articles, ensure_ascii=False)
     )
     response = requests.post(
@@ -1774,12 +1793,68 @@ def ai_newsletter_page(df, errors):
         st.info("Pas de nouvel article sur les dernières 72 heures. Aucun événement ne sera inventé.")
         return
 
-    # Prioritize distinct publishers and deduplicate near-identical headlines.
+    # Score relevance before sending anything to the model: recency alone must not
+    # promote local accidents or miscellaneous news into a financial briefing.
+    def _relevance_score(row):
+        title = str(row.get("Titre", "") or "").lower()
+        summary = str(row.get("Résumé", "") or "").lower()
+        combined = f"{title} {summary}"
+        high_impact_exceptions = (
+            "national emergency", "state of emergency", "mass casualty", "terrorist attack",
+            "major cyberattack", "critical infrastructure", "blackout", "nationwide strike",
+            "strait of hormuz", "suez canal", "red sea", "supply disruption",
+            "bank failure", "sovereign default", "systemic", "crise majeure", "urgence nationale",
+            "cyberattaque massive", "infrastructure critique", "pénurie nationale", "détroit d'ormuz"
+        )
+        noise_patterns = (
+            r"school bus accident", r"bus scolaire", r"car crash", r"road accident",
+            r"accident de la route", r"accident de car", r"faits divers", r"local court",
+            r"minor crime", r"celebrity", r"football match", r"sports results",
+            r"accident mortel", r"collision entre", r"un véhicule a quitté la route"
+        )
+        if any(re.search(pattern, combined) for pattern in noise_patterns) and not any(
+            term in combined for term in high_impact_exceptions
+        ):
+            return -10
+
+        groups = [
+            (["fed ", "federal reserve", "ecb", "bce", "snb", "banque centrale", "interest rate", "taux directeur", "inflation", "cpi", "pce", "gdp", "pib", "recession", "récession", "unemployment", "emploi", "bond yield", "obligation souveraine"], 3.0),
+            (["stock market", "wall street", "nasdaq", "s&p 500", "selloff", "sell-off", "market crash", "bourse", "actions technologiques", "valorisation", "earnings", "résultats trimestriels", "ai investment", "investissement ia"], 3.0),
+            (["oil price", "brent", "crude", "lng", "natural gas", "pétrole", "gaz naturel", "gazole", "électricité", "power grid", "energy supply", "raffinery", "raffinerie"], 3.0),
+            (["war", "invasion", "missile", "airstrike", "sanction", "ceasefire", "ukraine", "iran", "israel", "russia", "taiwan", "guerre", "frappes", "conflit", "blocus", "otan", "nato"], 2.5),
+            (["shipping", "tanker", "freight", "strait", "canal", "maritime", "port closure", "route commerciale", "transport maritime", "détroit", "mer rouge"], 2.5),
+            (["cyberattack", "ransomware", "data breach", "critical infrastructure", "telecom outage", "cyberattaque", "rançongiciel", "fuite de données", "infrastructure critique"], 2.5),
+            (["banking crisis", "bank failure", "liquidity crisis", "capital controls", "debt crisis", "crise bancaire", "contrôle des capitaux", "crise de la dette"], 3.0),
+            (["shortage", "rationing", "blackout", "power outage", "supply disruption", "medicine shortage", "pénurie", "rationnement", "coupure électrique", "rupture d'approvisionnement", "grève nationale"], 2.5),
+            (["defense spending", "military budget", "weapons orders", "defence", "defense", "budget militaire", "commandes d'armement"], 1.5),
+            (["health emergency", "pandemic", "epidemic", "drug shortage", "urgence sanitaire", "pandémie", "épidémie", "pénurie de médicaments"], 2.0),
+        ]
+        score = 0.0
+        for terms, weight in groups:
+            if any(term in title for term in terms):
+                score += weight
+            elif any(term in summary for term in terms):
+                score += weight * 0.55
+        if any(term in combined for term in ["france", "dubai", "uae", "emirates", "europe", "middle east", "moyen-orient", "suisse", "switzerland"]):
+            score += 0.25
+        return score
+
     recent = recent.sort_values("Date_tri", ascending=False, na_position="last") if "Date_tri" in recent else recent
-    recent = recent.drop_duplicates(subset=["Lien"]).head(6)
+    recent = recent.drop_duplicates(subset=["Lien"]).copy()
+    recent["_relevance"] = recent.apply(_relevance_score, axis=1)
+    qualified = recent[recent["_relevance"] >= 2.0].sort_values(
+        ["_relevance", "Date_tri"], ascending=[False, False], na_position="last"
+    ).head(10)
+    if qualified.empty:
+        st.success("Aucun événement majeur qualifié dans les actualités des dernières 72 heures. Les faits divers et informations sans impact identifiable sont volontairement écartés.")
+        st.caption("Le filtre privilégie les marchés, banques centrales, économie, énergie, conflits, routes commerciales, cybermenaces et services essentiels.")
+        with st.expander("Voir les actualités écartées (contrôle du filtre)"):
+            st.write(f"{len(recent)} article(s) examinés ; aucun n'a atteint le seuil de pertinence.")
+        return
+
     articles = []
-    with st.spinner(f"Lecture des sources et préparation du briefing ({len(recent)} articles)…"):
-        for index, (_, row) in enumerate(recent.iterrows(), start=1):
+    with st.spinner(f"Analyse des {len(qualified)} actualités les plus pertinentes…"):
+        for index, (_, row) in enumerate(qualified.iterrows(), start=1):
             url = str(row.get("Lien", "") or "")
             body = fetch_article_text(url) if url.startswith("http") else ""
             summary = str(row.get("Résumé", "") or "")
@@ -1799,7 +1874,7 @@ def ai_newsletter_page(df, errors):
         json.dumps(articles, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
     st.caption(
-        f"Corpus : {len(articles)} articles · {distinct_sources} sources éditoriales · "
+        f"Éléments retenus : {len(articles)} · {distinct_sources} sources éditoriales · "
         f"fenêtre : 72 h · Référence du corpus : {source_digest[:10]}"
     )
     try:
