@@ -2323,6 +2323,8 @@ def render_central_bank_gold_purchases():
 
 def executive_dashboard(df):
     """Executive view: common quote source, portfolio watch and candidate supports."""
+    # Put the central-bank gold chart at the top of the overview so it is immediately visible.
+    render_central_bank_gold_purchases()
     st.markdown("""
     <style>
     .risk-shell{background:#F4F6FA;border:1px solid #DCE3ED;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
@@ -2457,8 +2459,6 @@ def executive_dashboard(df):
     with st.expander("Voir le tableau détaillé des cours et variations"):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
-    render_central_bank_gold_purchases()
-
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
