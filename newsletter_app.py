@@ -2323,8 +2323,6 @@ def render_central_bank_gold_purchases():
 
 def executive_dashboard(df):
     """Executive view: common quote source, portfolio watch and candidate supports."""
-    # Put the central-bank gold chart at the top of the overview so it is immediately visible.
-    render_central_bank_gold_purchases()
     st.markdown("""
     <style>
     .risk-shell{background:#F4F6FA;border:1px solid #DCE3ED;border-radius:18px;padding:18px 16px 14px;margin:4px 0 14px}
@@ -2418,6 +2416,8 @@ def executive_dashboard(df):
     </div>
     """, unsafe_allow_html=True)
 
+    # Second section: central-bank demand for gold, directly below the global risk indicator.
+    render_central_bank_gold_purchases()
     render_drawdown_alerts()
     st.subheader("📊 Marchés & indicateurs macro — vue rapide")
     market_icons = {
