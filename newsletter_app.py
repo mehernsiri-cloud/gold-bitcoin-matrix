@@ -738,7 +738,7 @@ def fetch_investment_breaking_news(days=30):
     return result, errors
 
 
-def investment_flows_page():
+def investment_flows_page_legacy():
     st.header("💸 Follow the Money — Global Capital Flows")
     st.caption(
         "Cartographie des grandes masses de capitaux qui orientent les capacités industrielles, "
@@ -987,6 +987,19 @@ def investment_flows_page():
         "Les horizons sont des fenêtres d'impact indicatives, pas des dates certaines de rendement."
     )
     st.caption("Base documentaire initiale : publications 2026 disponibles au 6 novembre 2026. Actualisation recommandée à chaque nouvelle publication annuelle ou trimestrielle des organismes cités ; les montants ne sont pas un flux temps réel.")
+
+
+def investment_flows_page():
+    """Compare the unchanged legacy view with the new editorial infographic."""
+    current_tab, visual_tab = st.tabs([
+        "Version actuelle — Global Capital Flows",
+        "Nouvelle version — Financial Intelligence",
+    ])
+    with current_tab:
+        investment_flows_page_legacy()
+    with visual_tab:
+        from follow_money_visual import render_financial_intelligence
+        render_financial_intelligence()
 
 
 def war_risk_page(df):
