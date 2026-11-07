@@ -1,7 +1,6 @@
 """Financial Intelligence — capital allocation radar, distinct from the legacy flow catalogue."""
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 
 SIGNALS = [
@@ -134,12 +133,10 @@ def render_financial_intelligence():
         st.write(item["detail"])
         st.markdown(f"[Source primaire / institutionnelle ↗]({item['url']})")
     with right:
-        st.markdown('<div class="fi-panel"><b>Pourquoi les capitaux se dirigent ici</b>',unsafe_allow_html=True)
+        st.markdown("**Pourquoi les capitaux se dirigent ici**")
         st.write(item["impact"])
-        st.markdown("</div>",unsafe_allow_html=True)
-        st.markdown('<div class="fi-panel"><b>Indicateurs avancés à suivre</b>',unsafe_allow_html=True)
+        st.markdown("**Indicateurs avancés à suivre**")
         st.write(item["watch"])
-        st.markdown("</div>",unsafe_allow_html=True)
         st.markdown(f'<div class="fi-risk"><b>Risque de conversion :</b> {item["risk"]}</div>',unsafe_allow_html=True)
 
     st.markdown('<div class="fi-section">04 · La grille de lecture investisseur</div>',unsafe_allow_html=True)
