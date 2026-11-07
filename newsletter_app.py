@@ -990,16 +990,14 @@ def investment_flows_page_legacy():
 
 
 def investment_flows_page():
-    """Compare the unchanged legacy view with the new editorial infographic."""
-    current_tab, visual_tab = st.tabs([
-        "Version actuelle — Global Capital Flows",
-        "Nouvelle version — Financial Intelligence",
-    ])
-    with current_tab:
-        investment_flows_page_legacy()
-    with visual_tab:
-        from follow_money_visual import render_financial_intelligence
-        render_financial_intelligence()
+    """Original Follow the Money page, preserved as a standalone menu entry."""
+    investment_flows_page_legacy()
+
+
+def financial_intelligence_page():
+    """New editorial Financial Intelligence view."""
+    from follow_money_visual import render_financial_intelligence
+    render_financial_intelligence()
 
 
 def war_risk_page(df):
@@ -2465,7 +2463,8 @@ def main():
         st.title("WELS Actions")
         page = st.radio("Navigation", [
             "Vue d'ensemble & Géopolitique", "Newsletter stratégique — IA",
-            "Follow the Money — Investissements", "Marchés & portefeuille", "CHF & devises"
+            "Follow the Money — Investissements", "Follow the Money — Financial Intelligence",
+            "Marchés & portefeuille", "CHF & devises"
         ], key="wels_navigation_v4")
         # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
         # sans effacer la sélection lors des reruns provoqués par un clic régional.
@@ -2488,6 +2487,7 @@ def main():
         geopolitics_supply_dashboard(df, errors)
     elif page == "Newsletter stratégique — IA": ai_newsletter_page(df, errors)
     elif page == "Follow the Money — Investissements": investment_flows_page()
+    elif page == "Follow the Money — Financial Intelligence": financial_intelligence_page()
     elif page == "Marchés & portefeuille": market_watch_page()
     elif page == "CHF & devises": fx_chf_page()
 
