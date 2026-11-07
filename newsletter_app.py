@@ -2260,6 +2260,67 @@ def render_drawdown_alerts():
             """, unsafe_allow_html=True)
     st.caption("Les variations, dates, cours et fourchettes 52 semaines sont recalculés à chaque actualisation depuis Yahoo Finance. Les multiples P/E affichés sont des références datées et doivent être actualisés séparément ; ils ne sont pas présentés comme des données temps réel.")
 
+def render_central_bank_gold_purchases():
+    """Quarterly global central-bank net gold purchases, based on WGC publications."""
+    rows = [
+        ("T1 2024", 309.9), ("T2 2024", 183.4), ("T3 2024", 186.2), ("T4 2024", 332.9),
+        ("T1 2025", 243.7), ("T2 2025", 166.5), ("T3 2025", 226.3), ("T4 2025", 230.3),
+        ("T1 2026", 57.0), ("T2 2026", 288.9), ("T3 2026", 321.2),
+    ]
+    data = pd.DataFrame(rows, columns=["Trimestre", "Achats nets (tonnes)"])
+    st.markdown("---")
+    st.subheader("🥇 Banques centrales — achats nets d’or depuis 2024")
+    st.caption("Achats nets estimés à l’échelle mondiale · tonnes par trimestre · dernière publication disponible : T3 2026")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("T3 2026", "321,2 t", "+42 % vs T3 2025")
+    m2.metric("Cumul 2026 (T1–T3)", "675 t", "+6 % vs T1–T3 2025")
+    m3.metric("2025 complet", "863,3 t", "vs 1 092,4 t en 2024")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data["Trimestre"], y=data["Achats nets (tonnes)"],
+        mode="lines+markers+text",
+        text=[f"{v:.0f} t" for v in data["Achats nets (tonnes)"]],
+        textposition="top center",
+        line=dict(color="#C6922B", width=3),
+        marker=dict(size=8, color="#C6922B"),
+        name="Achats nets estimés"
+    ))
+    fig.update_layout(
+        height=360, margin=dict(l=10, r=10, t=30, b=10),
+        yaxis_title="Tonnes d’or", xaxis_title="",
+        hovermode="x unified", showlegend=False,
+        plot_bgcolor="white", paper_bgcolor="white"
+    )
+    fig.update_yaxes(rangemode="tozero", gridcolor="#E8EAF0")
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown(
+        "**Lecture :** après un ralentissement marqué au T1 2026, les achats estimés ont rebondi "
+        "à 289 t au T2 puis 321 t au T3. Le T3 2026 est le trimestre le plus élevé depuis le T4 2024. "
+        "La demande officielle reste donc un soutien structurel important pour l’or."
+    )
+    with st.expander("Goldman Sachs : que signifie le chiffre « presque doublé » ?"):
+        st.markdown(
+            "- En mai 2026, Goldman Sachs a relevé son estimation modélisée des achats des banques centrales "
+            "d’environ **29 à 50 tonnes par mois** sur une moyenne mobile de 12 mois, soit une hausse d’environ 72 % "
+            "de son estimation — pas un doublement des achats observés d’une année sur l’autre. "
+            "- Goldman anticipait ensuite environ **60 tonnes par mois** en moyenne sur 2026. "
+            "- À distinguer des données trimestrielles du World Gold Council, qui estiment les achats nets effectivement "
+            "attribués au secteur officiel et peuvent être révisées."
+        )
+    st.caption(
+        "Méthode : achats nets mondiaux estimés (banques centrales et autres institutions officielles), en tonnes. "
+        "Les publications trimestrielles peuvent être révisées ; elles ne s’additionnent pas toujours exactement "
+        "au total annuel consolidé. T1 2026 utilise la révision publiée au T2 (57 t), et non l’estimation initiale "
+        "de 244 t. En T3 2026, 321 t sont estimées au total, dont 120 t seulement reflétées dans les achats "
+        "officiellement déclarés ; l’activité non déclarée est estimée à environ 63 %."
+    )
+    st.markdown(
+        "Sources : [World Gold Council — T3 2026](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q3-2026/central-banks) · "
+        "[World Gold Council — T2 2026 et révision T1](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q2-2026/central-banks) · "
+        "[Goldman Sachs, estimation révisée (19 mai 2026)](https://www.kitco.com/news/article/2026-05-19/central-banks-are-buying-more-gold-expected-and-purchases-will-increase)"
+    )
+
+
 def executive_dashboard(df):
     """Executive view: common quote source, portfolio watch and candidate supports."""
     st.markdown("""
@@ -2396,6 +2457,7 @@ def executive_dashboard(df):
     with st.expander("Voir le tableau détaillé des cours et variations"):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
+    render_central_bank_gold_purchases()
 
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
