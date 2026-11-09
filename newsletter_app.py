@@ -77,7 +77,7 @@ MARKET_SYMBOLS = {
     "Amundi Global Health Care (WELS)": "WELS.DE",
     "iShares World Utilities (XDWU)": "XDWU.L",
     "SPDR World Health Care (WHEA)": "WHEA.AS",
-    "VanEck Electrification (PIKA)": "PIKA.DE",
+    "VanEck Electrification (PIKA)": "P1KA.DE",
     "Schneider Electric": "SU.PA",
     "Siemens": "SIE.DE",
     "S&P 500": "^GSPC",
@@ -2472,20 +2472,23 @@ def executive_dashboard(df):
         for name, symbol, currency in held:
             hist = fetch_history(symbol, "5d")
             if hist.empty:
-                held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency, "Variation séance": "—", "Date": "—"})
+                held_rows.append({"Position": name, "Ticker": symbol, "Cours": None, "Devise": currency, "Variation séance": "—", "Date": "—", "Statut": "Indisponible"})
                 continue
             last = float(hist["Cours"].iloc[-1])
             previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
             change = (last / previous - 1) * 100 if previous else 0.0
             held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
-                              "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
-        st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
+                              "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y"),
+                              "Statut": "Disponible"})
+        held_table = pd.DataFrame(held_rows)
+        held_table["Cours"] = pd.to_numeric(held_table["Cours"], errors="coerce")
+        st.dataframe(held_table, use_container_width=True, hide_index=True)
         st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
 
     with st.expander("Nouvelles opportunités — santé, électricité et industrie", expanded=False):
         candidates = [
             ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
-            ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
+            ("VanEck Electrification & Power Infrastructure", "P1KA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
             ("Schneider Electric", "SU.PA", "FR0000121972", "Réseaux, gestion électrique et data centers"),
             ("Siemens", "SIE.DE", "DE0007236101", "Automatisation, électrification et industrie")
         ]
@@ -2493,15 +2496,17 @@ def executive_dashboard(df):
         for name, symbol, isin, thesis in candidates:
             hist = fetch_history(symbol, "5d")
             if hist.empty:
-                candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": "Indisponible", "Variation séance": "—", "Date": "—", "Thèse / vigilance": thesis})
+                candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": None, "Variation séance": "—", "Date": "—", "Statut": "Indisponible", "Thèse / vigilance": thesis})
                 continue
             last = float(hist["Cours"].iloc[-1])
             previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
             change = (last / previous - 1) * 100 if previous else 0.0
             candidate_rows.append({"Support": name, "Ticker": symbol, "ISIN": isin, "Dernier cours": round(last, 4),
                                    "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y"),
-                                   "Thèse / vigilance": thesis})
-        st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True, hide_index=True)
+                                   "Statut": "Disponible", "Thèse / vigilance": thesis})
+        candidate_table = pd.DataFrame(candidate_rows)
+        candidate_table["Dernier cours"] = pd.to_numeric(candidate_table["Dernier cours"], errors="coerce")
+        st.dataframe(candidate_table, use_container_width=True, hide_index=True)
         st.markdown(
             "- **SPDR santé :** exposition mondiale développée, diversifiée entre médicaments, équipements et services ; suivre concentration, valorisation, encours et frais. Comparer avec iShares (IE00BJ5JNZ06, TER indicatif 0,18%).\n"
             "- **VanEck PIKA :** ETF récent et concentré ; suivre encours, liquidité, spreads, concentration et volatilité. La croissance de la demande électrique IA ne garantit pas un rendement boursier.\n"
