@@ -90,7 +90,7 @@ def load_csv_safe(path: str, default_cols: List[str], parse_ts: bool = True) -> 
             df = pd.read_csv(path)
             if parse_ts and "timestamp" in df.columns:
                 try:
-                    df["timestamp"] = pd.to_datetime(df["timestamp"], infer_datetime_format=True)
+                    df["timestamp"] = pd.to_datetime(df["timestamp"])
                 except Exception:
                     # fallback: leave as-is
                     pass
@@ -128,7 +128,7 @@ def append_prediction_to_log(path: str, row: Dict[str, Any], dedupe_on: Optional
         # Attempt to parse timestamp column if present
         if "timestamp" in combined.columns:
             try:
-                combined["timestamp"] = pd.to_datetime(combined["timestamp"], infer_datetime_format=True)
+                combined["timestamp"] = pd.to_datetime(combined["timestamp"])
             except Exception:
                 pass
 
@@ -479,7 +479,7 @@ def ensure_timestamp(df: pd.DataFrame, col: str = "timestamp"):
         return
     if col in df.columns:
         try:
-            df[col] = pd.to_datetime(df[col], infer_datetime_format=True)
+            df[col] = pd.to_datetime(df[col])
         except Exception:
             pass
 
@@ -663,8 +663,8 @@ def merge_actual_pred(asset_name: str, actual_col: str) -> pd.DataFrame:
 
     if "timestamp" in asset_pred.columns and "timestamp" in df_actual.columns:
         try:
-            asset_pred["timestamp"] = pd.to_datetime(asset_pred["timestamp"], infer_datetime_format=True)
-            df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"], infer_datetime_format=True)
+            asset_pred["timestamp"] = pd.to_datetime(asset_pred["timestamp"])
+            df_actual["timestamp"] = pd.to_datetime(df_actual["timestamp"])
         except Exception:
             pass
 
@@ -675,7 +675,7 @@ def merge_actual_pred(asset_name: str, actual_col: str) -> pd.DataFrame:
                 df_actual.sort_values("timestamp")[["timestamp", actual_col]].rename(columns={actual_col: "actual"}),
                 on="timestamp",
                 direction="backward",
-                tolerance=pd.Timedelta("1D")
+                tolerance=pd.Timedelta(days=1)
             )
         except Exception:
             asset_pred = pd.merge_asof(
