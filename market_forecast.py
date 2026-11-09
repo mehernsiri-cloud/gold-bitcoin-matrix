@@ -270,6 +270,34 @@ def _read_forecasts() -> pd.DataFrame:
         for col in ["issued_at", "target_date", "resolved_at"]:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+
+        # Older journal rows may have blank date columns even though forecast_id
+        # still contains: asset|UTC issue timestamp|horizon_days.
+        repaired_dates = False
+        if "forecast_id" in df.columns and "horizon_days" in df.columns:
+            parts = df["forecast_id"].astype(str).str.extract(r"^[^|]+\|([^|]+)\|(\d+)$")
+            issue_from_id = pd.to_datetime(parts[0], errors="coerce", utc=True)
+            if "issued_at" in df.columns:
+                missing_issue = df["issued_at"].isna() & issue_from_id.notna()
+                if missing_issue.any():
+                    df.loc[missing_issue, "issued_at"] = issue_from_id.loc[missing_issue]
+                    repaired_dates = True
+            else:
+                df["issued_at"] = issue_from_id
+                repaired_dates = True
+
+            horizon = pd.to_numeric(df["horizon_days"], errors="coerce")
+            target_from_issue = df["issued_at"].dt.normalize() + pd.to_timedelta(horizon, unit="D")
+            if "target_date" in df.columns:
+                missing_target = df["target_date"].isna() & target_from_issue.notna()
+                if missing_target.any():
+                    df.loc[missing_target, "target_date"] = target_from_issue.loc[missing_target]
+                    repaired_dates = True
+            else:
+                df["target_date"] = target_from_issue
+                repaired_dates = True
+
+        df.attrs["repaired_dates"] = repaired_dates
         return df
     except Exception:
         return pd.DataFrame(columns=FORECAST_COLUMNS)
@@ -312,6 +340,7 @@ def resolve_forecasts(market_data: dict) -> int:
     if df.empty:
         return 0
     changed = 0
+    repaired_dates = bool(df.attrs.get("repaired_dates", False))
     now = _utc_now()
     for asset, payload in market_data.items():
         hist = payload["history"].copy()
@@ -337,7 +366,7 @@ def resolve_forecasts(market_data: dict) -> int:
             df.at[idx, "error_pct"] = (predicted / actual - 1) * 100 if actual else np.nan
             df.at[idx, "direction_correct"] = bool(direction_correct)
             changed += 1
-    if changed:
+    if changed or repaired_dates:
         df.to_csv(FORECAST_FILE, index=False)
     return changed
 
@@ -358,27 +387,167 @@ def _metrics_for_asset(asset: str) -> pd.DataFrame:
     ).reset_index()
 
 
+def _recent_forecast_comparison(result: dict, days: int = 3) -> pd.DataFrame:
+    """Compare the latest archived one-day forecast with the first observed close."""
+    columns = ["Date cible", "Date réelle", "Prévision", "Réel", "Écart (%)"]
+    log = _read_forecasts()
+    if log.empty or "asset" not in log.columns:
+        return pd.DataFrame(columns=columns)
+
+    asset = result.get("asset")
+    forecasts = log[log["asset"].astype(str).str.lower() == str(asset).lower()].copy()
+    if forecasts.empty:
+        return pd.DataFrame(columns=columns)
+
+    forecasts["horizon_days"] = pd.to_numeric(forecasts["horizon_days"], errors="coerce")
+    forecasts = forecasts[forecasts["horizon_days"] == 1].copy()
+    forecasts["issued_at"] = pd.to_datetime(forecasts["issued_at"], errors="coerce", utc=True)
+    forecasts["target_date"] = pd.to_datetime(forecasts["target_date"], errors="coerce", utc=True)
+    forecasts["target_day"] = forecasts["target_date"].dt.tz_convert(None).dt.normalize()
+    forecasts["issued_day"] = forecasts["issued_at"].dt.tz_convert(None).dt.normalize()
+    today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
+    start_day = today - pd.Timedelta(days=max(days - 1, 0))
+    forecasts = forecasts[
+        forecasts["issued_at"].notna()
+        & forecasts["target_day"].notna()
+        & (forecasts["issued_day"] < forecasts["target_day"])
+        & (forecasts["target_day"] >= start_day)
+        & (forecasts["target_day"] <= today)
+    ].copy()
+    if forecasts.empty:
+        return pd.DataFrame(columns=columns)
+
+    # Use the last forecast issued before each target day, not a forecast
+    # recalculated after the outcome was already known.
+    forecasts = forecasts.sort_values("issued_at").drop_duplicates("target_day", keep="last")
+
+    history = result["history"].copy()
+    history["day"] = pd.to_datetime(history["timestamp"], errors="coerce", utc=True).dt.tz_convert(None).dt.normalize()
+    history["close"] = pd.to_numeric(history["close"], errors="coerce")
+    history = history.dropna(subset=["day", "close"]).sort_values("day")
+    if history.empty:
+        return pd.DataFrame(columns=columns)
+
+    fx = result.get("fx_history")
+    if isinstance(fx, pd.DataFrame) and not fx.empty:
+        fx = fx.copy()
+        fx["day"] = pd.to_datetime(fx["timestamp"], errors="coerce", utc=True).dt.tz_convert(None).dt.normalize()
+        fx["eurusd"] = pd.to_numeric(fx["eurusd"], errors="coerce")
+        fx = fx.dropna(subset=["day", "eurusd"]).sort_values("day")
+
+    rows = []
+    for row in forecasts.itertuples():
+        target_day = row.target_day
+        observed = history[history["day"] >= target_day]
+        if observed.empty:
+            continue
+        actual_row = observed.iloc[0]
+        actual_day = actual_row["day"]
+        if (actual_day - target_day).days > 3:
+            continue
+        actual_price = float(actual_row["close"])
+        if actual_day == today:
+            actual_price = float(result["current_price"])
+
+        predicted = float(row.predicted_price)
+        # Archived gold forecasts are stored in USD/troy oz; convert them
+        # with the EUR/USD rate corresponding to the observed session.
+        if asset == "Gold":
+            eurusd = None
+            if isinstance(fx, pd.DataFrame) and not fx.empty:
+                fx_row = fx[fx["day"] <= actual_day]
+                if not fx_row.empty:
+                    eurusd = float(fx_row.iloc[-1]["eurusd"])
+            if eurusd is None or eurusd <= 0:
+                eurusd = result.get("fx_rate")
+            if eurusd and eurusd > 0:
+                predicted = predicted / eurusd / 31.1034768
+
+        rows.append({
+            "Date cible": target_day.strftime("%d/%m/%Y"),
+            "Date réelle": actual_day.strftime("%d/%m/%Y"),
+            "_day": actual_day,
+            "Prévision": predicted,
+            "Réel": actual_price,
+            "Écart (%)": (predicted / actual_price - 1) * 100 if actual_price else np.nan,
+        })
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    comparison = pd.DataFrame(rows).sort_values("_day")
+    # Weekend gold targets can resolve against the same next trading session.
+    comparison = comparison.drop_duplicates("_day", keep="last")
+    return comparison.drop(columns="_day").reset_index(drop=True)
+
+
 def _forecast_chart(result: dict) -> go.Figure:
-    hist = result["history"].tail(180)
-    current = result["current_price"]
-    drift = result["daily_drift"]
-    vol = result["volatility20_pct"] / 100
-    dates = [pd.Timestamp.now(tz="UTC").normalize().tz_localize(None) + pd.Timedelta(days=i) for i in range(1, 31)]
-    values = [current * np.exp(drift * i) for i in range(1, 31)]
-    bands = [1.2816 * vol * np.sqrt(i) for i in range(1, 31)]
-    low = [current * np.exp(drift * i - bands[i-1]) for i in range(1, 31)]
-    high = [current * np.exp(drift * i + bands[i-1]) for i in range(1, 31)]
+    hist = result["history"].copy()
+    today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
+    hist["timestamp"] = pd.to_datetime(hist["timestamp"], errors="coerce")
+    hist = hist.dropna(subset=["timestamp"]).sort_values("timestamp")
+    hist = hist[hist["timestamp"] >= today - pd.Timedelta(days=7)].copy()
+    hist = hist[hist["timestamp"].dt.normalize() < today]
+    hist = pd.concat([
+        hist[["timestamp", "close"]],
+        pd.DataFrame([{"timestamp": today, "close": result["current_price"]}]),
+    ], ignore_index=True)
+
+    comparison = _recent_forecast_comparison(result, days=3)
+    forecast_color = result.get("color", "#D6A84B")
+
+    # Build the future path from the same 1/3/7/14/30-day values shown in
+    # the forecast table, so the chart and table cannot contradict each other.
+    future_rows = sorted(result.get("forecasts", []), key=lambda item: int(item["horizon_days"]))
+    anchor_days = [0] + [int(item["horizon_days"]) for item in future_rows]
+    anchor_values = [float(result["current_price"])] + [float(item["predicted_price"]) for item in future_rows]
+    anchor_low = [float(result["current_price"])] + [float(item["p10"]) for item in future_rows]
+    anchor_high = [float(result["current_price"])] + [float(item["p90"]) for item in future_rows]
+    future_day_numbers = list(range(0, 31))
+    values = np.interp(future_day_numbers, anchor_days, anchor_values)
+    low = np.interp(future_day_numbers, anchor_days, anchor_low)
+    high = np.interp(future_day_numbers, anchor_days, anchor_high)
+    future_dates = [today + pd.Timedelta(days=i) for i in future_day_numbers]
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hist["timestamp"], y=hist["close"], name="Historique réel", line=dict(color="#718096", width=2)))
-    fig.add_trace(go.Scatter(x=dates, y=high, line=dict(width=0), showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=dates, y=low, line=dict(width=0), fill="tonexty", fillcolor="rgba(84,153,211,0.16)", name="Zone indicative P10–P90"))
-    fig.add_trace(go.Scatter(x=dates, y=values, name="Projection centrale", line=dict(color=result.get("color", "#D6A84B"), width=3, dash="dash")))
-    fig.add_hline(y=current, line_dash="dot", line_color="#9AA5B1", annotation_text="Cours de référence")
+    fig.add_trace(go.Scatter(
+        x=hist["timestamp"], y=hist["close"], name="Cours réel",
+        mode="lines+markers", line=dict(color="#64748B", width=2.5),
+        marker=dict(size=5),
+    ))
+
+    if not comparison.empty:
+        comparison_days = pd.to_datetime(comparison["Date réelle"], format="%d/%m/%Y")
+        fig.add_trace(go.Scatter(
+            x=comparison_days, y=comparison["Prévision"],
+            name="Prévision enregistrée (passé)", mode="lines+markers",
+            line=dict(color=forecast_color, width=3, dash="dash"),
+            marker=dict(size=9, symbol="diamond"),
+            customdata=np.column_stack([comparison["Date cible"], comparison["Écart (%)"]]),
+            hovertemplate="Date réelle : %{x|%d/%m/%Y}<br>Prévision : %{y:,.2f}<br>Date cible : %{customdata[0]}<br>Écart : %{customdata[1]:+.2f}%<extra></extra>",
+        ))
+
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=high, line=dict(width=0), showlegend=False, hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=low, line=dict(width=0), fill="tonexty",
+        fillcolor="rgba(84,153,211,0.16)", name="Fourchette future P10–P90",
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=values, name="Prévision future",
+        mode="lines", line=dict(color=forecast_color, width=3, dash="dash"),
+        showlegend=False,
+    ))
+    fig.add_vline(
+        x=today, line_dash="dot", line_color="#94A3B8",
+        annotation_text="Aujourd'hui", annotation_position="top",
+    )
     fig.update_layout(
-        title=f"{result['asset']} — historique et projection 30 jours",
-        height=470, template="plotly_white", hovermode="x unified",
+        title=f"{result['asset']} — prévisions passées vs cours réel et projection future",
+        height=490, template="plotly_white", hovermode="x unified",
         xaxis_title="Date", yaxis_title=result.get("unit", "USD"),
-        margin=dict(l=20, r=20, t=55, b=25), legend=dict(orientation="h", y=1.02),
+        margin=dict(l=20, r=20, t=65, b=25),
+        legend=dict(orientation="h", y=1.02),
     )
     return fig
 
@@ -417,6 +586,7 @@ def _gold_display_result(result: dict, eurusd: float, fx_history: pd.DataFrame) 
     ]
     out["unit"] = "EUR/g"
     out["fx_rate"] = eurusd
+    out["fx_history"] = fx_history[["timestamp", "eurusd"]].copy()
     out["color"] = "#D6A84B"
     return out
 
@@ -473,7 +643,18 @@ def render_market_forecast_dashboard() -> None:
             if age_minutes is not None and age_minutes > 60:
                 st.warning(f"Le dernier cours exploitable date de {age_minutes/60:.1f} h : interpréter la projection avec prudence.")
 
-            st.plotly_chart(_forecast_chart({**display_result, "unit": display_unit, "color": market["color"]}), use_container_width=True)
+            st.plotly_chart(_forecast_chart({**display_result, "asset": asset, "unit": display_unit, "color": market["color"]}), use_container_width=True)
+
+            st.subheader("Comparaison des prévisions avec les cours réels — 3 derniers jours")
+            comparison = _recent_forecast_comparison({**display_result, "asset": asset}, days=3)
+            if comparison.empty:
+                st.info("Aucune prévision J-1 archivée et comparable n'est disponible pour ces trois jours.")
+            else:
+                comparison_display = comparison.copy()
+                comparison_display["Prévision"] = comparison_display["Prévision"].map(lambda value: f"{value:,.2f}")
+                comparison_display["Réel"] = comparison_display["Réel"].map(lambda value: f"{value:,.2f}")
+                comparison_display["Écart (%)"] = comparison_display["Écart (%)"].map(lambda value: f"{value:+.2f}%" if pd.notna(value) else "—")
+                st.dataframe(comparison_display, use_container_width=True, hide_index=True)
 
             st.subheader("Projections par échéance")
             table = pd.DataFrame(display_result["forecasts"])
