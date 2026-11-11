@@ -171,26 +171,26 @@ def render_financial_intelligence():
         "Investissements directs & industrie": {
             "status": "Pays destinataires connus ; la ventilation sectorielle exacte doit être lue dans les tables UNCTAD/OECD, pas déduite des totaux nationaux.",
             "rows": [
-                ["Projets greenfield stratégiques", "IA, semi-conducteurs, minéraux critiques, technologies de transition énergétique", "Monde", "576 Md$ de valeur de projets annoncés dans cinq secteurs stratégiques", "Annonces 2025 — pas tous réalisés"],
-                ["Investissement direct étranger", "Tous secteurs confondus", "États-Unis", "Plus grand pays destinataire en 2025 ; montant pays à extraire de la base UNCTAD", "Flux FDI 2025"],
+                ["Projets greenfield stratégiques", "IA, semi-conducteurs, minéraux critiques, technologies de transition énergétique et technologies avancées", "Monde", "576 Md$ de projets annoncés dans cinq secteurs stratégiques", "Annonces 2025 — pas tous réalisés"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "États-Unis", "277 Md$ — première destination mondiale", "Flux FDI 2025"],
                 ["Investissement direct étranger", "Tous secteurs confondus", "Singapour", "2e destination mentionnée par UNCTAD", "Flux FDI 2025"],
                 ["Investissement direct étranger", "Tous secteurs confondus", "Hong Kong (Chine)", "3e destination mentionnée par UNCTAD", "Flux FDI 2025"],
                 ["Investissement direct étranger", "Tous secteurs confondus", "Chine", "4e destination mentionnée par UNCTAD", "Flux FDI 2025"],
                 ["Investissement direct étranger", "Tous secteurs confondus", "Brésil", "5e destination mentionnée par UNCTAD", "Flux FDI 2025"],
             ],
-            "sources": [("UNCTAD — World Investment Report 2026", "https://unctad.org/topic/investment/foreign-direct-investment-explorer"), ("UNCTAD — World Investment Report 2026 overview", "https://investmentpolicy.unctad.org/publications/1324/world-investment-report-2026-international-investment-in-a-turbulent-era")],
+            "sources": [("UNCTAD — World Investment Report 2026", "https://unctad.org/topic/investment/foreign-direct-investment-explorer"), ("UNCTAD — World Investment Report 2026 overview", "https://unctad.org/publication/world-investment-report-2026-international-investment-turbulent-era")],
             "note": "Important : les cinq pays sont un classement des destinations FDI tous secteurs confondus. Il ne faut pas les présenter comme les cinq premiers pays de chacun des secteurs stratégiques."
         },
         "IA, data centers & semi-conducteurs": {
-            "status": "Le chiffre de capex IA est une estimation agrégée ; le détail géographique et sous-sectoriel doit être relié aux dépenses hyperscalers et aux projets greenfield.",
+            "status": "Ventilation UNCTAD disponible pour les projets greenfield annoncés ; distinguer ces annonces des dépenses effectivement exécutées.",
             "rows": [
-                ["Infrastructure de calcul", "GPU, accélérateurs IA, serveurs et mémoire", "États-Unis, Taïwan, Corée du Sud — pôles industriels suivis, pas allocation chiffrée du total", "Non ventilé dans l’estimation agrégée", "Capex / chaîne d’approvisionnement"],
-                ["Data centers", "Bâtiments, terrains, alimentation électrique, refroidissement", "États-Unis en tête des projets annoncés ; autres pays non ventilés dans le chiffre agrégé", "Non ventilé dans l’estimation agrégée", "Investissement physique"],
-                ["Semi-conducteurs", "Fonderies, packaging avancé, équipements de fabrication", "États-Unis, Taïwan, Corée du Sud, Japon et Europe — destinations/écosystèmes à suivre", "Non ventilé dans l’estimation agrégée", "Capacité industrielle"],
-                ["Électricité & réseau", "Production, transformateurs, raccordements, stockage", "Pays d’implantation des data centers ; pas de ventilation nationale consolidée dans le chiffre cité", "Non ventilé dans l’estimation agrégée", "Capex induit"],
+                ["Infrastructure IA", "Data centers, cloud computing et infrastructures associées", "Union européenne = principale destination ; États-Unis = première source d’investissement", "341 Md$ de projets greenfield annoncés en 2025", "Annonces de projets — UNCTAD"],
+                ["Semi-conducteurs", "Fonderies, conception, packaging avancé et équipements", "Investissements transfrontaliers Taïwan → États-Unis : environ un tiers de la valeur mondiale annoncée 2020–2025", "Croissance annuelle composée de 54 % entre 2020 et 2025", "Valeur des projets annoncés / croissance"],
+                ["Technologies avancées", "Biotechnologies, robotique, quantique et spatial", "Investissements concentrés aux États-Unis et en Europe ; montants pays non détaillés ici", "Inclus dans les 576 Md$ de projets stratégiques", "Annonces 2025"],
+                ["Transition énergétique & minéraux critiques", "Batteries, véhicules électriques, hydrogène, capture carbone, cuivre, lithium et terres rares", "Chaînes mondiales diversifiées ; Chine importante dans les investissements sortants en minéraux critiques", "Inclus dans les 576 Md$ de projets stratégiques", "Annonces 2025"],
             ],
-            "sources": [("UNCTAD — World Investment Report 2026", "https://investmentpolicy.unctad.org/publications/1324/world-investment-report-2026-international-investment-in-a-turbulent-era"), ("IEA — World Energy Investment 2026", "https://www.iea.org/reports/world-energy-investment-2026")],
-            "note": "Les pays cités identifient des pôles de production ou d’accueil de projets, pas une ventilation monétaire auditée des 900 Md$ estimés. Le chiffre IA ne doit pas être additionné aux capex énergie ou data centers s’il les recouvre déjà."
+            "sources": [("UNCTAD — World Investment Report 2026", "https://unctad.org/publication/world-investment-report-2026-international-investment-turbulent-era"), ("IEA — World Energy Investment 2026", "https://www.iea.org/reports/world-energy-investment-2026")],
+            "note": "Les 341 Md$ concernent les projets greenfield IA annoncés, pas les dépenses capex globales des hyperscalers. Les 576 Md$ agrègent cinq secteurs et ne doivent pas être additionnés à l’IA. Le détail pays varie selon le secteur : UE destination principale pour l’IA, États-Unis source principale, Taïwan→États-Unis très important pour les semi-conducteurs."
         },
         "Agroalimentaire & sécurité alimentaire": {
             "status": "Le montant de la carte initiale est une capacité/besoin potentiel, pas une dépense observée ventilée par pays.",
