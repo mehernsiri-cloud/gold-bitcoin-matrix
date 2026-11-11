@@ -139,7 +139,111 @@ def render_financial_intelligence():
         st.write(item["watch"])
         st.markdown(f'<div class="fi-risk"><b>Risque de conversion :</b> {item["risk"]}</div>',unsafe_allow_html=True)
 
-    st.markdown('<div class="fi-section">04 · La grille de lecture investisseur</div>',unsafe_allow_html=True)
+
+    # New drill-down: where capital goes by sub-sector and destination country.
+    # Keep reported allocations separate from country context and unallocated totals.
+    ALLOCATION_MAP = {
+        "Énergie & réseaux": {
+            "status": "Ventilation mondiale par grandes catégories disponible ; ventilation pays/sous-secteur détaillée à compléter depuis l’IEA Data Explorer.",
+            "rows": [
+                ["Énergies propres", "Renouvelables, nucléaire, efficacité énergétique", "Monde — ventilation pays non publiée dans le chiffre synthétique", "≈ 2 200 Md$ (agrégat incluant réseaux, stockage et électrification)", "Prévision 2026"],
+                ["Réseaux & électrification", "Réseaux de transport/distribution, transformateurs, câbles, raccordements", "Monde — pays non ventilés dans l’agrégat cité", "Inclus dans les 2 200 Md$ ; montant isolé non fourni", "Prévision 2026"],
+                ["Stockage", "Batteries et stockage stationnaire", "Monde — pays non ventilés dans l’agrégat cité", "Inclus dans les 2 200 Md$ ; montant isolé non fourni", "Prévision 2026"],
+                ["Combustibles fossiles", "Pétrole, gaz, charbon et chaînes associées", "Monde — pays non ventilés dans l’agrégat cité", "≈ 1 200 Md$", "Prévision 2026"],
+            ],
+            "sources": [("IEA — World Energy Investment 2026", "https://www.iea.org/reports/world-energy-investment-2026")],
+            "note": "Ne pas répartir artificiellement les 2 200 Md$ entre pays ou sous-secteurs : l’agrégat de la page d’accueil IEA les regroupe. Le Data Explorer IEA doit être la source du futur détail pays/technologie."
+        },
+        "Défense & sécurité": {
+            "status": "Dépenses nationales observées, mais pas une ventilation mondiale fiable par type d’équipement dans le total SIPRI.",
+            "rows": [
+                ["Forces armées & fonctionnement", "Personnel, opérations, maintenance, infrastructures", "États-Unis", "954 Md$", "Dépense militaire nationale 2025"],
+                ["Modernisation & capacités", "Équipements, R&D, plateformes et systèmes", "Chine", "336 Md$ (estimation SIPRI)", "Dépense militaire nationale 2025"],
+                ["Modernisation & capacités", "Équipements, R&D, plateformes et systèmes", "Russie", "190 Md$ (estimation SIPRI)", "Dépense militaire nationale 2025"],
+                ["Forces armées & équipements", "Personnel, équipements, infrastructures", "Allemagne", "114 Md$", "Dépense militaire nationale 2025"],
+                ["Forces armées & équipements", "Personnel, équipements, infrastructures", "Inde", "92,1 Md$", "Dépense militaire nationale 2025"],
+                ["Agrégat régional", "Toutes catégories de dépenses militaires", "Europe", "864 Md$", "Dépense régionale 2025"],
+                ["Agrégat régional", "Toutes catégories de dépenses militaires", "Asie & Océanie", "681 Md$", "Dépense régionale 2025"],
+            ],
+            "sources": [("SIPRI — Trends in World Military Expenditure 2025", "https://www.sipri.org/publications/2026/sipri-fact-sheets/trends-world-military-expenditure-2025")],
+            "note": "Le budget national n’est pas un montant investi dans un sous-secteur industriel précis. Il finance aussi salaires, opérations et entretien. Les montants pays ne sont donc pas des commandes adressables aux entreprises de défense."
+        },
+        "Investissements directs & industrie": {
+            "status": "Pays destinataires connus ; la ventilation sectorielle exacte doit être lue dans les tables UNCTAD/OECD, pas déduite des totaux nationaux.",
+            "rows": [
+                ["Projets greenfield stratégiques", "IA, semi-conducteurs, minéraux critiques, technologies de transition énergétique", "Monde", "576 Md$ de valeur de projets annoncés dans cinq secteurs stratégiques", "Annonces 2025 — pas tous réalisés"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "États-Unis", "Plus grand pays destinataire en 2025 ; montant pays à extraire de la base UNCTAD", "Flux FDI 2025"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "Singapour", "2e destination mentionnée par UNCTAD", "Flux FDI 2025"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "Hong Kong (Chine)", "3e destination mentionnée par UNCTAD", "Flux FDI 2025"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "Chine", "4e destination mentionnée par UNCTAD", "Flux FDI 2025"],
+                ["Investissement direct étranger", "Tous secteurs confondus", "Brésil", "5e destination mentionnée par UNCTAD", "Flux FDI 2025"],
+            ],
+            "sources": [("UNCTAD — World Investment Report 2026", "https://unctad.org/topic/investment/foreign-direct-investment-explorer"), ("UNCTAD — World Investment Report 2026 overview", "https://investmentpolicy.unctad.org/publications/1324/world-investment-report-2026-international-investment-in-a-turbulent-era")],
+            "note": "Important : les cinq pays sont un classement des destinations FDI tous secteurs confondus. Il ne faut pas les présenter comme les cinq premiers pays de chacun des secteurs stratégiques."
+        },
+        "IA, data centers & semi-conducteurs": {
+            "status": "Le chiffre de capex IA est une estimation agrégée ; le détail géographique et sous-sectoriel doit être relié aux dépenses hyperscalers et aux projets greenfield.",
+            "rows": [
+                ["Infrastructure de calcul", "GPU, accélérateurs IA, serveurs et mémoire", "États-Unis, Taïwan, Corée du Sud — pôles industriels suivis, pas allocation chiffrée du total", "Non ventilé dans l’estimation agrégée", "Capex / chaîne d’approvisionnement"],
+                ["Data centers", "Bâtiments, terrains, alimentation électrique, refroidissement", "États-Unis en tête des projets annoncés ; autres pays non ventilés dans le chiffre agrégé", "Non ventilé dans l’estimation agrégée", "Investissement physique"],
+                ["Semi-conducteurs", "Fonderies, packaging avancé, équipements de fabrication", "États-Unis, Taïwan, Corée du Sud, Japon et Europe — destinations/écosystèmes à suivre", "Non ventilé dans l’estimation agrégée", "Capacité industrielle"],
+                ["Électricité & réseau", "Production, transformateurs, raccordements, stockage", "Pays d’implantation des data centers ; pas de ventilation nationale consolidée dans le chiffre cité", "Non ventilé dans l’estimation agrégée", "Capex induit"],
+            ],
+            "sources": [("UNCTAD — World Investment Report 2026", "https://investmentpolicy.unctad.org/publications/1324/world-investment-report-2026-international-investment-in-a-turbulent-era"), ("IEA — World Energy Investment 2026", "https://www.iea.org/reports/world-energy-investment-2026")],
+            "note": "Les pays cités identifient des pôles de production ou d’accueil de projets, pas une ventilation monétaire auditée des 900 Md$ estimés. Le chiffre IA ne doit pas être additionné aux capex énergie ou data centers s’il les recouvre déjà."
+        },
+        "Agroalimentaire & sécurité alimentaire": {
+            "status": "Le montant de la carte initiale est une capacité/besoin potentiel, pas une dépense observée ventilée par pays.",
+            "rows": [
+                ["Irrigation & gestion de l’eau", "Irrigation efficiente, pompage, réutilisation de l’eau", "Pays à stress hydrique ; ventilation financière non disponible dans la source synthétique", "Pas de montant réalisé vérifié", "Besoin/capacité de financement"],
+                ["Intrants agricoles", "Engrais, semences, protection des cultures", "Principaux bassins agricoles mondiaux ; pas d’allocation chiffrée disponible", "Pas de montant réalisé vérifié", "Besoin/capacité de financement"],
+                ["Stockage & logistique", "Silos, chaîne du froid, transport et transformation", "Pays importateurs nets et grands producteurs ; pas d’allocation chiffrée disponible", "Pas de montant réalisé vérifié", "Besoin/capacité de financement"],
+                ["Financement des systèmes alimentaires", "Résilience des chaînes alimentaires et agriculture durable", "Monde", "≈ 1 100 Md$/an de besoin de financement cité ; ≠ investissement réalisé", "Besoin annuel estimé"],
+            ],
+            "sources": [("Food and Land Use Coalition — Agricultural resilience", "https://www.foodandlandusecoalition.org/knowledge-hub/re-wire-agricultural-resilience/")],
+            "note": "Ne pas afficher les 630 Md$ de la carte comme du capital effectivement investi : la donnée initiale est une capacité potentielle et la source mentionne un besoin de financement."
+        },
+        "Capital-risque & startups": {
+            "status": "Ventilation par secteur disponible pour l’IA ; ventilation pays homogène non fournie par le chiffre global OCDE cité.",
+            "rows": [
+                ["IA", "Modèles, logiciels, infrastructure IA et applications", "Monde", "258,7 Md$ — 61 % du VC mondial", "Investissement VC observé 2025"],
+                ["Autres secteurs", "Santé, climat, fintech, industrie, mobilité et autres", "Monde", "168,4 Md$ (solde calculé : 427,1 - 258,7)", "Investissement VC observé 2025"],
+                ["VC — géographie", "Tous secteurs confondus", "États-Unis, Europe, Asie", "Pas de ventilation pays attachée au chiffre OCDE de 427,1 Md$", "Donnée géographique à compléter"],
+            ],
+            "sources": [("OCDE — AI firms capture 61% of global VC in 2025", "https://www.oecd.org/en/about/news/announcements/2026/02/ai-firms-capture-61-percent-of-global-venture-capital-in-2025.html")],
+            "note": "Le solde « autres secteurs » est un calcul arithmétique. Ne pas lui attribuer une ventilation pays sans base VC géographique distincte."
+        },
+        "Santé, biotech & pharmacie": {
+            "status": "Le montant de 60 Md$ concerne le capital-risque santé ; il ne représente pas l’ensemble des investissements mondiaux en santé.",
+            "rows": [
+                ["Biotechnologie thérapeutique", "Découverte de médicaments, plateformes biologiques, essais cliniques", "États-Unis et Europe comme grands écosystèmes VC ; allocation pays du total non publiée dans le chiffre cité", "Non ventilé", "VC santé 2025"],
+                ["Dispositifs médicaux", "Imagerie, implants, robotique et équipements", "Amérique du Nord, Europe et Asie développée — géographie indicative, non chiffrée", "Non ventilé", "VC santé 2025"],
+                ["Diagnostics & services", "Diagnostic, outils de laboratoire, santé numérique et services", "Monde — allocation pays non publiée dans le chiffre cité", "Non ventilé", "VC santé 2025"],
+                ["Capital-risque santé", "Toutes sous-catégories santé confondues", "Monde", "60 Md$ en 2025 ; contre 45,4 Md$ en 2024", "VC observé"],
+            ],
+            "sources": [("HSBC Innovation Banking — Healthcare venture markets", "https://www.about.us.hsbc.com/newsroom/press-releases/healthcare-venture-markets-regain-momentum-as-capital-returns")],
+            "note": "La géographie affichée est une cartographie des écosystèmes, pas une répartition chiffrée des 60 Md$. Les données VC ne couvrent ni les dépenses publiques de santé ni les capex des grands laboratoires."
+        },
+    }
+
+    st.markdown('<div class="fi-section">04 · Où va réellement le capital ? — sous-secteurs & pays</div><div class="fi-sub">Pour chaque famille : destination économique, pays bénéficiaires et montant traçable. Les données non publiées sont explicitement signalées : aucune ventilation n’est inventée.</div>',unsafe_allow_html=True)
+    allocation_sector = st.selectbox("Famille d’investissement à détailler", options=list(ALLOCATION_MAP.keys()), key="fi_allocation_sector")
+    allocation = ALLOCATION_MAP[allocation_sector]
+    st.info(allocation["status"])
+    allocation_df = pd.DataFrame(allocation["rows"], columns=["Sous-secteur / flux", "Activité financée exactement", "Pays / géographie", "Capital / montant", "Nature de la donnée"])
+    st.dataframe(allocation_df, use_container_width=True, hide_index=True, column_config={
+        "Sous-secteur / flux": st.column_config.TextColumn(width="medium"),
+        "Activité financée exactement": st.column_config.TextColumn(width="large"),
+        "Pays / géographie": st.column_config.TextColumn(width="medium"),
+        "Capital / montant": st.column_config.TextColumn(width="medium"),
+        "Nature de la donnée": st.column_config.TextColumn(width="medium"),
+    })
+    st.markdown("**Sources institutionnelles**")
+    st.markdown(" · ".join([f"[{label} ↗]({url})" for label, url in allocation["sources"]]))
+    st.caption("Méthode : distinguer flux réalisés, dépenses observées, annonces greenfield, estimations, besoins et capacités potentielles. Une destination géographique indicative n’est jamais présentée comme une allocation monétaire. Les montants de familles différentes peuvent se chevaucher.")
+    st.warning(allocation["note"])
+
+    st.markdown('<div class="fi-section">05 · La grille de lecture investisseur</div>',unsafe_allow_html=True)
     matrix=pd.DataFrame([
         ["IA & data centers","GPU / mémoire, refroidissement, réseaux électriques, fournisseurs d’énergie","Capex réellement exécuté, taux d’utilisation, cash-flow, financement","Surinvestissement, obsolescence, valorisations"],
         ["Énergie & réseaux","Équipements électriques, stockage, production pilotable, ingénierie","Commandes fermes, raccordements, délais de livraison, régulation","Retards, coûts de financement, dépendance aux subventions"],
