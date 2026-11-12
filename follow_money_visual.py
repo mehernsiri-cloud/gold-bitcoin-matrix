@@ -1,206 +1,194 @@
-"""Financial Intelligence — capital allocation radar, distinct from the legacy flow catalogue."""
-import streamlit as st
-import plotly.graph_objects as go
+# Dynamic Follow the Money — fundraising radar
+from datetime import datetime
+from urllib.parse import quote
+import re
+import html
 import pandas as pd
+import plotly.express as px
+import requests
+import streamlit as st
 
-SIGNALS = [
-    {"sector":"Énergie & réseaux","icon":"⚡","amount":3400,"label":"3 400 Md$","period":"2026","kind":"Prévision annuelle","summary":"Investissement énergétique mondial attendu","detail":"Environ 2 200 Md$ vers les énergies propres, les réseaux, le stockage et l’électrification ; environ 1 200 Md$ vers les combustibles fossiles.","impact":"Les réseaux, transformateurs, batteries et capacités de production deviennent des infrastructures critiques.","watch":"Dépenses de réseau, raccordements, stockage, nucléaire et retards de projets.","source":"IEA — World Energy Investment 2026","url":"https://www.iea.org/topics/investment","color":"#E9B85C","horizon":"2026–2035","maturity":"Capex / infrastructures","signal":"Très élevé","risk":"Risque d’exécution : raccordements, délais, coûts et rentabilité des capacités."},
-    {"sector":"Défense & sécurité","icon":"🛡️","amount":2887,"label":"2 887 Md$","period":"2025","kind":"Dépense observée","summary":"Dépenses militaires mondiales","detail":"Hausse réelle de 2,9 %. L’Europe représente 864 Md$ (+14 %) et l’Asie-Océanie 681 Md$ (+8,1 %).","impact":"Les budgets pluriannuels peuvent soutenir les carnets de commandes, mais les annonces doivent devenir des contrats et des livraisons.","watch":"Budgets votés, commandes fermes, capacités industrielles et reconstitution des stocks.","source":"SIPRI — 27 avril 2026","url":"https://www.sipri.org/media/press-release/2026/global-military-spending-rise-continues-european-and-asian-expenditures-surge","color":"#B7C2CE","horizon":"2025–2030","maturity":"Budgets publics / commandes","signal":"Élevé","risk":"Le budget global ne correspond pas au chiffre d’affaires immédiatement accessible aux industriels."},
-    {"sector":"Investissements directs & industrie","icon":"🏭","amount":1600,"label":"1 600 Md$","period":"2025","kind":"Estimation annuelle","summary":"Investissements directs étrangers mondiaux","detail":"Les projets greenfield annoncés dans cinq secteurs stratégiques ont atteint 576 Md$ en 2025, contre 109 Md$ en 2020.","impact":"Montre où les entreprises construisent des capacités productives : usines, semi-conducteurs, data centers et énergie.","watch":"Décisions finales d’investissement, chantiers lancés, annulations et pays hôtes.","source":"UNCTAD — World Investment Report 2026","url":"https://unctad.org/publication/world-investment-report-2026-international-investment-turbulent-era","color":"#86BDA7","horizon":"2025–2030","maturity":"Investissement productif","signal":"Élevé","risk":"Les annonces de projets et les flux effectivement déployés peuvent diverger."},
-    {"sector":"IA, data centers & semi-conducteurs","icon":"🧠","amount":900,"label":"≈ 900 Md$","period":"2026","kind":"Estimation annuelle","summary":"Investissement mondial lié à l’IA estimé","detail":"Projection de 5 500 Md$ cumulés d’ici 2030. Les dépenses des grands hyperscalers sont le moteur principal.","impact":"La dépense logicielle entraîne des besoins physiques en GPU, mémoire, centres de données, refroidissement et électricité.","watch":"Capex annoncé vs réalisé, commandes GPU/mémoire, raccordements électriques et cash-flow des hyperscalers.","source":"J.P. Morgan — 19 octobre 2026","url":"https://www.jpmorgan.com/insights/global-research/artificial-intelligence/ai-capex","color":"#8BB8E4","horizon":"2026–2030","maturity":"Capex privé / infrastructures","signal":"Très élevé","risk":"Risque de surcapacité, de financement et de monétisation des investissements."},
-    {"sector":"Agroalimentaire & sécurité alimentaire","icon":"🌾","amount":630,"label":"≈ 630 Md$","period":"Estimation 2026","kind":"Capacité potentielle, non flux réalisé","summary":"Capacité potentielle de financement privé","detail":"Le financement climatique nécessaire aux systèmes agroalimentaires est estimé à 1 100 Md$ par an.","impact":"L’irrigation, le stockage, les engrais, les semences et la logistique déterminent la résilience alimentaire.","watch":"Financement déployé, eau, stocks céréaliers, engrais et capacités de stockage.","source":"Food and Land Use Coalition — rapport 2026","url":"https://www.foodandlandusecoalition.org/knowledge-hub/re-wire-agricultural-resilience/","color":"#B7C987","horizon":"2026–2035","maturity":"Capacité / besoin de financement","signal":"Structurel","risk":"Ne pas confondre capacité de financement et investissement réellement engagé."},
-    {"sector":"Capital-risque & startups","icon":"🚀","amount":427.1,"label":"427,1 Md$","period":"2025","kind":"Investissement observé","summary":"Investissement mondial en venture capital","detail":"L’IA a capté 258,7 Md$, soit 61 % du total. Les financements se concentrent dans les méga-tours.","impact":"Le capital-risque finance les futurs acteurs technologiques, mais une levée n’est pas encore une capacité rentable.","watch":"Part de l’IA, financement early-stage, sorties/IPO et taux de survie des startups.","source":"OCDE — 17 février 2026","url":"https://www.oecd.org/en/about/news/announcements/2026/02/ai-firms-capture-61-percent-of-global-venture-capital-in-2025.html","color":"#B9A5D8","horizon":"2025–2028","maturity":"Capital privé / VC","signal":"Concentré","risk":"Concentration dans l’IA et les méga-tours ; valorisations sensibles aux taux et à la liquidité."},
-    {"sector":"Santé, biotech & pharmacie","icon":"🧬","amount":60,"label":"60 Md$","period":"2025","kind":"Investissement observé","summary":"Capital-risque mondial dans la santé","detail":"En hausse par rapport à 45,4 Md$ en 2024. HSBC anticipait 65–70 Md$ en 2026.","impact":"Les capitaux ciblent biotechs, dispositifs médicaux et entreprises proches de la commercialisation ; les cycles restent longs.","watch":"Essais cliniques, autorisations, financement late-stage et capacités de production.","source":"HSBC Innovation Banking — 13 janvier 2026","url":"https://www.about.us.hsbc.com/newsroom/press-releases/healthcare-venture-markets-regain-momentum-as-capital-returns","color":"#D9A8BC","horizon":"2025–2035+","maturity":"VC / innovation médicale","signal":"En reprise","risk":"Risque clinique, réglementaire et de refinancement sur des cycles longs."},
+try:
+    import feedparser
+except ImportError:
+    feedparser = None
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; CapitalFlowRadar/1.0)"}
+FUNDING_QUERIES = {
+    "IA / data centers / semi-conducteurs": '("raised" OR "closes" OR "secured") (funding OR round OR investment) (AI OR artificial intelligence OR datacenter OR semiconductor)',
+    "Santé / biotech / pharmacie": '("raised" OR "closes" OR "secured") (funding OR Series OR round) (biotech OR healthcare OR pharma OR medtech)',
+    "Défense / sécurité": '("raised" OR "closes" OR "secured") (funding OR round) (defense OR defence OR security OR aerospace)',
+    "Énergie / climat / réseaux": '("raised" OR "closes" OR "secured") (funding OR round) (energy OR battery OR grid OR climate OR cleantech)',
+    "Industrie / mobilité / robotique": '("raised" OR "closes" OR "secured") (funding OR round) (manufacturing OR robotics OR mobility OR industrial)',
+    "Agroalimentaire / foodtech": '("raised" OR "closes" OR "secured") (funding OR round) (agriculture OR agritech OR foodtech OR food)',
+    "Fintech / logiciels / autres": '("raised" OR "closes" OR "secured") (funding OR Series OR round) (fintech OR software OR startup)',
+}
+COUNTRY_RULES = [
+    ("États-Unis", ["united states", " u.s.", "us-based", "san francisco", "new york", "boston", "silicon valley", "california"]),
+    ("Royaume-Uni", ["united kingdom", " uk-based", "london", "cambridge, uk", "british"]),
+    ("France", ["france", "paris", "lyon", "french"]),
+    ("Allemagne", ["germany", "berlin", "munich", "german"]),
+    ("Suisse", ["switzerland", " zurich", "geneva", "lausanne", "swiss"]),
+    ("Israël", ["israel", "tel aviv", "israeli"]),
+    ("Inde", ["india", "bengaluru", "bangalore", "mumbai", "delhi", "indian"]),
+    ("Chine", ["china", "beijing", "shenzhen", "shanghai", "chinese"]),
+    ("Singapour", ["singapore"]),
+    ("Canada", ["canada", "toronto", "montreal", "vancouver"]),
+    ("Pays-Bas", ["netherlands", "amsterdam", "dutch"]),
+    ("Suède", ["sweden", "stockholm", "swedish"]),
+    ("Espagne", ["spain", "madrid", "barcelona", "spanish"]),
+    ("Italie", ["italy", "milan", "italian"]),
+    ("Corée du Sud", ["south korea", "seoul", "korean"]),
+    ("Japon", ["japan", "tokyo", "japanese"]),
+    ("Australie", ["australia", "sydney", "melbourne"]),
+    ("Émirats arabes unis", ["uae", "dubai", "abu dhabi", "emirates"]),
+    ("Brésil", ["brazil", "sao paulo", "brazilian"]),
 ]
 
-def _metric_card(label, value, sub, accent):
-    st.markdown(f"""
-    <div style="background:#14283B;border:1px solid #2D465D;border-top:4px solid {accent};border-radius:13px;padding:15px 16px;min-height:124px">
-      <div style="font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:#AFC1D1;font-weight:800">{label}</div>
-      <div style="font-size:29px;font-weight:850;color:#FFFFFF;margin:7px 0 2px">{value}</div>
-      <div style="font-size:12px;color:#C5D2DD">{sub}</div>
-    </div>""", unsafe_allow_html=True)
+def _clean(s):
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(s or "")))).strip()
 
-def _chart_theme(fig, height=300):
-    fig.update_layout(
-        height=height, margin=dict(l=12,r=12,t=34,b=12),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#26384A"), hoverlabel=dict(bgcolor="#14283B",font_color="white"),
-        showlegend=False
-    )
-    return fig
+def _amount(text):
+    patterns = [
+        r"(?P<cur>US\$|\$|USD|EUR|€|GBP|£|CHF|INR|C\$|A\$)\s*(?P<num>\d+(?:[.,]\d+)?)\s*(?P<unit>bn|billion|m|mn|million|b|k)?",
+        r"(?P<num>\d+(?:[.,]\d+)?)\s*(?P<unit>bn|billion|m|mn|million)\s*(?P<cur>USD|EUR|GBP|CHF|INR|dollars|euros|pounds)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            cur = m.group("cur").upper()
+            num = float(m.group("num").replace(",", "."))
+            unit = (m.groupdict().get("unit") or "").lower()
+            mult = 1_000_000_000 if unit in ("bn", "billion", "b") else 1_000_000 if unit in ("m", "mn", "million") else 1_000
+            symbol = {"US$":"USD", "$":"USD", "€":"EUR", "£":"GBP", "C$":"CAD", "A$":"AUD"}.get(cur, cur)
+            return num * mult, symbol, m.group(0)
+    return None, None, None
+
+def _country(text):
+    t = text.lower()
+    for country, terms in COUNTRY_RULES:
+        if any(term in t for term in terms):
+            return country
+    return "À vérifier"
+
+def _company(title):
+    patterns = [r"^(.{2,90}?)\s+(?:raises?|raised|secures?|secured|closes?|closed|lands?)\b",
+                r"^(.{2,90}?)\s+(?:announces?|announced)\s+(?:a\s+)?(?:series|funding|investment)"]
+    for p in patterns:
+        m = re.search(p, title, re.I)
+        if m:
+            return m.group(1).strip(" —:-")
+    return title[:90]
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_fundraising_radar(days=45):
+    if feedparser is None:
+        return pd.DataFrame(), ["Le module feedparser manque dans requirements.txt."]
+    rows, errors = [], []
+    for sector, query in FUNDING_QUERIES.items():
+        url = "https://news.google.com/rss/search?q=" + quote(query + f" when:{days}d") + "&hl=en-US&gl=US&ceid=US:en"
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=(4, 12))
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+            for entry in feed.entries:
+                title = _clean(entry.get("title"))
+                summary = _clean(entry.get("summary"))
+                link = entry.get("link", "")
+                blob = f"{title}. {summary}"
+                if not re.search(r"\b(raised|raises|closes|closed|secured|has raised|have raised)\b", blob, re.I):
+                    continue
+                amount, currency, amount_text = _amount(blob)
+                if not amount or not link:
+                    continue
+                published = entry.get("published", entry.get("updated", ""))
+                try:
+                    date = pd.to_datetime(published, utc=True).tz_convert(None)
+                except Exception:
+                    date = pd.NaT
+                source = _clean(entry.get("source", {}).get("title", "")) or "Source à ouvrir"
+                rows.append({
+                    "Date": date, "Entreprise": _company(title), "Pays": _country(f"{title} {summary}"),
+                    "Secteur": sector, "Montant": amount, "Devise": currency,
+                    "Montant affiché": amount_text, "Titre": title, "Source": source,
+                    "Lien": link, "Résumé": summary[:500],
+                })
+        except Exception as exc:
+            errors.append(f"{sector} : {type(exc).__name__}")
+    if not rows:
+        return pd.DataFrame(), errors
+    df = pd.DataFrame(rows).drop_duplicates(subset=["Lien"])
+    return df.sort_values("Date", ascending=False, na_position="last"), errors
 
 def render_financial_intelligence():
     st.markdown("""
     <style>
-    .fi-hero{background:linear-gradient(120deg,#101E30 0%,#183B52 58%,#27645F 100%);padding:27px 29px;border-radius:17px;color:#fff;margin:4px 0 18px}
-    .fi-kicker{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#B7D8D1;font-weight:800}
-    .fi-hero h2{color:#fff;font-size:30px;line-height:1.12;margin:9px 0}
-    .fi-hero p{color:#DFEAF0;font-size:14px;max-width:900px;margin:0}
-    .fi-section{font-size:20px;font-weight:850;color:#1D3448;margin:20px 0 5px}
-    .fi-sub{font-size:12px;color:#697B8B;margin-bottom:12px}
-    .fi-panel{background:#F4F7FA;border:1px solid #E0E7EE;border-radius:14px;padding:15px 16px;margin-bottom:10px}
-    .fi-chip{display:inline-block;border-radius:20px;padding:4px 9px;background:#E2EBF1;color:#30485D;font-size:10px;font-weight:800;letter-spacing:.4px}
-    .fi-callout{background:#EAF2F1;border-left:4px solid #39877A;border-radius:8px;padding:13px 15px;color:#203A42;font-size:13px;margin:8px 0}
-    .fi-risk{background:#FFF4E6;border-left:4px solid #D69B3C;border-radius:8px;padding:12px 14px;color:#5A4324;font-size:12px}
-    .fi-sector{background:#fff;border:1px solid #E3E9EF;border-radius:12px;padding:13px;min-height:130px}
-    .fi-sector .name{font-size:13px;font-weight:800;color:#24384B}
-    .fi-sector .value{font-size:23px;font-weight:850;color:#1B3448;margin:8px 0 3px}
-    .fi-sector .meta{font-size:10px;color:#738292;text-transform:uppercase;letter-spacing:.5px}
+    .fm-hero{background:linear-gradient(120deg,#101E30,#183B52 58%,#27645F);padding:25px 28px;border-radius:16px;color:#fff;margin:4px 0 18px}
+    .fm-hero h2{color:white;margin:8px 0;font-size:29px}
+    .fm-hero p{color:#dce8ef;margin:0;font-size:14px}
+    .fm-kpi{background:#14283B;border:1px solid #2D465D;border-radius:12px;padding:14px;color:white;min-height:105px}
+    .fm-kpi small{color:#b7c8d6;text-transform:uppercase;font-weight:800;letter-spacing:1px}
+    .fm-kpi strong{display:block;font-size:27px;margin:5px 0}
     </style>
-    <div class="fi-hero">
-      <div class="fi-kicker">Follow the Money / Financial Intelligence · Capital Allocation Radar</div>
-      <h2>Où le capital se déploie — et où il peut créer de la valeur</h2>
-      <p>Une lecture d’allocation du capital, pas un simple catalogue de montants : distinguer les dépenses réellement observées,
-      les budgets, les capex projetés et les capacités théoriques ; identifier les goulets d’étranglement, les bénéficiaires potentiels
-      et les risques de mauvaise allocation.</p>
-    </div>
+    <div class="fm-hero"><div style="font-size:11px;letter-spacing:2px;color:#B7D8D1;font-weight:800">FOLLOW THE MONEY · LIVE DEAL FLOW</div>
+    <h2>Les capitaux qui bougent réellement</h2>
+    <p>Suivi glissant des levées de fonds rapportées : entreprise, pays, secteur, montant, date et article source. Pas de projection annuelle présentée comme un flux en temps réel.</p></div>
     """, unsafe_allow_html=True)
-
-    # Executive dashboard: values intentionally labelled by their nature, never summed.
-    cols=st.columns(4,gap="medium")
-    metrics=[
-        ("ÉNERGIE","3 400 Md$","Investissement attendu · 2026","#E9B85C"),
-        ("DÉFENSE","2 887 Md$","Dépenses observées · 2025","#AAB8C8"),
-        ("VC MONDIAL","427,1 Md$","Investissements observés · 2025","#B9A5D8"),
-        ("FDI GREENFIELD","576 Md$","Projets stratégiques annoncés · 2025","#86BDA7"),
-    ]
-    for col,m in zip(cols,metrics):
-        with col: _metric_card(*m)
-    st.markdown('<div class="fi-callout"><b>Lecture du moment :</b> le thème transversal est la conversion du capital financier en capacités physiques — électricité, réseaux, data centers, semi-conducteurs, défense et chaînes d’approvisionnement. Le point critique n’est plus seulement le montant annoncé, mais la vitesse d’exécution et le rendement économique final.</div>',unsafe_allow_html=True)
-
-    st.markdown('<div class="fi-section">01 · Les flux que l’on peut réellement comparer</div><div class="fi-sub">Chaque graphique reste dans son propre périmètre statistique. Aucune addition entre secteurs hétérogènes.</div>',unsafe_allow_html=True)
-    c1,c2=st.columns(2,gap="large")
+    c1,c2=st.columns([1,5])
     with c1:
-        st.markdown("**⚡ Énergie — allocation de l’investissement 2026**")
-        energy=go.Figure(go.Bar(
-            x=[2200,1200],y=["Énergies propres, réseaux & électrification","Combustibles fossiles"],
-            orientation="h",marker_color=["#49A58D","#D9A04B"],
-            text=["2 200 Md$","1 200 Md$"],textposition="inside",
-            hovertemplate="%{y}<br>%{x:,.0f} Md$<extra></extra>"
-        ))
-        energy.update_layout(barmode="stack",xaxis_title="Md$ estimés",yaxis=dict(autorange="reversed"))
-        st.plotly_chart(_chart_theme(energy,270),use_container_width=True,key="fi_energy_split")
-        st.caption("Source : IEA · prévision annuelle 2026. Les 2 200 Md$ regroupent plusieurs catégories d’énergie propre et d’infrastructure.")
+        days=st.selectbox("Période", [7,14,30,45,90], index=3, format_func=lambda x:f"{x} derniers jours", key="fm_days")
     with c2:
-        st.markdown("**🚀 Venture capital — concentration de l’IA en 2025**")
-        vc=go.Figure(go.Pie(labels=["IA","Autres secteurs"],values=[258.7,168.4],hole=.68,
-            marker=dict(colors=["#8B78B9","#DCE3EA"]),textinfo="label+percent",
-            hovertemplate="%{label}<br>%{value:.1f} Md$<extra></extra>"))
-        vc.add_annotation(text="<b>61 %</b><br><span style='font-size:10px'>du VC</span>",x=.5,y=.5,showarrow=False,font=dict(size=21,color="#20384C"))
-        st.plotly_chart(_chart_theme(vc,270),use_container_width=True,key="fi_vc_ai_share")
-        st.caption("Source : OCDE · 427,1 Md$ au total ; 258,7 Md$ attribués aux entreprises IA.")
-    c3,c4=st.columns(2,gap="large")
-    with c3:
-        st.markdown("**🛡️ Dépenses militaires — répartition géographique 2025**")
-        defence=go.Figure(go.Bar(x=["Europe","Asie-Océanie","Autres régions"],y=[864,681,1342],
-            marker_color=["#7C9BB5","#AAB8C8","#D5DCE3"],text=["864","681","1 342"],textposition="outside",
-            hovertemplate="%{x}<br>%{y:,.0f} Md$<extra></extra>"))
-        defence.update_layout(yaxis_title="Md$ dépensés",xaxis_title="")
-        st.plotly_chart(_chart_theme(defence,270),use_container_width=True,key="fi_defence_regions")
-        st.caption("Source : SIPRI · total mondial 2 887 Md$. « Autres régions » est le solde calculé.")
-    with c4:
-        st.markdown("**🏭 Projets greenfield stratégiques — évolution**")
-        green=go.Figure(go.Bar(x=["2020","2025"],y=[109,576],marker_color=["#C8D3DC","#398F7C"],
-            text=["109 Md$","576 Md$"],textposition="outside",
-            hovertemplate="%{x}<br>%{y:,.0f} Md$<extra></extra>"))
-        green.update_layout(yaxis_title="Md$ annoncés",xaxis_title="")
-        st.plotly_chart(_chart_theme(green,270),use_container_width=True,key="fi_greenfield_growth")
-        st.caption("Source : UNCTAD · projets annoncés dans cinq secteurs stratégiques, pas investissements tous réalisés.")
-
-    st.markdown('<div class="fi-section">02 · Radar sectoriel — intensité, maturité et risque</div><div class="fi-sub">Les montants servent de repères de taille ; le statut décrit la nature de la donnée, pas une recommandation d’achat.</div>',unsafe_allow_html=True)
-    for start in range(0,len(SIGNALS),4):
-        cols=st.columns(4,gap="small")
-        for col,item in zip(cols,SIGNALS[start:start+4]):
-            with col:
-                st.markdown(f"""<div class="fi-sector" style="border-top:4px solid {item['color']}">
-                <div class="name">{item['icon']} {item['sector']}</div>
-                <div class="value">{item['label']}</div>
-                <div class="meta">{item['kind']} · {item['period']}</div></div>""",unsafe_allow_html=True)
-
-    st.markdown('<div class="fi-section">03 · Analyse d’un secteur : de l’allocation au bénéficiaire économique</div>',unsafe_allow_html=True)
-    selected=st.selectbox("Choisir un secteur à examiner",options=[x["sector"] for x in SIGNALS],key="fi_selected_sector")
-    item=next(x for x in SIGNALS if x["sector"]==selected)
-    left,right=st.columns([1.05,1.4],gap="large")
+        st.caption("Actualisation automatique des résultats toutes les 30 minutes · utilisez « Actualiser » pour forcer une nouvelle collecte.")
+    if st.button("↻ Actualiser les levées", key="fm_refresh"):
+        fetch_fundraising_radar.clear()
+        st.rerun()
+    with st.spinner("Recherche des levées de fonds dans les flux d’actualité…"):
+        df, errors = fetch_fundraising_radar(days)
+    if df.empty:
+        st.warning("Aucune levée répondant aux critères stricts (montant explicite + levée réalisée/sécurisée) n’a été détectée dans les flux interrogés. Cela ne signifie pas qu’il n’y a eu aucune opération.")
+        if errors:
+            st.caption("Flux temporairement indisponibles : " + " · ".join(errors[:5]))
+        st.markdown("[Ouvrir Google News — levées de fonds récentes](https://news.google.com/search?q=startup%20raised%20funding%20round)")
+        return
+    countries=sorted(df["Pays"].unique())
+    sectors=sorted(df["Secteur"].unique())
+    f1,f2=st.columns(2)
+    with f1: selected_countries=st.multiselect("Pays",countries,default=countries,key="fm_countries")
+    with f2: selected_sectors=st.multiselect("Secteurs",sectors,default=sectors,key="fm_sectors")
+    view=df[df["Pays"].isin(selected_countries)&df["Secteur"].isin(selected_sectors)].copy()
+    usd=view[view["Devise"]=="USD"]
+    total_usd=usd["Montant"].sum()/1e9
+    a,b,c,d=st.columns(4)
+    metrics=[("OPÉRATIONS REPÉRÉES",str(len(view))),("PAYS IDENTIFIÉS",str(view[view["Pays"]!="À vérifier"]["Pays"].nunique())),("SECTEURS ACTIFS",str(view["Secteur"].nunique())),("MONTANTS USD",f"$ {total_usd:.2f} Md" if total_usd else "—")]
+    for col,(label,value) in zip([a,b,c,d],metrics):
+        with col: st.markdown(f'<div class="fm-kpi"><small>{label}</small><strong>{value}</strong><span style="font-size:11px;color:#c5d2dd">Période sélectionnée</span></div>',unsafe_allow_html=True)
+    st.markdown("### Où les levées sont-elles réalisées ?")
+    left,right=st.columns(2)
     with left:
-        st.markdown(f"""<div style="background:linear-gradient(145deg,#172C40,#28516A);padding:20px;border-radius:14px;color:white">
-        <div style="font-size:12px;color:#B8D0DD;font-weight:800;letter-spacing:1px">{item['horizon']} · {item['signal']}</div>
-        <div style="font-size:22px;font-weight:850;margin:10px 0 3px">{item['icon']} {item['sector']}</div>
-        <div style="font-size:31px;font-weight:900">{item['label']}</div>
-        <div style="font-size:12px;color:#D6E2E9">{item['maturity']} · {item['period']}</div>
-        </div>""",unsafe_allow_html=True)
-        st.markdown("**Nature exacte du chiffre**")
-        st.write(item["detail"])
-        st.markdown(f"[Source primaire / institutionnelle ↗]({item['url']})")
+        country_counts=view[view["Pays"]!="À vérifier"].groupby("Pays").size().sort_values(ascending=True).tail(15).reset_index(name="Opérations")
+        if not country_counts.empty:
+            fig=px.bar(country_counts,x="Opérations",y="Pays",orientation="h",text="Opérations",title="Nombre de levées par pays")
+            fig.update_layout(height=390,margin=dict(l=8,r=8,t=45,b=8),showlegend=False)
+            st.plotly_chart(fig,use_container_width=True)
     with right:
-        st.markdown("**Pourquoi les capitaux se dirigent ici**")
-        st.write(item["impact"])
-        st.markdown("**Indicateurs avancés à suivre**")
-        st.write(item["watch"])
-        st.markdown(f'<div class="fi-risk"><b>Risque de conversion :</b> {item["risk"]}</div>',unsafe_allow_html=True)
-
-
-    # Visual drill-down: capital allocation by technology and destination region.
-    st.markdown('<div class="fi-section">04 · Où va le capital ? — pays & sous-secteurs</div><div class="fi-sub">Graphiques construits à partir des chiffres publiés par l’IEA. Les catégories imbriquées sont signalées et ne doivent pas être additionnées.</div>',unsafe_allow_html=True)
-    allocation_sector = st.selectbox("Famille d’investissement", options=[x["sector"] for x in SIGNALS], key="fi_allocation_sector")
-
-    if allocation_sector == "Énergie & réseaux":
-        st.markdown("**Répartition géographique des investissements énergétiques — 2026**")
-        st.caption("Montants en Md$ US · estimations IEA 2026 · les régions sont affichées séparément des sous-secteurs.")
-        region_names = ["Chine", "États-Unis", "Union européenne", "Autres régions"]
-        region_values = [945, 615, 440, 1400]
-        region_fig = go.Figure(go.Bar(
-            x=region_values, y=region_names, orientation="h",
-            marker_color=["#3C8D78", "#4F82B8", "#8B79B8", "#B7C4CE"],
-            text=["945 Md$", "615 Md$", "440 Md$", "1 400 Md$"],
-            textposition="outside",
-            customdata=[[27.8],[18.1],[12.9],[41.2]],
-            hovertemplate="%{y}<br>Investissement : %{x:,.0f} Md$<br>Part du monde : %{customdata[0]:.1f}%<extra></extra>"
-        ))
-        region_fig.update_layout(xaxis_title="Milliards USD", yaxis=dict(autorange="reversed"), showlegend=False)
-        st.plotly_chart(_chart_theme(region_fig,310),use_container_width=True,key="fi_energy_region_capital")
-        st.caption("Chine : 945 Md$ · États-Unis : 615 Md$ · Union européenne : 440 Md$. « Autres régions » est le solde calculé sur le total mondial de 3 400 Md$ ; ce n’est pas un pays.")
-        
-        st.markdown("**Quels sous-secteurs captent les investissements ? — monde, 2026**")
-        tech_names = ["Énergie renouvelable (toutes)", "dont solaire", "Réseaux électriques", "Stockage par batteries", "Gaz naturel", "Pétrole"]
-        tech_values = [665, 365, 550, 100, 330, 499]
-        tech_labels = ["≈665 Md$", "≈365 Md$", "≈550 Md$", ">100 Md$", "≈330 Md$", "<500 Md$"]
-        tech_fig = go.Figure(go.Bar(
-            x=tech_values, y=tech_names, orientation="h",
-            marker_color=["#3C8D78", "#74B7A2", "#4F82B8", "#79A9D5", "#D69B52", "#B97855"],
-            text=tech_labels, textposition="outside",
-            hovertemplate="%{y}<br>Montant : %{text}<extra></extra>"
-        ))
-        tech_fig.update_layout(xaxis_title="Milliards USD (valeurs approximatives)", yaxis=dict(autorange="reversed"))
-        st.plotly_chart(_chart_theme(tech_fig,350),use_container_width=True,key="fi_energy_subsector_capital")
-        st.caption("Attention : « dont solaire » est inclus dans les renouvelables ; le stockage peut être comptabilisé avec les investissements électriques/réseaux. Les barres ne constituent donc pas un total additionnable. Le pétrole est affiché à 499 Md$ comme borne graphique pour représenter « moins de 500 Md$ ».")
-        
-        st.markdown("**Origine géographique des capitaux : énergie propre vs fossiles — 2026**")
-        st.caption("Parts régionales reproduites à partir du graphique IEA ; montants indicatifs calculés en appliquant les parts publiées aux enveloppes mondiales de 2 200 Md$ et 1 200 Md$.")
-        geo_names = ["Chine", "États-Unis", "Union européenne", "Amérique latine & Caraïbes", "Inde", "Moyen-Orient", "Autres régions"]
-        clean_pct = [30,20,18,3,5,2,22]
-        fossil_pct = [22,17,5,7,5,13,31]
-        geo_fig = go.Figure()
-        geo_fig.add_trace(go.Bar(name="Énergie propre",y=geo_names,x=[p*22 for p in clean_pct],orientation="h",marker_color="#3C9B80",customdata=clean_pct,hovertemplate="%{y}<br>≈ %{x:,.0f} Md$<br>Part : %{customdata}%<extra>Énergie propre</extra>"))
-        geo_fig.add_trace(go.Bar(name="Énergies fossiles",y=geo_names,x=[p*12 for p in fossil_pct],orientation="h",marker_color="#D69B52",customdata=fossil_pct,hovertemplate="%{y}<br>≈ %{x:,.0f} Md$<br>Part : %{customdata}%<extra>Fossiles</extra>"))
-        geo_fig.update_layout(barmode="group",xaxis_title="Milliards USD estimés",yaxis=dict(autorange="reversed"),legend=dict(orientation="h",y=1.12))
-        st.plotly_chart(_chart_theme(geo_fig,390),use_container_width=True,key="fi_energy_clean_fossil_geo")
-        st.caption("Les montants régionaux sont des conversions des parts du graphique IEA, arrondies. « Autres régions » regroupe les zones restantes. Estimations 2026 établies avant les effets complets du conflit au Moyen-Orient.")
-        st.markdown("[IEA — World Energy Investment 2026 : tableaux régionaux et données téléchargeables ↗](https://www.iea.org/reports/world-energy-investment-2026/regional-dashboards) · [Fichier de données IEA 2026 ↗](https://www.iea.org/data-and-statistics/data-product/world-energy-investment-2026-datafile)")
-        st.info("Lecture investisseur : les trois premiers pôles — Chine, États-Unis et Union européenne — concentrent environ 2 000 Md$ des investissements énergétiques mondiaux. Les sous-secteurs à suivre sont les renouvelables (notamment solaire), les réseaux, le stockage et le gaz naturel. Les montants géographiques et technologiques sont deux vues différentes du même univers : ne pas les additionner.")
-    else:
-        st.info("Les graphiques pays × sous-secteurs de cette famille ne sont pas encore publiés ici : je préfère ne pas transformer des descriptions qualitatives ou des montants mondiaux non ventilés en fausses données géographiques. Cette famille doit être alimentée par une source chiffrée dédiée avant affichage.")
-
-    st.markdown('<div class="fi-section">05 · La grille de lecture investisseur</div>',unsafe_allow_html=True)
-    matrix=pd.DataFrame([
-        ["IA & data centers","GPU / mémoire, refroidissement, réseaux électriques, fournisseurs d’énergie","Capex réellement exécuté, taux d’utilisation, cash-flow, financement","Surinvestissement, obsolescence, valorisations"],
-        ["Énergie & réseaux","Équipements électriques, stockage, production pilotable, ingénierie","Commandes fermes, raccordements, délais de livraison, régulation","Retards, coûts de financement, dépendance aux subventions"],
-        ["Défense & sécurité","Électronique, munitions, défense aérienne, cyber, maintenance","Budgets votés, contrats attribués, carnet de commandes, cadence","Annonces non contractualisées, dépendance politique"],
-        ["Industrie & FDI","Construction, automatisation, semi-conducteurs, logistique","Décisions finales, permis, travaux commencés, taux d’annulation","Projets reportés, risque pays, fragmentation commerciale"],
-        ["Santé & biotech","Bioproduction, dispositifs, diagnostics, fournisseurs spécialisés","Résultats d’essais, autorisations, financement late-stage","Échec clinique, réglementation, dilution"],
-        ["Agroalimentaire","Irrigation, stockage, engrais, semences, chaîne du froid","Capacité financée, stress hydrique, stocks, prix des intrants","Risque climatique, politique commerciale, accès à l’eau"],
-    ],columns=["Thème","Bénéficiaires potentiels (exposition indirecte)","Preuves à rechercher","Risque principal"])
-    st.dataframe(matrix,use_container_width=True,hide_index=True)
-    st.markdown('<div class="fi-callout"><b>Règle de décision :</b> ne pas investir sur la seule taille d’un marché. Chercher la preuve que l’argent est engagé, que les commandes existent, que les capacités sont livrées et que les marges restent positives. Les entreprises situées sur les goulets d’étranglement peuvent capter davantage de valeur que les acteurs les plus visibles.</div>',unsafe_allow_html=True)
-    st.warning("Limites méthodologiques : les chiffres proviennent de publications de nature et de dates différentes. Les dépenses militaires, capex énergétiques, investissements directs, VC et capacités potentielles ne sont ni additionnables ni directement comparables. Les données de cette page sont des repères documentaires, pas des flux temps réel ni des signaux automatiques d’achat/vente.")
-    st.caption("Financial Intelligence · version renforcée · chiffres et sources hérités de la base documentaire existante ; à actualiser à chaque nouvelle publication des organismes cités.")
+        sector_counts=view.groupby("Secteur").size().sort_values(ascending=True).reset_index(name="Opérations")
+        fig=px.bar(sector_counts,x="Opérations",y="Secteur",orientation="h",text="Opérations",title="Nombre de levées par secteur")
+        fig.update_layout(height=390,margin=dict(l=8,r=8,t=45,b=8),showlegend=False)
+        st.plotly_chart(fig,use_container_width=True)
+    st.markdown("### Cartographie pays × secteurs")
+    matrix=view[view["Pays"]!="À vérifier"].pivot_table(index="Pays",columns="Secteur",values="Entreprise",aggfunc="count",fill_value=0)
+    if not matrix.empty:
+        heat=px.imshow(matrix,text_auto=True,aspect="auto",color_continuous_scale="Teal",labels=dict(x="Secteur",y="Pays",color="Levées"))
+        heat.update_layout(height=max(330,min(700,34*len(matrix)+150)),margin=dict(l=8,r=8,t=25,b=8))
+        st.plotly_chart(heat,use_container_width=True)
+    st.markdown("### Dernières levées de fonds détectées")
+    st.caption("Montants dans leur devise d’origine : aucun taux de change approximatif n’est appliqué.")
+    for _,row in view.head(30).iterrows():
+        date=row["Date"].strftime("%d/%m/%Y") if pd.notna(row["Date"]) else "Date non précisée"
+        amount=f"{row['Montant affiché']} ({row['Devise']})"
+        st.markdown(f"**{row['Entreprise']}** · {row['Pays']} · {row['Secteur']}  \n<small>{date} · {amount} · {row['Source']}</small>  \n[{row['Titre']}]({row['Lien']})",unsafe_allow_html=True)
+        st.divider()
+    st.markdown("### Qualité et limites des données")
+    st.info("Radar alimenté par Google News RSS. Le filtre exige un montant explicite et un vocabulaire de levée réalisée/sécurisée ; le pays et le secteur sont classés automatiquement à partir du titre/résumé. Chaque ligne doit être vérifiée dans son article source avant d’être considérée comme définitivement confirmée. Une absence de résultat n’est pas une preuve d’absence de levée.")
+    if errors:
+        st.caption("Certains flux de recherche ont échoué : " + " · ".join(errors[:7]))
