@@ -739,54 +739,9 @@ btc_df = merge_actual_pred("Bitcoin", "bitcoin_actual")
 
 
 # -------------------------------------------------------------------
-# WHAT-IF SLIDERS
+# What-if controls removed from the sidebar; base forecasts remain unchanged.
+# Portfolio stress inputs continue to use their neutral defaults.
 # -------------------------------------------------------------------
-st.sidebar.header("🔧 What-If Scenario")
-def get_default_assumption(df: pd.DataFrame, key: str, fallback: float):
-    if df is None or df.empty:
-        return fallback
-    try:
-        last_assumptions = eval(df["assumptions"].iloc[-1])
-        return last_assumptions.get(key, fallback)
-    except Exception:
-        return fallback
-
-if "inflation_adj" not in st.session_state:
-    st.session_state.inflation_adj = get_default_assumption(gold_df, "inflation", 2.5)
-if "usd_adj" not in st.session_state:
-    st.session_state.usd_adj = get_default_assumption(gold_df, "usd_strength", 0.0)
-if "oil_adj" not in st.session_state:
-    st.session_state.oil_adj = get_default_assumption(gold_df, "energy_prices", 0.0)
-if "vix_adj" not in st.session_state:
-    st.session_state.vix_adj = get_default_assumption(gold_df, "tail_risk_event", 20.0)
-
-def reset_sliders():
-    st.session_state.inflation_adj = get_default_assumption(gold_df, "inflation", 2.5)
-    st.session_state.usd_adj = get_default_assumption(gold_df, "usd_strength", 0.0)
-    st.session_state.oil_adj = get_default_assumption(gold_df, "energy_prices", 0.0)
-    st.session_state.vix_adj = get_default_assumption(gold_df, "tail_risk_event", 20.0)
-
-inflation_adj = st.sidebar.slider("Inflation 💹 (%)", 0.0, 10.0, st.session_state.inflation_adj, 0.1, key="inflation_adj")
-usd_adj = st.sidebar.slider("USD Strength 💵 (%)", -10.0, 10.0, st.session_state.usd_adj, 0.1, key="usd_adj")
-oil_adj = st.sidebar.slider("Oil Price 🛢️ (%)", -50.0, 50.0, st.session_state.oil_adj, 0.1, key="oil_adj")
-vix_adj = st.sidebar.slider("VIX / Volatility 🚨", 0.0, 100.0, st.session_state.vix_adj, 1.0, key="vix_adj")
-st.sidebar.button("Reset to Predicted Values", on_click=reset_sliders)
-
-def apply_what_if(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-    adj = 1 + st.session_state.inflation_adj * 0.01 - st.session_state.usd_adj * 0.01 + st.session_state.oil_adj * 0.01 - st.session_state.vix_adj * 0.005
-    df_copy = df.copy()
-    if "predicted_price" in df_copy.columns:
-        try:
-            df_copy["predicted_price"] = df_copy["predicted_price"].astype(float) * adj
-            df_copy["target_price"] = df_copy["predicted_price"]
-        except Exception:
-            pass
-    return df_copy
-
-gold_df_adj = apply_what_if(gold_df)
-btc_df_adj = apply_what_if(btc_df)
 
 
 def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
