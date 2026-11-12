@@ -2260,65 +2260,293 @@ def render_drawdown_alerts():
             """, unsafe_allow_html=True)
     st.caption("Les variations, dates, cours et fourchettes 52 semaines sont recalculés à chaque actualisation depuis Yahoo Finance. Les multiples P/E affichés sont des références datées et doivent être actualisés séparément ; ils ne sont pas présentés comme des données temps réel.")
 
-def render_central_bank_gold_purchases():
-    """Quarterly global central-bank net gold purchases, based on WGC publications."""
-    rows = [
-        ("T1 2024", 309.9), ("T2 2024", 183.4), ("T3 2024", 186.2), ("T4 2024", 332.9),
-        ("T1 2025", 243.7), ("T2 2025", 166.5), ("T3 2025", 226.3), ("T4 2025", 230.3),
-        ("T1 2026", 57.0), ("T2 2026", 288.9), ("T3 2026", 321.2),
-    ]
-    data = pd.DataFrame(rows, columns=["Trimestre", "Achats nets (tonnes)"])
-    st.markdown("---")
-    st.subheader("🥇 Banques centrales — achats nets d’or depuis 2024")
-    st.caption("Achats nets estimés à l’échelle mondiale · tonnes par trimestre · dernière publication disponible : T3 2026")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("T3 2026", "321,2 t", "+42 % vs T3 2025")
-    m2.metric("Cumul 2026 (T1–T3)", "675 t", "+6 % vs T1–T3 2025")
-    m3.metric("2025 complet", "863,3 t", "vs 1 092,4 t en 2024")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=data["Trimestre"], y=data["Achats nets (tonnes)"],
-        mode="lines+markers+text",
-        text=[f"{v:.0f} t" for v in data["Achats nets (tonnes)"]],
-        textposition="top center",
-        line=dict(color="#C6922B", width=3),
-        marker=dict(size=8, color="#C6922B"),
-        name="Achats nets estimés"
-    ))
-    fig.update_layout(
-        height=360, margin=dict(l=10, r=10, t=30, b=10),
-        yaxis_title="Tonnes d’or", xaxis_title="",
-        hovermode="x unified", showlegend=False,
-        plot_bgcolor="white", paper_bgcolor="white"
+def _cbg_parse_number(value):
+    """Parse a signed tonnage value from a source table without inventing missing values."""
+    import re
+    if value is None:
+        return None
+    raw = str(value).replace("\xa0", " ").strip()
+    if not raw or raw in {"—", "-", "–", "n/a", "N/A"}:
+        return None
+    match = re.search(r"[-+]?\d[\d,]*(?:\.\d+)?", raw)
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", ""))
+    except Exception:
+        return None
+
+
+def _cbg_month(value):
+    """Normalize month labels into a timestamp; retain missing dates as NaT."""
+    import pandas as pd
+    import re
+    raw = str(value or "").strip()
+    if not raw:
+        return pd.NaT
+    for fmt in ("%b %Y", "%B %Y", "%Y-%m", "%Y-%m-%d"):
+        try:
+            return pd.to_datetime(raw, format=fmt)
+        except Exception:
+            pass
+    match = re.search(r"([A-Za-z]{3,9})\s+(20\d{2})", raw)
+    if match:
+        return pd.to_datetime(f"{match.group(1)} {match.group(2)}", errors="coerce")
+    return pd.to_datetime(raw, errors="coerce")
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def fetch_central_bank_gold_country_data():
+    """
+    Pull country-level monthly reported changes from the IMF-derived tracker.
+    Each country keeps its own reference month; no missing month is backfilled.
+    """
+    import requests
+    import pandas as pd
+    from bs4 import BeautifulSoup
+    import re
+
+    url = "https://www.xauusdglobal.com/tools/central-bank-gold-tracker/"
+    response = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; GoldReserveMonitor/1.0)"},
+        timeout=(8, 20),
     )
-    fig.update_yaxes(rangemode="tozero", gridcolor="#E8EAF0")
-    st.plotly_chart(fig, use_container_width=True)
-    st.markdown(
-        "**Lecture :** après un ralentissement marqué au T1 2026, les achats estimés ont rebondi "
-        "à 289 t au T2 puis 321 t au T3. Le T3 2026 est le trimestre le plus élevé depuis le T4 2024. "
-        "La demande officielle reste donc un soutien structurel important pour l’or."
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    records = []
+
+    month_pattern = re.compile(
+        r"\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(20\d{2})\b",
+        re.I,
     )
-    with st.expander("Goldman Sachs : que signifie le chiffre « presque doublé » ?"):
-        st.markdown(
-            "- En mai 2026, Goldman Sachs a relevé son estimation modélisée des achats des banques centrales "
-            "d’environ **29 à 50 tonnes par mois** sur une moyenne mobile de 12 mois, soit une hausse d’environ 72 % "
-            "de son estimation — pas un doublement des achats observés d’une année sur l’autre. "
-            "- Goldman anticipait ensuite environ **60 tonnes par mois** en moyenne sur 2026. "
-            "- À distinguer des données trimestrielles du World Gold Council, qui estiment les achats nets effectivement "
-            "attribués au secteur officiel et peuvent être révisées."
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if len(rows) < 2:
+            continue
+        parsed_rows = []
+        for tr in rows:
+            cells = tr.find_all(["th", "td"])
+            parsed_rows.append([cell.get_text(" ", strip=True) for cell in cells])
+        if not parsed_rows:
+            continue
+
+        header_idx = next(
+            (i for i, row in enumerate(parsed_rows[:3])
+             if any("country" in cell.lower() for cell in row)
+             and any(("change" in cell.lower() or "month" in cell.lower()) for cell in row)),
+            None,
         )
+        if header_idx is None:
+            continue
+
+        headers = [h.strip().lower() for h in parsed_rows[header_idx]]
+        heading_parts = []
+        previous = table.find_previous(["h1", "h2", "h3", "h4", "p"])
+        if previous:
+            heading_parts.append(previous.get_text(" ", strip=True))
+        heading_parts.append(" ".join(headers))
+        heading = " ".join(heading_parts)
+        heading_month = month_pattern.search(heading)
+        default_month = _cbg_month(heading_month.group(0)) if heading_month else pd.NaT
+
+        country_idx = next((i for i, h in enumerate(headers) if "country" in h), None)
+        change_idx = next((i for i, h in enumerate(headers) if "change" in h and ("month" in h or "change" in h)), None)
+        holdings_idx = next((i for i, h in enumerate(headers) if "holding" in h or "reserve" in h), None)
+        month_idx = next((i for i, h in enumerate(headers) if h == "month" or "latest report" in h or "reference" in h), None)
+        if country_idx is None or change_idx is None:
+            continue
+
+        for row in parsed_rows[header_idx + 1:]:
+            if len(row) <= max(country_idx, change_idx):
+                continue
+            country = row[country_idx].strip()
+            if not country or country.lower() in {"world", "global", "country"}:
+                continue
+            change = _cbg_parse_number(row[change_idx])
+            if change is None:
+                continue
+            holdings = _cbg_parse_number(row[holdings_idx]) if holdings_idx is not None and len(row) > holdings_idx else None
+            report_month = default_month
+            if month_idx is not None and len(row) > month_idx:
+                candidate = _cbg_month(row[month_idx])
+                if pd.notna(candidate):
+                    report_month = candidate
+            if pd.isna(report_month):
+                # Some tracker tables encode the month directly in the change column header.
+                header_match = month_pattern.search(headers[change_idx])
+                if header_match:
+                    report_month = _cbg_month(header_match.group(0))
+            if pd.isna(report_month):
+                continue
+            records.append({
+                "Pays": country,
+                "Variation (tonnes)": change,
+                "Réserves (tonnes)": holdings,
+                "Mois de référence": report_month,
+                "Source": "IMF / banque centrale; agrégation XAUUSD Global",
+            })
+
+    if not records:
+        return pd.DataFrame(), "Aucune table pays/mois exploitable détectée dans la source."
+
+    df = pd.DataFrame(records)
+    # Keep the newest reported month per country, not a common artificial date.
+    df = df.sort_values("Mois de référence").drop_duplicates("Pays", keep="last")
+    df["Mois affiché"] = df["Mois de référence"].dt.strftime("%b %Y")
+    return df.sort_values("Variation (tonnes)", ascending=False), None
+
+
+def render_central_bank_gold_purchases():
+    """Country-by-country live monitor of the latest publicly reported official gold changes."""
+    import pandas as pd
+    import plotly.graph_objects as go
+
+    st.markdown("---")
+    st.subheader("🥇 Banques centrales — achats et ventes d’or par pays")
     st.caption(
-        "Méthode : achats nets mondiaux estimés (banques centrales et autres institutions officielles), en tonnes. "
-        "Les publications trimestrielles peuvent être révisées ; elles ne s’additionnent pas toujours exactement "
-        "au total annuel consolidé. T1 2026 utilise la révision publiée au T2 (57 t), et non l’estimation initiale "
-        "de 244 t. En T3 2026, 321 t sont estimées au total, dont 120 t seulement reflétées dans les achats "
-        "officiellement déclarés ; l’activité non déclarée est estimée à environ 63 %."
+        "Suivi des dernières variations mensuelles publiées par pays · "
+        "données déclarées, non transactionnelles en temps réel."
     )
+
+    with st.spinner("Récupération des dernières déclarations nationales…"):
+        try:
+            data, error = fetch_central_bank_gold_country_data()
+        except Exception as exc:
+            data, error = pd.DataFrame(), f"{type(exc).__name__}: {exc}"
+
+    if data.empty:
+        st.warning(
+            "Les données pays par pays ne sont pas accessibles pour le moment. "
+            "Le dashboard ne remplace pas les valeurs manquantes par des estimations."
+        )
+        if error:
+            st.caption(f"Détail technique : {error}")
+        st.markdown(
+            "[World Gold Council — réserves officielles par pays](https://www.gold.org/goldhub/data/gold-reserves-by-country) · "
+            "[IMF — données de réserves internationales](https://data.imf.org/Datasets/IRFCL)"
+        )
+        return
+
+    active = data[data["Variation (tonnes)"].abs() >= 0.05].copy()
+    buyers = int((active["Variation (tonnes)"] > 0).sum())
+    sellers = int((active["Variation (tonnes)"] < 0).sum())
+    latest_month = data["Mois de référence"].max()
+    latest_label = latest_month.strftime("%B %Y") if pd.notna(latest_month) else "Non précisé"
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Banques centrales acheteuses", f"{buyers}")
+    k2.metric("Banques centrales vendeuses", f"{sellers}")
+    k3.metric("Dernière période publiée", latest_label)
+
+    st.markdown("#### Dernières variations déclarées par pays")
+    st.caption(
+        "Chaque pays est affiché avec son propre dernier mois disponible. "
+        "Les dates peuvent donc différer : ne pas additionner ces variations comme si elles concernaient toutes le même mois."
+    )
+
+    chart_data = active.sort_values("Variation (tonnes)", ascending=True).tail(30)
+    if not chart_data.empty:
+        colors = ["#C65D4B" if value < 0 else "#C6922B" for value in chart_data["Variation (tonnes)"]]
+        fig = go.Figure(go.Bar(
+            x=chart_data["Variation (tonnes)"],
+            y=chart_data["Pays"],
+            orientation="h",
+            marker_color=colors,
+            text=[
+                f"{value:+.1f} t · {month}"
+                for value, month in zip(chart_data["Variation (tonnes)"], chart_data["Mois affiché"])
+            ],
+            textposition="outside",
+            customdata=chart_data[["Mois affiché", "Réserves (tonnes)"]].fillna("").values,
+            hovertemplate=(
+                "<b>%{y}</b><br>Variation déclarée : %{x:+.2f} t"
+                "<br>Mois de référence : %{customdata[0]}"
+                "<br>Réserves après déclaration : %{customdata[1]} t<extra></extra>"
+            ),
+        ))
+        fig.add_vline(x=0, line_color="#667085", line_width=1)
+        fig.update_layout(
+            height=max(380, min(780, 28 * len(chart_data) + 120)),
+            margin=dict(l=10, r=100, t=25, b=10),
+            xaxis_title="Variation nette déclarée (tonnes)",
+            yaxis_title="",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+        )
+        fig.update_xaxes(gridcolor="#E8EAF0", zeroline=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("#### Filtrer et comparer les pays")
+    countries = sorted(data["Pays"].unique())
+    selected = st.multiselect(
+        "Pays à suivre",
+        countries,
+        default=active["Pays"].head(8).tolist() if not active.empty else countries[:8],
+        key="central_bank_gold_countries",
+    )
+    selected_data = data[data["Pays"].isin(selected)].sort_values("Mois de référence", ascending=False)
+    if not selected_data.empty:
+        trend = go.Figure()
+        trend.add_trace(go.Bar(
+            x=selected_data["Pays"],
+            y=selected_data["Variation (tonnes)"],
+            marker_color=[
+                "#C65D4B" if value < 0 else "#C6922B"
+                for value in selected_data["Variation (tonnes)"]
+            ],
+            text=[
+                f"{value:+.1f} t<br>{month}"
+                for value, month in zip(selected_data["Variation (tonnes)"], selected_data["Mois affiché"])
+            ],
+            textposition="outside",
+        ))
+        trend.add_hline(y=0, line_color="#667085", line_width=1)
+        trend.update_layout(
+            height=360,
+            margin=dict(l=10, r=20, t=20, b=10),
+            yaxis_title="Variation du dernier mois déclaré (tonnes)",
+            xaxis_title="",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+        )
+        st.plotly_chart(trend, use_container_width=True)
+
+    st.markdown("#### État des réserves et date de déclaration")
+    display = data.copy()
+    display["Mois de référence"] = display["Mois de référence"].dt.strftime("%b %Y")
+    display["Variation (tonnes)"] = display["Variation (tonnes)"].map(lambda x: f"{x:+.2f} t")
+    display["Réserves (tonnes)"] = display["Réserves (tonnes)"].map(
+        lambda x: f"{x:,.1f} t" if pd.notna(x) else "Non disponible"
+    )
+    st.dataframe(
+        display[["Pays", "Variation (tonnes)", "Réserves (tonnes)", "Mois de référence"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    with st.expander("Méthode, fréquence et limites des données"):
+        st.markdown(
+            "- **Source primaire sous-jacente :** déclarations des banques centrales transmises à l’IMF (International Liquidity / IFS). "
+            "Pour la Chine, les publications de la SAFE peuvent compléter les mois non encore intégrés à l’IMF.\n"
+            "- **Agrégation affichée :** XAUUSD Global, qui convertit les onces troy fines en tonnes et conserve le mois réellement publié par pays.\n"
+            "- **Fréquence :** les déclarations sont mensuelles mais publiées à des dates différentes ; l’IMF accuse généralement environ deux mois de retard. "
+            "Certaines banques centrales publient plus tôt, d’autres beaucoup plus tard.\n"
+            "- **Interprétation :** une variation positive correspond à une hausse des réserves déclarées, une variation négative à une baisse. "
+            "Cela ne prouve pas toujours un achat physique sur le marché : transferts, swaps, opérations avec banques commerciales et ajustements de déclaration peuvent intervenir.\n"
+            "- **Non déclaré :** les achats non rapportés ne figurent pas dans ce suivi. Le World Gold Council estime séparément la demande officielle globale, y compris une estimation des achats non déclarés."
+        )
     st.markdown(
-        "Sources : [World Gold Council — T3 2026](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q3-2026/central-banks) · "
-        "[World Gold Council — T2 2026 et révision T1](https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-q2-2026/central-banks) · "
-        "[Goldman Sachs, estimation révisée (19 mai 2026)](https://www.kitco.com/news/article/2026-05-19/central-banks-are-buying-more-gold-expected-and-purchases-will-increase)"
+        "Sources : [IMF — International Reserves and Foreign Currency Liquidity](https://data.imf.org/Datasets/IRFCL) · "
+        "[World Gold Council — Gold Reserves by Country](https://www.gold.org/goldhub/data/gold-reserves-by-country) · "
+        "[XAUUSD Global — Central Bank Gold Tracker](https://www.xauusdglobal.com/tools/central-bank-gold-tracker/)"
     )
+    if st.button("↻ Actualiser les données des banques centrales", key="refresh_central_bank_gold"):
+        fetch_central_bank_gold_country_data.clear()
+        st.rerun()
 
 
 def executive_dashboard(df):
