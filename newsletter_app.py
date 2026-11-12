@@ -2695,7 +2695,7 @@ def executive_dashboard(df):
     p1, p2, p3 = st.columns(3)
     p1.metric("Valeur du portefeuille", "892,45 €")
     p2.metric("Performance totale", "+3,86 %")
-    p3.metric("Plus-value latente estimée", "+33,17 €", help="Calcul indicatif : valeur actuelle moins valeur de revient implicite, sans tenir compte des frais, apports ou retraits intervenus depuis le relevé.")
+    p3.metric("Plus-value latente estimée", "+33,18 €", help="Calcul indicatif : valeur actuelle moins valeur de revient implicite, sans tenir compte des frais, apports ou retraits intervenus depuis le relevé.")
     st.caption("Référence communiquée par toi · 12/11/2026. La performance est un instantané manuel ; les cours des lignes sont actualisés séparément et ne recalculent pas encore la valorisation totale faute de quantités et de prix de revient par ligne.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
@@ -2710,15 +2710,29 @@ def executive_dashboard(df):
         ]
         held_rows = []
         for name, symbol, currency in held:
-            hist = fetch_history(symbol, "5d")
+            hist = fetch_history(symbol, "1y")
             if hist.empty:
-                held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency, "Variation séance": "—", "Date": "—"})
+                held_rows.append({"Position": name, "Ticker": symbol, "Cours": "Indisponible", "Devise": currency,
+                                  "Variation séance": "—", "Variation 5 séances": "—", "Recul depuis + haut 52s": "—",
+                                  "Signal": "DONNÉES INDISPONIBLES", "Date": "—"})
                 continue
             last = float(hist["Cours"].iloc[-1])
             previous = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
             change = (last / previous - 1) * 100 if previous else 0.0
+            base_5d = float(hist["Cours"].iloc[-6]) if len(hist) > 5 else float(hist["Cours"].iloc[0])
+            change_5d = (last / base_5d - 1) * 100 if base_5d else 0.0
+            high_52w = float(hist["Cours"].max())
+            drawdown = (last / high_52w - 1) * 100 if high_52w else 0.0
+            if change <= -3 or change_5d <= -5 or drawdown <= -10:
+                signal = "ALERTE — À EXAMINER"
+            elif change >= 3 or change_5d >= 5:
+                signal = "MOUVEMENT FORT — À QUALIFIER"
+            else:
+                signal = "NORMAL"
             held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
-                              "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
+                              "Variation séance": f"{change:+.2f}%", "Variation 5 séances": f"{change_5d:+.2f}%",
+                              "Recul depuis + haut 52s": f"{drawdown:+.2f}%", "Signal": signal,
+                              "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
         st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
         st.caption("Cours quotidiens Yahoo Finance, potentiellement différés. Les performances sont exprimées dans la devise de cotation ; une comparaison patrimoniale exacte nécessite conversion EUR et prix de revient de chaque ligne.")
         st.markdown("**Règles de surveillance recommandées**")
