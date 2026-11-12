@@ -74,7 +74,9 @@ MARKET_SYMBOLS = {
     "Thales": "HO.PA",
     "Lockheed Martin": "LMT",
     "Air Liquide": "AI.PA",
-    "Amundi Global Health Care (WELS)": "WELS.DE",
+    "Amundi S&P World Health Care (GLHL)": "GLHL.PA",
+    "Xtrackers MSCI World UCITS ETF (XDWD)": "XDWD.DE",
+    "iShares S&P 500 Equal Weight (EWSP)": "EWSP.PA",
     "iShares World Utilities (XDWU)": "XDWU.L",
     "SPDR World Health Care (WHEA)": "WHEA.AS",
     "VanEck Electrification (PIKA)": "PIKA.DE",
@@ -383,7 +385,7 @@ def markets_page():
         market_summary_card("Bitcoin (USD)", "BTC-USD", period)
 
     st.subheader("Actions et ETF")
-    defaults = ["TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Amundi Global Health Care (WELS)", "iShares World Utilities (XDWU)", "Schneider Electric", "Siemens"]
+    defaults = ["TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)", "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)"]
     selected = st.multiselect("Actifs à comparer", list(MARKET_SYMBOLS), default=defaults, key="market_assets")
     histories, summary = [], []
     progress = st.progress(0, text="Chargement des cours…")
@@ -501,11 +503,11 @@ def market_watch_page():
     period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
     period = PERIODS[period_label]
     watch = dict(MARKET_SYMBOLS)
-    watch.update({"Schneider Electric": "SU.PA", "Siemens": "SIE.DE"})
     selected = st.multiselect("Actifs suivis", list(watch), default=[
         "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)",
         "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
-        "Schneider Electric", "Siemens"
+        "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)",
+        "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)"
     ], key="wels_market_assets")
     summary, curves = [], []
     progress = st.progress(0, text="Chargement des cours…")
@@ -550,7 +552,9 @@ def market_watch_page():
 
     holdings = pd.DataFrame([
         {"Actif": "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Type": "ETF", "Exposition": "Actions mondiales"},
-        {"Actif": "WELS — World Health Care", "Type": "ETF", "Exposition": "Santé mondiale"},
+        {"Actif": "Amundi S&P World Health Care (GLHL)", "Type": "ETF", "Exposition": "Santé mondiale"},
+        {"Actif": "Xtrackers MSCI World UCITS ETF (XDWD)", "Type": "ETF", "Exposition": "Actions marchés développés"},
+        {"Actif": "iShares S&P 500 Equal Weight (EWSP)", "Type": "ETF", "Exposition": "Actions américaines équipondérées"},
         {"Actif": "XDWU — World Utilities", "Type": "ETF", "Exposition": "Services aux collectivités / électricité"},
         {"Actif": "TotalEnergies", "Type": "Action", "Exposition": "Énergie"},
         {"Actif": "ExxonMobil", "Type": "Action", "Exposition": "Énergie"},
@@ -2687,14 +2691,22 @@ def executive_dashboard(df):
     with st.expander("Voir le tableau détaillé des cours et variations"):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
+    st.subheader("💼 Portefeuille réel — dernière valorisation communiquée")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Valeur du portefeuille", "892,45 €")
+    p2.metric("Performance totale", "+3,86 %")
+    p3.metric("Plus-value latente estimée", "+33,17 €", help="Calcul indicatif : valeur actuelle moins valeur de revient implicite, sans tenir compte des frais, apports ou retraits intervenus depuis le relevé.")
+    st.caption("Référence communiquée par toi · 12/11/2026. La performance est un instantané manuel ; les cours des lignes sont actualisés séparément et ne recalculent pas encore la valorisation totale faute de quantités et de prix de revient par ligne.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
             ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
             ("Frontline", "FRO", "USD"), ("FTAI Aviation", "FTAI", "USD"),
             ("Thales", "HO.PA", "EUR"), ("Lockheed Martin", "LMT", "USD"),
-            ("Air Liquide", "AI.PA", "EUR"), ("Amundi Health Care (WELS)", "WELS.DE", "EUR"),
-            ("World Utilities (XDWU)", "XDWU.L", "GBP")
+            ("Air Liquide", "AI.PA", "EUR"), ("Amundi S&P World Health Care (GLHL)", "GLHL.PA", "EUR"),
+            ("World Utilities (XDWU)", "XDWU.L", "GBP"),
+            ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
+            ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR")
         ]
         held_rows = []
         for name, symbol, currency in held:
@@ -2708,14 +2720,16 @@ def executive_dashboard(df):
             held_rows.append({"Position": name, "Ticker": symbol, "Cours": round(last, 4), "Devise": currency,
                               "Variation séance": f"{change:+.2f}%", "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
         st.dataframe(pd.DataFrame(held_rows), use_container_width=True, hide_index=True)
-        st.caption("WELS et XDWU sont affichés comme expositions thématiques déjà détenues. Cours potentiellement différés ; comparer les performances après conversion dans une devise commune.")
+        st.caption("Cours quotidiens Yahoo Finance, potentiellement différés. Les performances sont exprimées dans la devise de cotation ; une comparaison patrimoniale exacte nécessite conversion EUR et prix de revient de chaque ligne.")
+        st.markdown("**Règles de surveillance recommandées**")
+        st.markdown("- **Alerte séance :** mouvement de ±3 % sur une position individuelle ; vérifier l'actualité et le volume avant toute décision.\n- **Alerte 5 séances :** baisse de 5 % ou plus ; réexaminer la thèse, sans vente automatique.\n- **Alerte drawdown :** recul de 10 % depuis le plus haut sur 52 semaines ; vérifier si la baisse est sectorielle ou propre à l'émetteur.\n- **Alerte portefeuille :** passage sous +1 % de performance totale, puis sous 0 % ; comparer au niveau de référence précédent.\n- **Opportunités :** ne jamais promouvoir Siemens ou Schneider en position détenue ; les conserver dans une watchlist séparée avec seuils et catalyseurs.")
 
     with st.expander("Nouvelles opportunités — santé, électricité et industrie", expanded=False):
         candidates = [
+            ("Schneider Electric", "SU.PA", "FR0000121972", "WATCHLIST · non détenu · réseaux, gestion électrique et data centers"),
+            ("Siemens", "SIE.DE", "DE0007236101", "WATCHLIST · non détenu · automatisation, électrification et industrie"),
             ("SPDR MSCI World Health Care", "WHEA.AS", "IE00BYTRRB94", "0,30% TER · capitalisant · santé mondiale"),
             ("VanEck Electrification & Power Infrastructure", "PIKA.DE", "IE000YYVSM16", "0,55% TER · lancé le 29/05/2026 · thématique concentrée"),
-            ("Schneider Electric", "SU.PA", "FR0000121972", "Réseaux, gestion électrique et data centers"),
-            ("Siemens", "SIE.DE", "DE0007236101", "Automatisation, électrification et industrie")
         ]
         candidate_rows = []
         for name, symbol, isin, thesis in candidates:
