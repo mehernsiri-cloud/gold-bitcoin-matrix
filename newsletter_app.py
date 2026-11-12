@@ -498,7 +498,13 @@ def enrich_news_frame(df):
 
 def market_watch_page():
     st.header("📈 Marchés & portefeuille suivi")
-    st.caption("Source unique des cours : Yahoo Finance. Cache 5 min ; dernier point quotidien disponible (pas un flux intraday). Chaque ligne indique sa date et sa devise.")
+    st.caption("Portefeuille détenu séparé des actifs en observation. Les cours sont quotidiens et potentiellement différés ; aucun ordre d'achat/vente automatique.")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Valeur du portefeuille", "892,45 €")
+    p2.metric("Performance totale", "+3,86 %")
+    p3.metric("Plus-value latente estimée", "+33,18 €")
+    st.caption("Référence manuelle communiquée le 12/11/2026. La valeur et la performance globales ne sont pas recalculées à partir des cours tant que les quantités et prix de revient par ligne ne sont pas renseignés.")
+    st.caption("Source des cours : Yahoo Finance · cache 5 min · dernier point quotidien disponible. Chaque ligne indique sa date et sa devise.")
     render_drawdown_alerts()
     period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
     period = PERIODS[period_label]
