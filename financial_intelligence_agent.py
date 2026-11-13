@@ -472,7 +472,7 @@ def _portfolio_live_snapshot():
 
 def render_financial_intelligence_dashboard() -> None:
     st.markdown("## Financial Intelligence · Event Impact")
-    st.caption("Pour chaque événement : potentiel de gain à gauche, risque de perte à droite. Les supports sont affichés avec leur nom complet.")
+    st.caption("Deux classements côte à côte : événements à impact net favorable à gauche, événements à risque net défavorable à droite.")
     with st.spinner("Actualisation des cours…"):
         live,error=_portfolio_live_snapshot()
     if live is None:
@@ -483,7 +483,7 @@ def render_financial_intelligence_dashboard() -> None:
     b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
     st.caption("Instantané communiqué : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles ; elles ne remplacent pas le PRU du courtier.")
-    st.markdown("### Événements et conséquences possibles sur le portefeuille")
+    st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
     if not EVENTS_FILE.exists() or not EVENTS_FILE.stat().st_size:
         st.info("Aucun événement collecté. Lance une collecte.")
         return
@@ -502,12 +502,11 @@ def render_financial_intelligence_dashboard() -> None:
         "Equity markets & companies":"#68727D",
     }
     names={p["symbol"]:p["name"] for p in PORTFOLIO}
-    shown=0
-    for _,row in decisions.head(6).iterrows():
+    positive_events=[]
+    risk_events=[]
+    for _,row in decisions.iterrows():
         scenario=_event_scenario(row,live)
         if scenario is None: continue
-        shown+=1
-        color=topic_colors.get(str(row.get("topic","")),"#68727D")
         impact=pd.DataFrame(scenario["rows"])
         impact["name"]=impact["symbol"].map(names).fillna(impact["symbol"])
         impact["delta_eur"]=impact["value_eur"]*impact["impact_pct"]/100
@@ -515,45 +514,75 @@ def render_financial_intelligence_dashboard() -> None:
         losses=impact[impact["delta_eur"]<-0.005].sort_values("delta_eur")
         gain_total=float(gains["delta_eur"].sum()) if not gains.empty else 0.0
         loss_total=float(losses["delta_eur"].sum()) if not losses.empty else 0.0
+        net=gain_total-abs(loss_total)
+        confidence=float(pd.to_numeric(pd.Series([row.get("confidence",0)]),errors="coerce").fillna(0).iloc[0])
+        corroboration=int(pd.to_numeric(pd.Series([row.get("corroboration_count",1)]),errors="coerce").fillna(1).iloc[0])
+        # Ranking combines the net portfolio impact with source confidence and corroboration.
+        evidence=max(0.25,min(1.0,0.55+confidence/250+max(0,corroboration-1)*0.08))
+        item={"row":row,"scenario":scenario,"gains":gains,"losses":losses,
+              "gain_total":gain_total,"loss_total":loss_total,"net":net,
+              "rank":abs(net)*evidence}
+        if net > 0.005:
+            positive_events.append(item)
+        elif net < -0.005:
+            risk_events.append(item)
+    positive_events.sort(key=lambda x:x["rank"],reverse=True)
+    risk_events.sort(key=lambda x:x["rank"],reverse=True)
+
+    def render_event(item, side):
+        row=item["row"]; scenario=item["scenario"]
+        color=topic_colors.get(str(row.get("topic","")),"#68727D")
         with st.container(border=True):
-            st.markdown(f"<div style='height:5px;background:{color};border-radius:5px;margin-bottom:10px'></div>",unsafe_allow_html=True)
+            st.markdown(f"<div style='height:4px;background:{color};border-radius:5px;margin-bottom:8px'></div>",unsafe_allow_html=True)
             st.markdown(f"**{row.get('title','')}**")
             st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
-            st.write(f"**Pourquoi cela te concerne :** {scenario['affected_count']} positions exposées · {scenario['exposed_value']:,.2f} €")
-            left,right=st.columns(2,gap="medium")
-            with left:
-                st.markdown("#### Potentiel de gain")
-                st.metric("Gain indicatif",f"+{gain_total:.2f} €")
-                if gains.empty:
-                    st.caption("Aucun support avec un potentiel positif identifié dans ce scénario.")
+            st.metric("Impact net estimé",f"{item['net']:+.2f} €")
+            st.caption(f"{scenario['affected_count']} supports exposés · {scenario['exposed_value']:,.0f} € concernés")
+            if side=="positive":
+                st.markdown(f"**Contributions positives : +{item['gain_total']:.2f} €**")
+                if item["gains"].empty:
+                    st.caption("Aucun support positif identifié.")
                 else:
-                    for _,asset in gains.iterrows():
+                    for _,asset in item["gains"].head(4).iterrows():
                         st.markdown(f"**{asset['name']}**")
                         st.caption(f"+{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
-                        st.progress(min(1.0,abs(float(asset["impact_pct"]))/1.5))
-            with right:
-                st.markdown("#### Risque de perte")
-                st.metric("Perte potentielle",f"{loss_total:.2f} €",delta=f"{loss_total:.2f} €",delta_color="inverse")
-                if losses.empty:
-                    st.caption("Aucun support avec un impact négatif identifié dans ce scénario.")
+                if item["loss_total"]>0.005:
+                    st.caption(f"Compensation négative estimée : −{item['loss_total']:.2f} €")
+            else:
+                st.markdown(f"**Contributions négatives : −{item['loss_total']:.2f} €**")
+                if item["losses"].empty:
+                    st.caption("Aucun support négatif identifié.")
                 else:
-                    for _,asset in losses.iterrows():
+                    for _,asset in item["losses"].head(4).iterrows():
                         st.markdown(f"**{asset['name']}**")
                         st.caption(f"{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
-                        st.progress(min(1.0,abs(float(asset["impact_pct"]))/1.5))
-            if abs(loss_total)>gain_total:
-                st.warning(f"Le risque de perte estimé ({abs(loss_total):.2f} €) dépasse le potentiel de gain ({gain_total:.2f} €) sur les supports identifiés.")
-            elif gain_total>abs(loss_total):
-                st.success(f"Le potentiel de gain estimé ({gain_total:.2f} €) dépasse le risque de perte ({abs(loss_total):.2f} €) sur les supports identifiés.")
-            else:
-                st.info("Les deux expositions sont proches ou non différenciées.")
-            st.caption("Montants issus de sensibilités heuristiques conditionnelles, pas de probabilités statistiques ni de prévisions de cours. Les montants ne couvrent que les supports identifiés.")
-            st.markdown(f"[Source de l'événement]({row.get('url','')})")
-    if shown==0:
-        st.info("Aucun événement ne dispose actuellement d'un lien explicite avec les facteurs de risque du portefeuille. Pas de projection artificielle.")
+                if item["gain_total"]>0.005:
+                    st.caption(f"Compensation positive estimée : +{item['gain_total']:.2f} €")
+            st.caption("Classement indicatif : impact net estimé pondéré par la qualité des éléments disponibles, pas une probabilité statistique.")
+            url=str(row.get("url","") or "")
+            if url.startswith("http"):
+                st.markdown(f"[Source de l'événement]({url})")
+
+    left,right=st.columns(2,gap="large")
+    with left:
+        st.markdown("### 🟢 Événements favorables")
+        st.caption("Impact positif net estimé le plus élevé sur le portefeuille.")
+        if not positive_events:
+            st.info("Aucun événement avec un avantage net identifiable pour le moment.")
+        else:
+            for item in positive_events[:6]:
+                render_event(item,"positive")
+    with right:
+        st.markdown("### 🔴 Événements à risque")
+        st.caption("Impact négatif net estimé le plus élevé sur le portefeuille.")
+        if not risk_events:
+            st.info("Aucun événement avec un risque net identifiable pour le moment.")
+        else:
+            for item in risk_events[:6]:
+                render_event(item,"risk")
     with st.expander("Méthode et limites"):
-        st.write("La colonne gauche regroupe les positions auxquelles le profil de l'événement attribue une sensibilité positive ; la droite regroupe les positions à sensibilité négative. Les noms complets proviennent du référentiel du portefeuille.")
-        st.write("Les montants sont des scénarios indicatifs fondés sur des règles heuristiques. Ils ne représentent pas des probabilités. Une probabilité fiable de gain ou de perte nécessite une calibration sur des événements historiques comparables et des données de marché.")
+        st.write("Les événements sont répartis dans la colonne gauche si la somme des impacts positifs estimés dépasse la somme des impacts négatifs ; ils sont placés à droite dans le cas inverse. Chaque colonne est triée par ampleur de l'impact net, pondérée par la confiance dans les sources et leur corroboration.")
+        st.write("Ce classement ne constitue pas une probabilité que l'événement se produise ni une probabilité statistique de gain ou de perte. Les sensibilités restent heuristiques et conditionnelles ; elles ne sont pas des prévisions de cours.")
         st.write("Le suivi des cours est ancré à l'instantané communiqué. Sans quantités exactes, les variations sont estimées à partir des valeurs de départ. Certains tickers ou conversions peuvent être indisponibles.")
 
 def main():
