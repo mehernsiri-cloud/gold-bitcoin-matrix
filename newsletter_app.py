@@ -689,13 +689,17 @@ def market_watch_page():
     if known_qty_count == len(holdings) and complete:
         c1, c2, c3 = st.columns(3)
         c1.metric("Valeur estimée du portefeuille", f"{total_eur:,.2f} €".replace(",", " "))
-        if invested_cost_eur > 0:
+        all_costs_known = all(
+            float(r["Quantité"]) == 0 or pd.notna(r.get("Prix de revient / part"))
+            for _, r in edited.iterrows()
+        )
+        if invested_cost_eur > 0 and all_costs_known:
             perf = (total_eur - cash_eur) / invested_cost_eur - 1
-            c2.metric("Performance sur PRU renseignés", f"{perf:+.2%}")
+            c2.metric("Performance calculée sur PRU", f"{perf:+.2%}")
             c3.metric("Plus/moins-value calculée", f"{(total_eur - cash_eur - invested_cost_eur):+,.2f} €".replace(",", " "))
         else:
-            c2.metric("Performance", "PRU à renseigner")
-            c3.metric("Plus/moins-value", "PRU à renseigner")
+            c2.metric("Performance", "PRU à compléter")
+            c3.metric("Plus/moins-value", "PRU à compléter")
         st.caption("Valorisation indicative issue des derniers cours intraday disponibles et des taux EUR/USD et GBP/USD. Vérifier l'horodatage et les délais de la place.")
     else:
         c1, c2, c3 = st.columns(3)
@@ -2869,12 +2873,8 @@ def executive_dashboard(df):
     with st.expander("Voir le tableau détaillé des cours et variations"):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
-    st.subheader("💼 Portefeuille réel — dernière valorisation communiquée")
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Valeur du portefeuille", "892,45 €")
-    p2.metric("Performance totale", "+3,86 %")
-    p3.metric("Plus-value latente estimée", "+33,18 €", help="Calcul indicatif : valeur actuelle moins valeur de revient implicite, sans tenir compte des frais, apports ou retraits intervenus depuis le relevé.")
-    st.caption("Référence communiquée par toi · 12/11/2026. La performance est un instantané manuel ; les cours des lignes sont actualisés séparément et ne recalculent pas encore la valorisation totale faute de quantités et de prix de revient par ligne.")
+    st.subheader("💼 Portefeuille — dernier relevé communiqué")
+    st.caption("Dernier relevé manuel : 897,86 € · +4,40 %. La valorisation calculée à partir des cours et des quantités est désormais disponible dans l'onglet « Marchés & portefeuille » après saisie des quantités détenues.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
