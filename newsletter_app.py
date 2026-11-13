@@ -496,115 +496,285 @@ def enrich_news_frame(df):
     return df
 
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_live_quote(symbol):
+    """Latest intraday bar where Yahoo makes it available; not guaranteed exchange-real-time."""
+    if yf is None or not symbol:
+        return None, None
+    try:
+        frame = yf.download(symbol, period="1d", interval="1m", auto_adjust=True,
+                            progress=False, threads=False, prepost=True, timeout=12)
+        if frame is None or frame.empty:
+            return None, None
+        if isinstance(frame.columns, pd.MultiIndex):
+            frame.columns = frame.columns.get_level_values(0)
+        frame = frame.dropna(subset=["Close"])
+        if frame.empty:
+            return None, None
+        return float(frame["Close"].iloc[-1]), pd.Timestamp(frame.index[-1]).to_pydatetime()
+    except Exception:
+        return None, None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_nvidia_leadership_news():
+    """Fetch fresh Nvidia leadership coverage; official release anchors the confirmed event."""
+    if feedparser is None:
+        return []
+    queries = [
+        'Nvidia Jensen Huang resignation CEO Colette Kress November 2026',
+        'Nvidia shares AI chip export restrictions Jensen Huang resignation'
+    ]
+    rows = []
+    for query in queries:
+        try:
+            response = requests.get(
+                "https://news.google.com/rss/search",
+                params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                headers=REQUEST_HEADERS, timeout=(4, 8)
+            )
+            response.raise_for_status()
+            parsed = feedparser.parse(response.content)
+            for entry in parsed.entries[:12]:
+                title = clean_html(entry.get("title", ""))
+                link = entry.get("link", "")
+                published = parse_date(entry.get("published", entry.get("updated", "")))
+                if title and link and published:
+                    rows.append({"title": title, "link": link, "published": published,
+                                 "source": clean_html(entry.get("source", {}).get("title", ""))})
+        except Exception:
+            continue
+    unique = {item["link"]: item for item in rows}
+    return sorted(unique.values(), key=lambda x: x["published"], reverse=True)[:8]
+
+
+def render_nvidia_leadership_alert():
+    st.markdown("### 🚨 Événement majeur — transition de direction chez NVIDIA")
+    st.error(
+        "**Jensen Huang a démissionné de ses fonctions de président-directeur général et du conseil "
+        "d’administration le 12 novembre 2026.** La directrice financière Colette Kress assure l’intérim ; "
+        "NVIDIA recherche un successeur permanent. Ce fait est confirmé par le communiqué officiel."
+    )
+    st.markdown(
+        "**Pourquoi les marchés doivent le suivre :** risque de gouvernance et de succession, incertitude "
+        "sur l’exécution de la feuille de route IA, relations clients/partenaires et politique d’exportation "
+        "des puces vers la Chine. Effets de second tour possibles sur semi-conducteurs, fabricants de serveurs, "
+        "cloud/data centers et dépenses d’investissement IA. Cela ne signifie pas automatiquement la fin du cycle IA."
+    )
+    st.markdown(
+        "[Communiqué officiel NVIDIA](https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-CEO-Transition/default.aspx) · "
+        "[Analyse Reuters](https://www.reuters.com/business/retail-consumer/nvidia-ceo-jensen-huang-step-down-big-blow-ai-boom-he-helped-foster-2026-11-12/)"
+    )
+    with st.expander("Dernières actualités NVIDIA — flux actualisé"):
+        items = fetch_nvidia_leadership_news()
+        if items:
+            for item in items[:6]:
+                st.markdown(
+                    f"**{item['title']}**  \n"
+                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \n"
+                    f"[Lire l'article ↗]({item['link']})"
+                )
+        else:
+            st.caption("Flux de presse temporairement indisponible ; le communiqué officiel ci-dessus reste la référence.")
+
+
 def market_watch_page():
-    st.header("📈 Marchés & portefeuille suivi")
-    st.caption("Portefeuille détenu séparé des actifs en observation. Les cours sont quotidiens et potentiellement différés ; aucun ordre d'achat/vente automatique.")
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Valeur du portefeuille", "892,45 €")
-    p2.metric("Performance totale", "+3,86 %")
-    p3.metric("Plus-value latente estimée", "+33,18 €")
-    st.caption("Référence manuelle communiquée le 12/11/2026. La valeur et la performance globales ne sont pas recalculées à partir des cours tant que les quantités et prix de revient par ligne ne sont pas renseignés.")
-    st.caption("Source des cours : Yahoo Finance · cache 5 min · dernier point quotidien disponible. Chaque ligne indique sa date et sa devise.")
-    render_drawdown_alerts()
-    period_label = st.selectbox("Période", list(PERIODS.keys()), index=3, key="wels_market_period")
-    period = PERIODS[period_label]
+    st.header("📈 Marchés & portefeuille — suivi dynamique")
+    st.caption("Cours intraday lorsque le fournisseur les expose ; actualisation de l’écran toutes les 60 secondes. Les places européennes restent généralement différées chez Yahoo Finance.")
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=60_000, key="portfolio_live_refresh")
+    except Exception:
+        st.caption("Actualisation automatique indisponible dans cette session ; utilise le bouton Actualiser.")
+
+    if st.button("🔄 Actualiser maintenant", key="portfolio_force_refresh"):
+        fetch_live_quote.clear()
+        fetch_history.clear()
+        fetch_nvidia_leadership_news.clear()
+        st.rerun()
+
+    render_nvidia_leadership_alert()
+    st.divider()
+
+    holdings = [
+        ("TotalEnergies", "TTE.PA", "EUR"),
+        ("Exxon Mobil", "XOM", "USD"),
+        ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
+        ("Frontline", "FRO", "USD"),
+        ("FTAI Aviation", "FTAI", "USD"),
+        ("Thales", "HO.PA", "EUR"),
+        ("Lockheed Martin", "LMT", "USD"),
+        ("Air Liquide", "AI.PA", "EUR"),
+        ("Amundi S&P World Health Care (GLHL)", "GLHL.PA", "EUR"),
+        ("World Utilities (XDWU)", "XDWU.L", "GBP"),
+        ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
+        ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR"),
+    ]
+
+    st.subheader("💼 Valorisation calculée à partir des quantités détenues")
+    st.info(
+        "Pour calculer ton total automatiquement, renseigne les quantités réelles de chaque ligne. "
+        "Les cellules vides signifient « quantité inconnue » ; elles ne sont pas assimilées à zéro. "
+        "Les valeurs saisies restent dans la session Streamlit en cours."
+    )
+    seed = pd.DataFrame([
+        {"Position": name, "Ticker": ticker, "Devise": currency, "Quantité": None, "Prix de revient / part": None}
+        for name, ticker, currency in holdings
+    ])
+    if "portfolio_positions_editor" not in st.session_state:
+        st.session_state["portfolio_positions_editor"] = seed
+    edited = st.data_editor(
+        st.session_state["portfolio_positions_editor"],
+        key="portfolio_positions_table",
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        disabled=["Position", "Ticker", "Devise"],
+        column_config={
+            "Quantité": st.column_config.NumberColumn("Quantité détenue", min_value=0.0, step=0.001, format="%.3f"),
+            "Prix de revient / part": st.column_config.NumberColumn("PRU / part (devise de cotation)", min_value=0.0, step=0.01, format="%.4f"),
+        },
+    )
+    st.session_state["portfolio_positions_editor"] = edited.copy()
+
+    eurusd, _ = fetch_live_quote("EURUSD=X")
+    gbpusd, _ = fetch_live_quote("GBPUSD=X")
+    cash_eur = st.number_input("Liquidités non investies (€)", min_value=0.0, value=0.0, step=10.0, key="portfolio_cash_eur")
+    live_rows, total_eur, invested_cost_eur, complete = [], cash_eur, 0.0, True
+    known_qty_count = 0
+    for _, row in edited.iterrows():
+        qty = row.get("Quantité")
+        if pd.isna(qty):
+            complete = False
+            continue
+        qty = float(qty)
+        known_qty_count += 1
+        price, quote_time = fetch_live_quote(row["Ticker"])
+        if price is None:
+            complete = False
+            live_rows.append({"Position": row["Position"], "Quantité": qty, "Cours": "Indisponible",
+                              "Devise": row["Devise"], "Valeur EUR": "—", "Performance ligne": "—",
+                              "Horodatage": "—"})
+            continue
+        currency = row["Devise"]
+        if currency == "USD":
+            fx = eurusd
+            value_eur = qty * price / fx if fx and fx > 0 else None
+            cost = row.get("Prix de revient / part")
+            cost_eur = qty * float(cost) / fx if pd.notna(cost) and fx and fx > 0 else None
+        elif currency == "GBP":
+            fx = (gbpusd / eurusd) if gbpusd and eurusd and eurusd > 0 else None
+            value_eur = qty * price * fx if fx else None
+            cost = row.get("Prix de revient / part")
+            cost_eur = qty * float(cost) * fx if pd.notna(cost) and fx else None
+        else:
+            value_eur = qty * price
+            cost = row.get("Prix de revient / part")
+            cost_eur = qty * float(cost) if pd.notna(cost) else None
+        if value_eur is None:
+            complete = False
+        else:
+            total_eur += value_eur
+        if cost_eur is not None:
+            invested_cost_eur += cost_eur
+        pnl = ((value_eur / cost_eur - 1) * 100) if value_eur is not None and cost_eur and cost_eur > 0 else None
+        live_rows.append({
+            "Position": row["Position"], "Quantité": qty, "Cours": round(price, 4),
+            "Devise": currency, "Valeur EUR": round(value_eur, 2) if value_eur is not None else "FX indisponible",
+            "Performance ligne": f"{pnl:+.2f}%" if pnl is not None else "PRU manquant",
+            "Horodatage": quote_time.strftime("%d/%m %H:%M") if quote_time else "—",
+        })
+
+    if known_qty_count == len(holdings) and complete:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Valeur estimée du portefeuille", f"{total_eur:,.2f} €".replace(",", " "))
+        if invested_cost_eur > 0:
+            perf = (total_eur - cash_eur) / invested_cost_eur - 1
+            c2.metric("Performance sur PRU renseignés", f"{perf:+.2%}")
+            c3.metric("Plus/moins-value calculée", f"{(total_eur - cash_eur - invested_cost_eur):+,.2f} €".replace(",", " "))
+        else:
+            c2.metric("Performance", "PRU à renseigner")
+            c3.metric("Plus/moins-value", "PRU à renseigner")
+        st.caption("Valorisation indicative issue des derniers cours intraday disponibles et des taux EUR/USD et GBP/USD. Vérifier l'horodatage et les délais de la place.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Dernière valeur déclarée", "897,86 €")
+        c2.metric("Dernière performance déclarée", "+4,40 %")
+        c3.metric("Lignes configurées", f"{known_qty_count}/{len(holdings)}")
+        st.warning("La valorisation dynamique totale s'affichera lorsque les quantités de toutes les lignes seront renseignées et que les cours / taux seront disponibles. Les chiffres déclarés ci-dessus ne sont qu'un dernier relevé manuel, pas un calcul en direct.")
+
+    if live_rows:
+        st.dataframe(pd.DataFrame(live_rows), use_container_width=True, hide_index=True)
+    st.caption("Source indicative : Yahoo Finance via yfinance. L'API permet des barres intraday 1 minute, mais les délais varient selon la place ; Euronext Paris et Xetra sont généralement retardés d'environ 15 minutes. Ce n'est pas un flux de trading garanti.")
+
+    st.subheader("🔔 Alertes automatiques sur les positions")
+    alert_rows = []
+    for item in holdings:
+        name, ticker, currency = item
+        hist = fetch_history(ticker, "1y")
+        if hist.empty or len(hist) < 6:
+            alert_rows.append({"Position": name, "Signal": "Données insuffisantes"})
+            continue
+        last = float(hist["Cours"].iloc[-1])
+        day_prev = float(hist["Cours"].iloc[-2])
+        week_prev = float(hist["Cours"].iloc[-6])
+        high = float(hist["Cours"].max())
+        day_move = (last / day_prev - 1) * 100 if day_prev else 0
+        week_move = (last / week_prev - 1) * 100 if week_prev else 0
+        drawdown = (last / high - 1) * 100 if high else 0
+        signal = "ALERTE" if day_move <= -3 or week_move <= -5 or drawdown <= -10 else ("MOUVEMENT FORT" if day_move >= 3 or week_move >= 5 else "NORMAL")
+        alert_rows.append({"Position": name, "Variation séance": f"{day_move:+.2f}%",
+                           "Variation 5 séances": f"{week_move:+.2f}%",
+                           "Recul depuis plus haut 52s": f"{drawdown:+.2f}%", "Signal": signal})
+    st.dataframe(pd.DataFrame(alert_rows), use_container_width=True, hide_index=True)
+
+    st.subheader("📊 Comparaison des supports et opportunités")
+    period_label = st.selectbox("Période d'analyse", list(PERIODS.keys()), index=3, key="wels_market_period_live")
     watch = dict(MARKET_SYMBOLS)
-    selected = st.multiselect("Actifs suivis", list(watch), default=[
+    selected = st.multiselect("Actifs à comparer", list(watch), default=[
         "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)",
         "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
         "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)",
         "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)"
-    ], key="wels_market_assets")
-    summary, curves = [], []
-    progress = st.progress(0, text="Chargement des cours…")
-    for i, name in enumerate(selected):
-        hist = fetch_history(watch[name], period)
-        progress.progress((i + 1) / max(len(selected), 1), text=f"Chargement : {name}")
-        if hist.empty: continue
+    ], key="wels_market_assets_live")
+    curves, summary = [], []
+    for name in selected:
+        hist = fetch_history(watch[name], PERIODS[period_label])
+        if hist.empty:
+            continue
         first, last = float(hist["Cours"].iloc[0]), float(hist["Cours"].iloc[-1])
         prev = float(hist["Cours"].iloc[-2]) if len(hist) > 1 else last
-        summary.append({"Actif": name, "Ticker Yahoo": watch[name], "Dernier point": round(last, 4),
-                        "Devise": "EUR" if watch[name].endswith((".PA", ".DE", ".AS")) else ("GBP" if watch[name].endswith(".L") else "USD"),
-                        "Variation dernière séance (%)": round((last / prev - 1) * 100, 2) if prev else None,
-                        "Variation période (%)": round((last / first - 1) * 100, 2) if first else None,
-                        "Date du point": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
-        if first:
-            chart = hist.copy()
-            chart["Performance (%)"] = (chart["Cours"] / first - 1) * 100
-            chart["Actif"] = name
-            curves.append(chart[["Date", "Performance (%)", "Actif"]])
-    progress.empty()
-    if summary: st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
-    else: st.warning("Aucun cours disponible pour la sélection.")
+        summary.append({"Actif": name, "Ticker": watch[name], "Dernier cours": round(last, 4),
+                        "Variation séance": f"{(last / prev - 1) * 100:+.2f}%",
+                        "Variation période": f"{(last / first - 1) * 100:+.2f}%",
+                        "Date": pd.to_datetime(hist["Date"].iloc[-1]).strftime("%d/%m/%Y")})
+        chart = hist.copy()
+        chart["Performance (%)"] = (chart["Cours"] / first - 1) * 100
+        chart["Actif"] = name
+        curves.append(chart[["Date", "Performance (%)", "Actif"]])
+    if summary:
+        st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
     if curves:
         fig = px.line(pd.concat(curves, ignore_index=True), x="Date", y="Performance (%)",
                       color="Actif", title=f"Performance comparée — {period_label}")
-        fig.update_layout(height=450, yaxis_title="Performance (%)")
+        fig.update_layout(height=430, yaxis_title="Performance (%)")
         st.plotly_chart(fig, use_container_width=True)
-    st.subheader("ETF thématiques à surveiller")
-    st.markdown(
-        "- **Santé mondiale :** SPDR MSCI World Health Care UCITS ETF (IE00BYTRRB94) ; comparer avec iShares MSCI World Health Care Sector Advanced UCITS ETF. Contrôler TER, encours, spread, réplication et éligibilité au support envisagé.\n"
-        "- **Électrification / énergie :** VanEck Electrification and Power Infrastructure UCITS ETF (IE000YYVSM16). Fonds récent : suivre encours, liquidité, concentration et historique limité.\n"
-        "- **Schneider Electric / Siemens :** commandes data centres et réseaux, marges, cash-flow, dette, valorisation et chevauchement avec l'ETF."
-    )
-    st.caption("Les symboles de marché ne remplacent pas la vérification de l'ISIN, de la place de cotation et de la devise auprès de l'émetteur.")
 
-    st.divider()
-    st.header("Composition du portefeuille réel — ETF et actions")
-    st.caption(
-        "Vue des positions détenues, exprimée en nombre de lignes et non en poids financier. "
-        "Les quantités et valorisations récentes ne sont pas toutes disponibles dans les données enregistrées."
-    )
-
-    holdings = pd.DataFrame([
-        {"Actif": "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Type": "ETF", "Exposition": "Actions mondiales"},
-        {"Actif": "Amundi S&P World Health Care (GLHL)", "Type": "ETF", "Exposition": "Santé mondiale"},
-        {"Actif": "Xtrackers MSCI World UCITS ETF (XDWD)", "Type": "ETF", "Exposition": "Actions marchés développés"},
-        {"Actif": "iShares S&P 500 Equal Weight (EWSP)", "Type": "ETF", "Exposition": "Actions américaines équipondérées"},
-        {"Actif": "XDWU — World Utilities", "Type": "ETF", "Exposition": "Services aux collectivités / électricité"},
-        {"Actif": "TotalEnergies", "Type": "Action", "Exposition": "Énergie"},
-        {"Actif": "ExxonMobil", "Type": "Action", "Exposition": "Énergie"},
-        {"Actif": "Air Liquide", "Type": "Action", "Exposition": "Industrie"},
-        {"Actif": "FTAI Aviation", "Type": "Action", "Exposition": "Aviation"},
-        {"Actif": "Frontline", "Type": "Action", "Exposition": "Transport maritime"},
-        {"Actif": "Thales", "Type": "Action", "Exposition": "Défense / technologie"},
-        {"Actif": "Lockheed Martin", "Type": "Action", "Exposition": "Défense"},
-    ])
-    by_type = holdings.groupby("Type").size().reset_index(name="Nombre de positions")
-    by_exposure = holdings.groupby("Exposition").size().reset_index(name="Nombre de positions").sort_values("Nombre de positions")
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Positions détenues", len(holdings))
-    m2.metric("ETF", int((holdings["Type"] == "ETF").sum()))
-    m3.metric("Actions", int((holdings["Type"] == "Action").sum()))
-
-    chart_left, chart_right = st.columns(2)
-    with chart_left:
-        fig_type = go.Figure(go.Pie(
-            labels=by_type["Type"], values=by_type["Nombre de positions"],
-            hole=0.48, textinfo="label+percent+value"
-        ))
-        fig_type.update_layout(title="ETF vs actions — nombre de lignes", height=390)
-        st.plotly_chart(fig_type, use_container_width=True)
-    with chart_right:
-        fig_exposure = go.Figure(go.Bar(
-            x=by_exposure["Nombre de positions"],
-            y=by_exposure["Exposition"],
-            orientation="h",
-            text=by_exposure["Nombre de positions"],
-            textposition="auto"
-        ))
-        fig_exposure.update_layout(
-            title="Répartition par type d'exposition — nombre de lignes",
-            height=390, xaxis_title="Nombre de positions", yaxis_title=""
-        )
-        st.plotly_chart(fig_exposure, use_container_width=True)
-
-    st.dataframe(holdings, use_container_width=True, hide_index=True)
-    st.caption(
-        "Important : ces graphiques décrivent le nombre de lignes détenues, pas leur poids dans le portefeuille. "
-        "Pour calculer les poids en euros et les expositions financières, il faudra disposer des quantités ou des valorisations actualisées."
-    )
+    with st.expander("Watchlist — actifs non détenus", expanded=False):
+        candidates = [
+            ("Schneider Electric", "SU.PA", "Électrification / data centers"),
+            ("Siemens", "SIE.DE", "Automatisation / industrie"),
+            ("NVIDIA", "NVDA", "Semi-conducteurs IA — événement de gouvernance"),
+            ("VanEck Electrification (PIKA)", "PIKA.DE", "Réseaux et électrification"),
+            ("SPDR World Health Care (WHEA)", "WHEA.AS", "Santé mondiale"),
+        ]
+        rows = []
+        for name, ticker, thesis in candidates:
+            price, quote_time = fetch_live_quote(ticker)
+            rows.append({"Actif non détenu": name, "Cours": round(price, 4) if price is not None else "Indisponible",
+                         "Thèse": thesis, "Horodatage": quote_time.strftime("%d/%m %H:%M") if quote_time else "—"})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 def fx_chf_page():
     st.header("💱 CHF & devises — EUR/CHF et EUR/AED")
