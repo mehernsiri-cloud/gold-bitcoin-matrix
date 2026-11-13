@@ -312,7 +312,6 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
     issue_day = issued_at.date().isoformat()
     existing = _read_forecasts()
     rows = []
-    existing_ids = set(existing["forecast_id"].astype(str)) if not existing.empty else set()
     for item in forecast["forecasts"]:
         forecast_id = f"{asset.lower()}|{issue_day}|{item['horizon_days']}"
         if not existing.empty and forecast_id in set(existing["forecast_id"].astype(str)):
@@ -526,7 +525,7 @@ def _forecast_chart(result: dict) -> go.Figure:
         pd.DataFrame([{"timestamp": today, "close": result["current_price"]}]),
     ], ignore_index=True)
 
-    comparison = _recent_forecast_comparison(result, days=3)
+    comparison = _recent_forecast_comparison(result)
     forecast_color = result.get("color", "#D6A84B")
 
     # Build the future path from the same 1/3/7/14/30-day values shown in
@@ -630,7 +629,7 @@ def _gold_display_result(result: dict, eurusd: float, fx_history: pd.DataFrame) 
 
 def render_market_forecast_dashboard() -> None:
     st.title("🪙 Gold & Bitcoin | Market Intelligence & Forecast")
-    st.caption("Cours de marché, facteurs explicatifs, projections probabilistes et suivi objectif des erreurs.")
+    st.caption("Une prévision immuable par jour · historique complet des prévisions archivées comparé aux cours réels · calibration sur les erreurs passées.")
     snapshot = fetch_market_snapshot()
     assets = snapshot["assets"]
     if not assets:
