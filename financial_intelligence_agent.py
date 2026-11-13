@@ -87,8 +87,8 @@ PORTFOLIO = [
     {"symbol":"HO","name":"Thales","value_eur":23.92,"return_pct":-1.71,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
 ]
 CASH_EUR = 4.93
-PORTFOLIO_TOTAL_EUR = 900.07
-PORTFOLIO_RETURN_PCT = 4.63
+PORTFOLIO_TOTAL_EUR = 899.42
+PORTFOLIO_RETURN_PCT = 4.54
 
 # Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
 IMPACT_MAP = {
@@ -335,58 +335,76 @@ def _event_exposure(topic: str) -> dict:
 
 
 def _event_scenario(row: pd.Series, live: dict) -> dict | None:
-    """Build event-specific scenario envelope using live holding values and observed volatility.
-    It is a transparent sensitivity exercise, not an AI price target or causal forecast.
-    """
+    """Event-specific portfolio sensitivity. Explicitly heuristic; no generic volatility curve."""
+    title = str(row.get("title", ""))
+    text = f"{title} {row.get('summary','')}".lower()
     topic = str(row.get("topic", ""))
-    exposure = _event_exposure(topic)
-    holdings = live["holdings"].set_index("symbol")
-    history = live.get("histories", {})
-    affected = [s for s in exposure["positive"] + exposure["negative"] + exposure["watch"] if s in holdings.index]
-    if not affected:
+    # Distinct transmission fingerprints: percentage move assumptions for a moderate event.
+    # Values are illustrative sensitivities, not forecasts or measured causal betas.
+    profiles = [
+        (["inflation", "cpi", "pce", "hotter than expected", "higher than expected"], "Inflation surprise",
+         {"VWCE":-0.65,"TTE":0.20,"GLHL":-0.35,"XOM":0.15,"XDWU":-0.90,"AI":-0.45,"EWSP":-0.70,"FTAI":-0.75,"FRO":0.05,"LMT":-0.15,"HO":-0.15}),
+        (["fed", "federal reserve", "rate hike", "hawkish", "higher for longer", "ecb", "interest rate"], "Taux plus élevés",
+         {"VWCE":-0.80,"TTE":-0.10,"GLHL":-0.55,"XOM":-0.10,"XDWU":-1.00,"AI":-0.65,"EWSP":-0.85,"FTAI":-0.90,"FRO":-0.10,"LMT":-0.30,"HO":-0.25}),
+        (["hormuz", "oil supply", "oil disruption", "opec", "brent", "crude", "pipeline"], "Choc d'offre énergétique",
+         {"VWCE":-0.25,"TTE":0.90,"GLHL":-0.20,"XOM":0.85,"XDWU":-0.45,"AI":-0.35,"EWSP":-0.30,"FTAI":-0.25,"FRO":0.35,"LMT":0.05,"HO":0.05}),
+        (["war", "invasion", "missile", "attack", "escalation", "sanction", "ceasefire"], "Choc géopolitique",
+         {"VWCE":-0.85,"TTE":0.40,"GLHL":-0.35,"XOM":0.35,"XDWU":-0.35,"AI":-0.30,"EWSP":-0.90,"FTAI":-0.65,"FRO":-0.55,"LMT":0.35,"HO":0.35}),
+        (["data center", "data centre", "electricity demand", "power grid", "grid investment", "ai infrastructure"], "Investissements IA & électricité",
+         {"VWCE":0.15,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.95,"AI":0.75,"EWSP":0.20,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.10}),
+        (["defence budget", "defense budget", "military spending", "arms contract", "missile system", "procurement"], "Commandes & budgets défense",
+         {"VWCE":0.05,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.05,"EWSP":0.05,"FTAI":0.10,"FRO":0.00,"LMT":0.85,"HO":0.75}),
+        (["cyberattack", "cyber attack", "ransomware", "data breach", "zero-day"], "Incident cyber",
+         {"VWCE":-0.10,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.00,"EWSP":-0.10,"FTAI":0.00,"FRO":0.00,"LMT":0.15,"HO":0.65}),
+        (["clinical trial", "drug approval", "healthcare", "pharma"], "Catalyseur santé",
+         {"VWCE":0.05,"TTE":0.00,"GLHL":0.65,"XOM":0.00,"XDWU":0.00,"AI":0.00,"EWSP":0.05,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.00}),
+        (["bank failure", "liquidity", "credit crunch", "banking crisis", "default"], "Stress de liquidité / crédit",
+         {"VWCE":-1.00,"TTE":-0.45,"GLHL":-0.60,"XOM":-0.45,"XDWU":-0.70,"AI":-0.65,"EWSP":-1.10,"FTAI":-1.25,"FRO":-0.80,"LMT":-0.35,"HO":-0.35}),
+    ]
+    selected = next((p for p in profiles if any(k in text for k in p[0])), None)
+    if not selected:
         return None
-    direction, direction_text = _event_polarity(row)
-    horizons = [0, 1, 5, 10, 20]
+    _, event_type, impacts = selected
+    # Event intensity depends on explicit surprise / disruption language and corroboration.
+    intensity = 1.0
+    if any(k in text for k in ["unexpected", "higher than expected", "below expectations", "emergency", "halt", "shutdown", "attack", "default", "invasion"]):
+        intensity = 1.5
+    if any(k in text for k in ["minor", "slight", "marginal", "in line with expectations"]):
+        intensity = 0.55
+    confidence = float(pd.to_numeric(pd.Series([row.get("confidence", 0)]), errors="coerce").fillna(0).iloc[0])
+    corroboration = int(pd.to_numeric(pd.Series([row.get("corroboration_count", 1)]), errors="coerce").fillna(1).iloc[0])
+    evidence_factor = min(1.0, 0.65 + confidence / 250 + max(0, corroboration-1)*0.08)
+    holdings = live["holdings"].set_index("symbol")
     baseline = float(live["total"])
-    best, worst = [], []
-    impact_rows = []
-    for symbol in affected:
-        value = float(holdings.loc[symbol, "value_eur"])
-        if symbol in exposure["positive"]: channel = 1.0
-        elif symbol in exposure["negative"]: channel = -1.0
-        else: channel = 0.45
-        series = history.get(symbol, pd.Series(dtype=float)).dropna()
-        daily_vol = float(series.pct_change().dropna().tail(60).std()) if len(series) >= 15 else 0.015
-        if not pd.notna(daily_vol) or daily_vol <= 0: daily_vol = 0.015
-        # Sensitivity scaling is deliberately capped; this prevents headline-based extreme targets.
-        sensitivity = min(1.35, max(0.35, daily_vol / 0.02))
-        signed = channel * direction
-        impact_rows.append({"symbol":symbol, "value":value, "channel":channel, "daily_vol":daily_vol, "signed":signed})
-    for h in horizons:
-        best_delta = worst_delta = 0.0
-        for item in impact_rows:
-            # 0.55 sigma envelope for favorable/adverse branch over each horizon.
-            magnitude = item["value"] * item["daily_vol"] * (h ** 0.5) * 0.55 * min(1.35,max(0.35,item["daily_vol"]/0.02))
-            best_delta += magnitude
-            worst_delta -= magnitude
-        best.append(baseline + best_delta)
-        worst.append(baseline + worst_delta)
-    rows = []
-    for item in impact_rows:
-        if direction == 0:
-            label = "Sensibilité à confirmer"
-        else:
-            sign = item["signed"]
-            label = "Bénéficiaire potentiel" if sign > 0 else "Exposé négativement" if sign < 0 else "À surveiller"
-        rows.append({"symbol":item["symbol"], "value_eur":item["value"], "role":label})
-    return {"horizons":horizons,"best":best,"worst":worst,"baseline":baseline,
-            "rows":rows,"direction":direction,"direction_text":direction_text,
-            "reason":exposure["reason"],"topic":topic}
+    base = {}; favorable = {}; adverse = {}; rows=[]
+    for symbol, pct in impacts.items():
+        if symbol not in holdings.index or abs(pct) < 0.04: continue
+        value=float(holdings.loc[symbol,"value_eur"])
+        # Directional impact is specific to the event and the security's economic exposure.
+        central=pct*intensity*evidence_factor
+        # Best/worst are alternative event outcomes, not the same volatility band for every headline.
+        favorable_pct=central*0.45
+        adverse_pct=central*1.65
+        base[symbol]=value
+        favorable[symbol]=value*(1+favorable_pct/100)
+        adverse[symbol]=value*(1+adverse_pct/100)
+        rows.append({"symbol":symbol,"value_eur":value,"impact_pct":central,
+                     "favorable_eur":value*favorable_pct/100,"adverse_eur":value*adverse_pct/100})
+    if not rows: return None
+    current=float(sum(base.values()))
+    favorable_delta=sum(favorable[k]-base[k] for k in base)
+    adverse_delta=sum(adverse[k]-base[k] for k in base)
+    return {"event_type":event_type,"rows":rows,"exposed_value":current,
+            "favorable_delta":favorable_delta,"adverse_delta":adverse_delta,
+            "favorable_pct":(favorable_delta/current*100 if current else 0),
+            "adverse_pct":(adverse_delta/current*100 if current else 0),
+            "baseline":baseline,"affected_count":len(rows),"intensity":intensity,
+            "evidence_factor":evidence_factor}
 
 
 YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA"}
 QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP"}
-QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline.json"
+QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline_v2.json"
 
 
 def _portfolio_live_snapshot():
@@ -401,101 +419,109 @@ def _portfolio_live_snapshot():
                 series=raw[sym]["Close"].dropna()
                 if not series.empty: close[sym]=series
             except Exception: pass
-        if "EURUSD=X" not in close: return None,"Taux EUR/USD indisponible."
         baseline={}
         if QUOTE_BASELINE_FILE.exists():
             try: baseline=json.loads(QUOTE_BASELINE_FILE.read_text(encoding="utf-8"))
             except Exception: baseline={}
         latest={}; histories={}
+        fx_usd=close.get("EURUSD=X")
+        fx_gbp=close.get("EURGBP=X")
         for p in PORTFOLIO:
             sym=p["symbol"]; yf_sym=YF_SYMBOLS[sym]
             if yf_sym not in close: continue
             s=close[yf_sym].dropna()
             cur=QUOTE_CURRENCY.get(sym,"EUR")
-            if cur=="USD": s=s/close["EURUSD=X"].reindex(s.index).ffill()
-            elif cur=="GBP" and "EURGBP=X" in close: s=s/close["EURGBP=X"].reindex(s.index).ffill()
+            if cur=="USD":
+                if fx_usd is None: continue
+                s=s/fx_usd.reindex(s.index).ffill()
+            elif cur=="GBP":
+                if fx_gbp is None: continue
+                s=s/fx_gbp.reindex(s.index).ffill()
             s=s.dropna()
             if s.empty: continue
             histories[sym]=s
             latest[sym]=float(s.iloc[-1])
             if sym not in baseline:
-                baseline[sym]={"price_eur":latest[sym],"initial_value_eur":float(p["value_eur"])}
+                baseline[sym]={"price_eur":latest[sym],"anchor_value_eur":float(p["value_eur"])}
         QUOTE_BASELINE_FILE.write_text(json.dumps(baseline,indent=2),encoding="utf-8")
+        # Broker-confirmed snapshot is the anchor. Live prices only move each line from this anchor.
+        anchor_positions=sum(float(p["value_eur"]) for p in PORTFOLIO)
+        scale=(PORTFOLIO_TOTAL_EUR-CASH_EUR)/anchor_positions if anchor_positions else 1.0
         rows=[]
         for p in PORTFOLIO:
             sym=p["symbol"]
-            if sym not in latest or sym not in baseline: continue
-            b=baseline[sym]
-            value=float(b["initial_value_eur"])*latest[sym]/float(b["price_eur"])
-            rows.append({"symbol":sym,"value_eur":value,"change_pct":(latest[sym]/float(b["price_eur"])-1)*100,"initial_value_eur":float(b["initial_value_eur"])})
-        if not rows: return None,"Aucun actif coté récupéré."
-        holdings=pd.DataFrame(rows); total=float(holdings.value_eur.sum()+CASH_EUR)
-        initial=float(holdings.initial_value_eur.sum()+CASH_EUR)
-        updated=max(s.index.max() for s in histories.values())
-        return {"holdings":holdings,"total":total,"initial":initial,"histories":histories,"updated":updated},None
+            anchor=float(p["value_eur"])*scale
+            if sym in latest and sym in baseline:
+                b=baseline[sym]
+                value=anchor*latest[sym]/float(b["price_eur"])
+                quote_change=(latest[sym]/float(b["price_eur"])-1)*100
+            else:
+                value=anchor
+                quote_change=0.0
+            rows.append({"symbol":sym,"value_eur":value,"change_pct":quote_change,"anchor_value_eur":anchor,"quote_available":sym in latest})
+        holdings=pd.DataFrame(rows)
+        total=float(holdings.value_eur.sum()+CASH_EUR)
+        # Broker performance is the starting point; daily quote changes update the return.
+        anchor_cost=PORTFOLIO_TOTAL_EUR/(1+PORTFOLIO_RETURN_PCT/100)
+        perf=(total/anchor_cost-1)*100
+        updated=max(s.index.max() for s in histories.values()) if histories else pd.Timestamp.now(tz="UTC")
+        return {"holdings":holdings,"total":total,"initial":anchor_cost,"perf":perf,"histories":histories,"updated":updated},None
     except Exception as exc:
         return None,f"Erreur cours : {type(exc).__name__}: {exc}"
 
 
 def render_financial_intelligence_dashboard() -> None:
-    st.markdown("<style>.stApp{background:#F5F7FB;color:#26384D}[data-testid='stSidebar']{background:#F0F3F8}.block-container{max-width:1420px}</style>",unsafe_allow_html=True)
     st.markdown("## Financial Intelligence · Event Impact")
-    st.caption("Chaque courbe est calculée pour un événement précis, sur les positions exposées. Cours gratuits Yahoo Finance, parfois différés.")
-    with st.spinner("Actualisation des cours et calcul des scénarios événementiels…"):
+    st.caption("Chaque événement a sa propre empreinte sur les actifs concernés. Les graphiques sont des mini-indicateurs, pas une projection générale.")
+    with st.spinner("Actualisation des cours…"):
         live,error=_portfolio_live_snapshot()
     if live is None:
         st.error(error or "Données de marché indisponibles"); return
     if error: st.warning(error)
-    total=live["total"]; perf=(total/live["initial"]-1)*100
     a,b,c=st.columns(3)
-    a.metric("Valeur estimée du portefeuille",f"{total:,.2f} €",f"{perf:+.2f}% depuis activation du suivi")
-    b.metric("Positions avec cours disponibles",f"{len(live['holdings'])}/{len(PORTFOLIO)}")
-    c.metric("Dernière séance reçue",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("La valeur évolue avec les cours et les changes. La performance est mesurée depuis l'activation du suivi, avec quantités implicites reconstituées à partir des valeurs initiales — pas depuis le PRU du courtier.")
-    st.markdown("### Événements qui peuvent changer une décision")
+    a.metric("Portefeuille",f"{live['total']:,.2f} €",f"{live['perf']:+.2f}%")
+    b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
+    c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
+    st.caption("Ancrage courtier confirmé : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles. Performance indicative depuis cet ancrage, pas recalcul du PRU courtier.")
+    st.markdown("### Événements avec un impact identifiable")
     if not EVENTS_FILE.exists() or not EVENTS_FILE.stat().st_size:
-        st.info("Aucun événement collecté. Lance d'abord une collecte de l'agent.")
+        st.info("Aucun événement collecté. Lance une collecte.")
         return
     events=pd.read_csv(EVENTS_FILE)
     events["published_at"]=pd.to_datetime(events["published_at"],errors="coerce",utc=True)
     decisions=_decision_view(events.dropna(subset=["published_at"]))
     if decisions.empty:
-        st.info("Aucun événement suffisamment pertinent dans la fenêtre actuelle.")
+        st.info("Aucun événement suffisamment pertinent.")
         return
     import plotly.graph_objects as go
     shown=0
-    for _,row in decisions.head(4).iterrows():
+    for _,row in decisions.head(5).iterrows():
         scenario=_event_scenario(row,live)
         if scenario is None: continue
         shown+=1
         with st.container(border=True):
             st.markdown(f"#### {row.get('title','')}")
-            st.caption(f"{row.get('topic','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m/%Y %H:%M UTC')} · {row.get('source','')} · confiance indicative {int(float(row.get('confidence',0)))}%")
-            st.markdown(f"**Lecture de l'événement :** {scenario['direction_text']}")
-            st.write(scenario["reason"])
-            fig=go.Figure()
-            fig.add_trace(go.Scatter(x=scenario["horizons"],y=scenario["best"],name="Scénario favorable",mode="lines+markers",line=dict(color="#15966B",width=3)))
-            fig.add_trace(go.Scatter(x=scenario["horizons"],y=scenario["worst"],name="Scénario défavorable",mode="lines+markers",line=dict(color="#D45B5B",width=3)))
-            fig.add_hline(y=scenario["baseline"],line_dash="dot",line_color="#8795A8",annotation_text="Valeur actuelle")
-            fig.update_layout(template="plotly_white",height=300,margin=dict(l=10,r=10,t=25,b=10),hovermode="x unified",
-                xaxis=dict(title="Séances après l'événement",tickvals=[0,1,5,10,20]),
-                yaxis=dict(title="Valeur portefeuille (€)",tickprefix="€"))
-            st.plotly_chart(fig,use_container_width=True)
-            left,right=st.columns(2)
-            left.metric("Scénario favorable à 20 séances",f"{scenario['best'][-1]:,.2f} €",f"{scenario['best'][-1]-total:+,.2f} €")
-            right.metric("Scénario défavorable à 20 séances",f"{scenario['worst'][-1]:,.2f} €",f"{scenario['worst'][-1]-total:+,.2f} €")
-            st.markdown("**Positions concernées par cet événement**")
-            impact_df=pd.DataFrame(scenario["rows"])
-            if not impact_df.empty:
-                impact_df=impact_df.rename(columns={"symbol":"Actif","value_eur":"Valeur exposée (€)","role":"Lecture"})
-                st.dataframe(impact_df,use_container_width=True,hide_index=True)
-            st.info("Scénarios conditionnels propres à cet événement. L'écart des courbes est une enveloppe de volatilité observée des seules positions exposées ; le sens de transmission est expliqué séparément. Sans modèle causal validé ni quantités/PRU du courtier, ce ne sont pas des objectifs de cours ni une estimation certaine de gain/perte.")
-            st.markdown(f"[Lire la source originale]({row.get('url','')})")
+            st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
+            st.write(f"**Pourquoi cela te concerne :** {scenario['affected_count']} positions exposées, représentant {scenario['exposed_value']:,.2f} €.")
+            st.write(f"**Scénario favorable :** {scenario['favorable_delta']:+.2f} € ({scenario['favorable_pct']:+.2f} % sur la poche exposée).")
+            st.write(f"**Scénario défavorable :** {scenario['adverse_delta']:+.2f} € ({scenario['adverse_pct']:+.2f} % sur la poche exposée).")
+            impact_df=pd.DataFrame(scenario["rows"]).sort_values("impact_pct")
+            fig=go.Figure(go.Bar(x=impact_df["impact_pct"],y=impact_df["symbol"],orientation="h",
+                marker_color=["#D96B6B" if x<0 else "#269B78" for x in impact_df["impact_pct"]],
+                text=[f"{x:+.2f}%" for x in impact_df["impact_pct"]],textposition="outside",
+                hovertemplate="%{y}: %{x:+.2f}%<extra></extra>"))
+            fig.update_layout(template="plotly_white",height=max(150,22*len(impact_df)+65),
+                margin=dict(l=5,r=35,t=5,b=5),showlegend=False,
+                xaxis=dict(title="Impact indicatif par position (%)",zeroline=True,zerolinecolor="#AAB4C0"),
+                yaxis=dict(title=None),font=dict(size=11))
+            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+            st.caption("Le mini-graphique montre l'empreinte spécifique de cet événement. Les scénarios sont des sensibilités heuristiques conditionnelles, pas des objectifs de cours. Les actifs non concernés ne sont pas inclus.")
+            st.markdown(f"[Source de l'événement]({row.get('url','')})")
     if shown==0:
-        st.info("Les événements disponibles ne correspondent pas encore aux facteurs de risque identifiés de ton portefeuille. L'agent préfère ne pas inventer de projection.")
+        st.info("Aucun événement ne dispose actuellement d'un lien explicite avec les facteurs de risque du portefeuille. Pas de projection artificielle.")
     with st.expander("Méthode et limites"):
-        st.write("Les scénarios sont propres à chaque événement. Le moteur relie la catégorie et le sens détecté de l'événement aux expositions connues des 11 positions, puis applique une enveloppe de volatilité récente. Il ne s'agit pas d'un modèle causal validé : le prochain développement devra mesurer les réactions historiques des actifs à des événements comparables et vérifier la surprise par rapport au consensus.")
-        st.write("La valeur du portefeuille suit les cours gratuits Yahoo Finance, potentiellement différés. Sans quantités et PRU du courtier, les quantités sont implicites et la performance affichée commence à la première activation du suivi.")
+        st.write("Les profils d'impact diffèrent selon le type d'événement (inflation, taux, choc énergétique, géopolitique, IA/électricité, défense, cyber, santé, liquidité). Les hypothèses sont transparentes mais restent heuristiques. Il faut ensuite calibrer ces sensibilités avec des réactions historiques comparables.")
+        st.write("Le suivi des cours est ancré au dernier instantané confirmé par le courtier. Sans quantités exactes, le mouvement est estimé en appliquant les variations des cotations aux valeurs de départ. Certains tickers ou conversions peuvent être indisponibles : les lignes concernées restent à leur valeur d'ancrage.")
 
 
 
