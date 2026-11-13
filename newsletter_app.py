@@ -497,7 +497,7 @@ def enrich_news_frame(df):
 
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_live_quote(symbol):
     """Latest intraday bar where Yahoo makes it available; not guaranteed exchange-real-time."""
     if yf is None or not symbol:
@@ -2824,6 +2824,8 @@ def executive_dashboard(df):
     </div>
     """, unsafe_allow_html=True)
 
+    # Critical corporate / AI-market events belong directly in the overview risk feed.
+    render_nvidia_leadership_alert()
     # Second section: central-bank demand for gold, directly below the global risk indicator.
     render_central_bank_gold_purchases()
     render_drawdown_alerts()
