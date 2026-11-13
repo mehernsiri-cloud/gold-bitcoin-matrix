@@ -548,13 +548,17 @@ def render_financial_intelligence_dashboard() -> None:
         else:
             bg={"#EEF3FC":"#FFF0EF","#EAF7F5":"#FFF1F0"}.get(bg,bg)
             accent="#C43D4D"
-        card_key=f"event_card_{side}_{card_index}"
-        st.markdown(
-            f"<style>.st-key-{card_key}{{background:{bg};border:1px solid {color}55;"
-            f"border-left:5px solid {accent};border-radius:12px;padding:14px 16px 10px 16px;}}</style>",
-            unsafe_allow_html=True,
-        )
-        with st.container(key=card_key):
+        # Use the broadly supported container API; older Streamlit Cloud
+        # runtimes do not accept the newer container(key=...) argument.
+        with st.container(border=True):
+            st.markdown(
+                f"<div style='background:{bg};border-left:5px solid {accent};"
+                f"border-radius:9px;padding:10px 12px;margin:0 0 10px 0'>"
+                f"<span style='font-size:0.78rem;color:{accent};font-weight:700'>"
+                f"{'ÉVÉNEMENT FAVORABLE' if side=='positive' else 'ÉVÉNEMENT À RISQUE'}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
             st.markdown(f"<div style='height:4px;background:{color};border-radius:5px;margin-bottom:8px'></div>",unsafe_allow_html=True)
             st.markdown(f"**{row.get('title','')}**")
             st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
