@@ -472,7 +472,7 @@ def _portfolio_live_snapshot():
 
 def render_financial_intelligence_dashboard() -> None:
     st.markdown("## Financial Intelligence · Event Impact")
-    st.caption("Chaque événement a sa propre empreinte sur les actifs concernés. Les graphiques sont des mini-indicateurs, pas une projection générale.")
+    st.caption("Deux événements par ligne · cartes compactes · couleur dédiée par thème. Les sensibilités restent indicatives.")
     with st.spinner("Actualisation des cours…"):
         live,error=_portfolio_live_snapshot()
     if live is None:
@@ -482,7 +482,7 @@ def render_financial_intelligence_dashboard() -> None:
     a.metric("Portefeuille",f"{live['total']:,.2f} €",f"{live['perf']:+.2f}%")
     b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("Ancrage courtier confirmé : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles. Performance indicative depuis cet ancrage, pas recalcul du PRU courtier.")
+    st.caption("Instantané communiqué : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles ; elles ne remplacent pas le PRU du courtier.")
     st.markdown("### Événements avec un impact identifiable")
     if not EVENTS_FILE.exists() or not EVENTS_FILE.stat().st_size:
         st.info("Aucun événement collecté. Lance une collecte.")
@@ -494,36 +494,56 @@ def render_financial_intelligence_dashboard() -> None:
         st.info("Aucun événement suffisamment pertinent.")
         return
     import plotly.graph_objects as go
+    topic_colors = {
+        "Central banks & rates":"#4776C8",
+        "Inflation, debt & economy":"#D97732",
+        "Geopolitics & conflict":"#C44E62",
+        "Energy & commodities":"#D49A28",
+        "Financial system & liquidity":"#7656B5",
+        "AI, electricity & infrastructure":"#168C87",
+        "Defence & aerospace":"#536A9C",
+        "Cybersecurity":"#27856A",
+        "Healthcare":"#B65B91",
+        "FX & safe havens":"#4C91B8",
+        "Equity markets & companies":"#68727D",
+    }
+    cards=st.columns(2, gap="medium")
     shown=0
-    for _,row in decisions.head(5).iterrows():
+    for idx,(_,row) in enumerate(decisions.head(6).iterrows()):
         scenario=_event_scenario(row,live)
         if scenario is None: continue
         shown+=1
-        with st.container(border=True):
-            st.markdown(f"#### {row.get('title','')}")
-            st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
-            st.write(f"**Pourquoi cela te concerne :** {scenario['affected_count']} positions exposées, représentant {scenario['exposed_value']:,.2f} €.")
-            st.write(f"**Scénario favorable :** {scenario['favorable_delta']:+.2f} € ({scenario['favorable_pct']:+.2f} % sur la poche exposée).")
-            st.write(f"**Scénario défavorable :** {scenario['adverse_delta']:+.2f} € ({scenario['adverse_pct']:+.2f} % sur la poche exposée).")
-            impact_df=pd.DataFrame(scenario["rows"]).sort_values("impact_pct")
-            fig=go.Figure(go.Bar(x=impact_df["impact_pct"],y=impact_df["symbol"],orientation="h",
-                marker_color=["#D96B6B" if x<0 else "#269B78" for x in impact_df["impact_pct"]],
-                text=[f"{x:+.2f}%" for x in impact_df["impact_pct"]],textposition="outside",
-                hovertemplate="%{y}: %{x:+.2f}%<extra></extra>"))
-            fig.update_layout(template="plotly_white",height=max(150,22*len(impact_df)+65),
-                margin=dict(l=5,r=35,t=5,b=5),showlegend=False,
-                xaxis=dict(title="Impact indicatif par position (%)",zeroline=True,zerolinecolor="#AAB4C0"),
-                yaxis=dict(title=None),font=dict(size=11))
-            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
-            st.caption("Le mini-graphique montre l'empreinte spécifique de cet événement. Les scénarios sont des sensibilités heuristiques conditionnelles, pas des objectifs de cours. Les actifs non concernés ne sont pas inclus.")
-            st.markdown(f"[Source de l'événement]({row.get('url','')})")
+        color=topic_colors.get(str(row.get("topic","")),"#68727D")
+        with cards[(shown-1)%2]:
+            with st.container(border=True):
+                st.markdown(
+                    f"<div style='height:5px;background:{color};border-radius:5px;margin-bottom:10px'></div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**{row.get('title','')}**")
+                st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
+                st.write(f"**Exposition :** {scenario['affected_count']} positions · {scenario['exposed_value']:,.0f} €")
+                left,right=st.columns(2)
+                left.metric("Branche favorable",f"{scenario['favorable_delta']:+.2f} €",f"{scenario['favorable_pct']:+.2f}%")
+                right.metric("Branche défavorable",f"{scenario['adverse_delta']:+.2f} €",f"{scenario['adverse_pct']:+.2f}%")
+                impact_df=pd.DataFrame(scenario["rows"]).sort_values("impact_pct")
+                fig=go.Figure(go.Bar(x=impact_df["impact_pct"],y=impact_df["symbol"],orientation="h",
+                    marker_color=[color if x>=0 else "#C65D65" for x in impact_df["impact_pct"]],
+                    text=[f"{x:+.2f}%" for x in impact_df["impact_pct"]],textposition="outside",
+                    hovertemplate="%{y}: %{x:+.2f}%<extra></extra>"))
+                fig.update_layout(template="plotly_white",height=max(125,17*len(impact_df)+42),
+                    margin=dict(l=0,r=28,t=0,b=0),showlegend=False,
+                    xaxis=dict(title=None,zeroline=True,zerolinecolor="#AAB4C0",tickfont=dict(size=9)),
+                    yaxis=dict(title=None,tickfont=dict(size=9)),font=dict(size=9))
+                st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+                st.caption("Sensibilité indicative, non probabilisée et non assimilable à une prévision.")
+                st.markdown(f"[Source]({row.get('url','')})")
     if shown==0:
         st.info("Aucun événement ne dispose actuellement d'un lien explicite avec les facteurs de risque du portefeuille. Pas de projection artificielle.")
     with st.expander("Méthode et limites"):
-        st.write("Les profils d'impact diffèrent selon le type d'événement (inflation, taux, choc énergétique, géopolitique, IA/électricité, défense, cyber, santé, liquidité). Les hypothèses sont transparentes mais restent heuristiques. Il faut ensuite calibrer ces sensibilités avec des réactions historiques comparables.")
-        st.write("Le suivi des cours est ancré au dernier instantané confirmé par le courtier. Sans quantités exactes, le mouvement est estimé en appliquant les variations des cotations aux valeurs de départ. Certains tickers ou conversions peuvent être indisponibles : les lignes concernées restent à leur valeur d'ancrage.")
-
-
+        st.write("Les couleurs distinguent les thèmes. Les mini-graphes sont calculés uniquement sur les positions exposées à chaque événement. Les sensibilités sont heuristiques et ne constituent pas des probabilités statistiques.")
+        st.write("Un événement déjà rapporté et corroboré n'a pas une probabilité future de réalisation : il faut distinguer sa confirmation de la probabilité que ses conséquences de marché soient favorables ou défavorables. Cette dernière n'est pas encore calibrée avec des données historiques.")
+        st.write("Le suivi des cours est ancré à l'instantané communiqué. Sans quantités exactes, les variations sont estimées à partir des valeurs de départ. Certains tickers ou conversions peuvent être indisponibles.")
 
 def main():
     parser = argparse.ArgumentParser()
