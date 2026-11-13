@@ -472,7 +472,7 @@ def _portfolio_live_snapshot():
 
 def render_financial_intelligence_dashboard() -> None:
     st.markdown("## Financial Intelligence · Event Impact")
-    st.caption("Deux événements par ligne · cartes compactes · couleur dédiée par thème. Les sensibilités restent indicatives.")
+    st.caption("Pour chaque événement : potentiel de gain à gauche, risque de perte à droite. Les supports sont affichés avec leur nom complet.")
     with st.spinner("Actualisation des cours…"):
         live,error=_portfolio_live_snapshot()
     if live is None:
@@ -483,7 +483,7 @@ def render_financial_intelligence_dashboard() -> None:
     b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
     st.caption("Instantané communiqué : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles ; elles ne remplacent pas le PRU du courtier.")
-    st.markdown("### Événements avec un impact identifiable")
+    st.markdown("### Événements et conséquences possibles sur le portefeuille")
     if not EVENTS_FILE.exists() or not EVENTS_FILE.stat().st_size:
         st.info("Aucun événement collecté. Lance une collecte.")
         return
@@ -493,56 +493,67 @@ def render_financial_intelligence_dashboard() -> None:
     if decisions.empty:
         st.info("Aucun événement suffisamment pertinent.")
         return
-    import plotly.graph_objects as go
     topic_colors = {
-        "Central banks & rates":"#4776C8",
-        "Inflation, debt & economy":"#D97732",
-        "Geopolitics & conflict":"#C44E62",
-        "Energy & commodities":"#D49A28",
-        "Financial system & liquidity":"#7656B5",
-        "AI, electricity & infrastructure":"#168C87",
-        "Defence & aerospace":"#536A9C",
-        "Cybersecurity":"#27856A",
-        "Healthcare":"#B65B91",
-        "FX & safe havens":"#4C91B8",
+        "Central banks & rates":"#4776C8", "Inflation, debt & economy":"#D97732",
+        "Geopolitics & conflict":"#C44E62", "Energy & commodities":"#D49A28",
+        "Financial system & liquidity":"#7656B5", "AI, electricity & infrastructure":"#168C87",
+        "Defence & aerospace":"#536A9C", "Cybersecurity":"#27856A",
+        "Healthcare":"#B65B91", "FX & safe havens":"#4C91B8",
         "Equity markets & companies":"#68727D",
     }
-    cards=st.columns(2, gap="medium")
+    names={p["symbol"]:p["name"] for p in PORTFOLIO}
     shown=0
-    for idx,(_,row) in enumerate(decisions.head(6).iterrows()):
+    for _,row in decisions.head(6).iterrows():
         scenario=_event_scenario(row,live)
         if scenario is None: continue
         shown+=1
         color=topic_colors.get(str(row.get("topic","")),"#68727D")
-        with cards[(shown-1)%2]:
-            with st.container(border=True):
-                st.markdown(
-                    f"<div style='height:5px;background:{color};border-radius:5px;margin-bottom:10px'></div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"**{row.get('title','')}**")
-                st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
-                st.write(f"**Exposition :** {scenario['affected_count']} positions · {scenario['exposed_value']:,.0f} €")
-                left,right=st.columns(2)
-                left.metric("Branche favorable",f"{scenario['favorable_delta']:+.2f} €",f"{scenario['favorable_pct']:+.2f}%")
-                right.metric("Branche défavorable",f"{scenario['adverse_delta']:+.2f} €",f"{scenario['adverse_pct']:+.2f}%")
-                impact_df=pd.DataFrame(scenario["rows"]).sort_values("impact_pct")
-                fig=go.Figure(go.Bar(x=impact_df["impact_pct"],y=impact_df["symbol"],orientation="h",
-                    marker_color=[color if x>=0 else "#C65D65" for x in impact_df["impact_pct"]],
-                    text=[f"{x:+.2f}%" for x in impact_df["impact_pct"]],textposition="outside",
-                    hovertemplate="%{y}: %{x:+.2f}%<extra></extra>"))
-                fig.update_layout(template="plotly_white",height=max(125,17*len(impact_df)+42),
-                    margin=dict(l=0,r=28,t=0,b=0),showlegend=False,
-                    xaxis=dict(title=None,zeroline=True,zerolinecolor="#AAB4C0",tickfont=dict(size=9)),
-                    yaxis=dict(title=None,tickfont=dict(size=9)),font=dict(size=9))
-                st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
-                st.caption("Sensibilité indicative, non probabilisée et non assimilable à une prévision.")
-                st.markdown(f"[Source]({row.get('url','')})")
+        impact=pd.DataFrame(scenario["rows"])
+        impact["name"]=impact["symbol"].map(names).fillna(impact["symbol"])
+        impact["delta_eur"]=impact["value_eur"]*impact["impact_pct"]/100
+        gains=impact[impact["delta_eur"]>0.005].sort_values("delta_eur",ascending=False)
+        losses=impact[impact["delta_eur"]<-0.005].sort_values("delta_eur")
+        gain_total=float(gains["delta_eur"].sum()) if not gains.empty else 0.0
+        loss_total=float(losses["delta_eur"].sum()) if not losses.empty else 0.0
+        with st.container(border=True):
+            st.markdown(f"<div style='height:5px;background:{color};border-radius:5px;margin-bottom:10px'></div>",unsafe_allow_html=True)
+            st.markdown(f"**{row.get('title','')}**")
+            st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
+            st.write(f"**Pourquoi cela te concerne :** {scenario['affected_count']} positions exposées · {scenario['exposed_value']:,.2f} €")
+            left,right=st.columns(2,gap="medium")
+            with left:
+                st.markdown("#### Potentiel de gain")
+                st.metric("Gain indicatif",f"+{gain_total:.2f} €")
+                if gains.empty:
+                    st.caption("Aucun support avec un potentiel positif identifié dans ce scénario.")
+                else:
+                    for _,asset in gains.iterrows():
+                        st.markdown(f"**{asset['name']}**")
+                        st.caption(f"+{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
+                        st.progress(min(1.0,abs(float(asset["impact_pct"]))/1.5))
+            with right:
+                st.markdown("#### Risque de perte")
+                st.metric("Perte potentielle",f"{loss_total:.2f} €",delta=f"{loss_total:.2f} €",delta_color="inverse")
+                if losses.empty:
+                    st.caption("Aucun support avec un impact négatif identifié dans ce scénario.")
+                else:
+                    for _,asset in losses.iterrows():
+                        st.markdown(f"**{asset['name']}**")
+                        st.caption(f"{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
+                        st.progress(min(1.0,abs(float(asset["impact_pct"]))/1.5))
+            if abs(loss_total)>gain_total:
+                st.warning(f"Le risque de perte estimé ({abs(loss_total):.2f} €) dépasse le potentiel de gain ({gain_total:.2f} €) sur les supports identifiés.")
+            elif gain_total>abs(loss_total):
+                st.success(f"Le potentiel de gain estimé ({gain_total:.2f} €) dépasse le risque de perte ({abs(loss_total):.2f} €) sur les supports identifiés.")
+            else:
+                st.info("Les deux expositions sont proches ou non différenciées.")
+            st.caption("Montants issus de sensibilités heuristiques conditionnelles, pas de probabilités statistiques ni de prévisions de cours. Les montants ne couvrent que les supports identifiés.")
+            st.markdown(f"[Source de l'événement]({row.get('url','')})")
     if shown==0:
         st.info("Aucun événement ne dispose actuellement d'un lien explicite avec les facteurs de risque du portefeuille. Pas de projection artificielle.")
     with st.expander("Méthode et limites"):
-        st.write("Les couleurs distinguent les thèmes. Les mini-graphes sont calculés uniquement sur les positions exposées à chaque événement. Les sensibilités sont heuristiques et ne constituent pas des probabilités statistiques.")
-        st.write("Un événement déjà rapporté et corroboré n'a pas une probabilité future de réalisation : il faut distinguer sa confirmation de la probabilité que ses conséquences de marché soient favorables ou défavorables. Cette dernière n'est pas encore calibrée avec des données historiques.")
+        st.write("La colonne gauche regroupe les positions auxquelles le profil de l'événement attribue une sensibilité positive ; la droite regroupe les positions à sensibilité négative. Les noms complets proviennent du référentiel du portefeuille.")
+        st.write("Les montants sont des scénarios indicatifs fondés sur des règles heuristiques. Ils ne représentent pas des probabilités. Une probabilité fiable de gain ou de perte nécessite une calibration sur des événements historiques comparables et des données de marché.")
         st.write("Le suivi des cours est ancré à l'instantané communiqué. Sans quantités exactes, les variations sont estimées à partir des valeurs de départ. Certains tickers ou conversions peuvent être indisponibles.")
 
 def main():
