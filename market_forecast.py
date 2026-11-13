@@ -236,7 +236,8 @@ def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macr
         expected = float(current_price * np.exp(drift * horizon))
         band = 1.2816 * daily_vol * np.sqrt(horizon)
         calibration_row = calibration.get(horizon, {"bias": 0.0, "sample": 0})
-        calibration_correction = _clip(-calibration_row["bias"], -0.025, 0.025) if calibration_row["sample"] >= 20 else 0.0
+        # Learn from the full archived error history; start cautiously after 5 resolved days.
+        calibration_correction = _clip(-calibration_row["bias"], -0.05, 0.05) if calibration_row["sample"] >= 5 else 0.0
         expected *= (1.0 + calibration_correction)
         lower = float(current_price * np.exp(drift * horizon - band)) * (1.0 + calibration_correction)
         upper = float(current_price * np.exp(drift * horizon + band)) * (1.0 + calibration_correction)
@@ -307,15 +308,17 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
     """Append one immutable forecast cycle per asset/horizon; never replace an old call."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     issued_at = issued_at or _utc_now()
-    cycle = issued_at.replace(minute=0, second=0, microsecond=0)
+    # Exactly one immutable forecast cycle per asset and UTC calendar day.
+    issue_day = issued_at.date().isoformat()
     existing = _read_forecasts()
     rows = []
+    existing_ids = set(existing["forecast_id"].astype(str)) if not existing.empty else set()
     for item in forecast["forecasts"]:
-        forecast_id = f"{asset.lower()}|{cycle.isoformat()}|{item['horizon_days']}"
+        forecast_id = f"{asset.lower()}|{issue_day}|{item['horizon_days']}"
         if not existing.empty and forecast_id in set(existing["forecast_id"].astype(str)):
             continue
         rows.append({
-            "forecast_id": forecast_id, "asset": asset, "issued_at": cycle.isoformat(),
+            "forecast_id": forecast_id, "asset": asset, "issued_at": issued_at.isoformat(),
             "target_date": item["target_date"], "horizon_days": item["horizon_days"],
             "model_version": "ensemble_v1", "current_price": forecast["current_price"],
             "predicted_price": item["predicted_price"], "p10": item["p10"], "p90": item["p90"],
@@ -332,6 +335,34 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
         combined = combined.drop_duplicates(subset=["forecast_id"], keep="first")
         combined.to_csv(FORECAST_FILE, index=False)
     return len(rows)
+
+
+def _apply_archived_daily_forecast(result: dict, asset: str) -> dict:
+    """Use today's first published forecast in the UI; never display a recalculated replacement."""
+    log = _read_forecasts()
+    if log.empty:
+        return result
+    issued = pd.to_datetime(log["issued_at"], errors="coerce", utc=True)
+    today = pd.Timestamp.now(tz="UTC").date()
+    mask = (log["asset"].astype(str) == asset) & (issued.dt.date == today)
+    rows = log.loc[mask].copy()
+    if rows.empty:
+        return result
+    rows["horizon_days"] = pd.to_numeric(rows["horizon_days"], errors="coerce")
+    rows = rows.sort_values("issued_at").drop_duplicates("horizon_days", keep="first")
+    result = dict(result)
+    result["forecast_origin_price"] = float(rows.iloc[0]["current_price"])
+    result["forecasts"] = [{
+        "horizon_days": int(row["horizon_days"]),
+        "target_date": pd.to_datetime(row["target_date"], utc=True).date().isoformat(),
+        "predicted_price": float(row["predicted_price"]),
+        "p10": float(row["p10"]),
+        "p90": float(row["p90"]),
+        "expected_return_pct": float(row["expected_return_pct"]),
+        "calibration_bias_pct": float(row.get("calibration_bias_pct", 0) or 0),
+        "calibration_sample": int(row.get("calibration_sample", 0) or 0),
+    } for _, row in rows.iterrows()]
+    return result
 
 
 def resolve_forecasts(market_data: dict) -> int:
@@ -387,7 +418,7 @@ def _metrics_for_asset(asset: str) -> pd.DataFrame:
     ).reset_index()
 
 
-def _recent_forecast_comparison(result: dict, days: int = 3) -> pd.DataFrame:
+def _recent_forecast_comparison(result: dict, days: int | None = None) -> pd.DataFrame:
     """Compare the latest archived one-day forecast with the first observed close."""
     columns = ["Date cible", "Date réelle", "Prévision", "Réel", "Écart (%)"]
     log = _read_forecasts()
@@ -406,14 +437,16 @@ def _recent_forecast_comparison(result: dict, days: int = 3) -> pd.DataFrame:
     forecasts["target_day"] = forecasts["target_date"].dt.tz_convert(None).dt.normalize()
     forecasts["issued_day"] = forecasts["issued_at"].dt.tz_convert(None).dt.normalize()
     today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
-    start_day = today - pd.Timedelta(days=max(days - 1, 0))
-    forecasts = forecasts[
+    valid = (
         forecasts["issued_at"].notna()
         & forecasts["target_day"].notna()
         & (forecasts["issued_day"] < forecasts["target_day"])
-        & (forecasts["target_day"] >= start_day)
         & (forecasts["target_day"] <= today)
-    ].copy()
+    )
+    if days is not None:
+        start_day = today - pd.Timedelta(days=max(days - 1, 0))
+        valid &= forecasts["target_day"] >= start_day
+    forecasts = forecasts[valid].copy()
     if forecasts.empty:
         return pd.DataFrame(columns=columns)
 
@@ -485,7 +518,8 @@ def _forecast_chart(result: dict) -> go.Figure:
     today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
     hist["timestamp"] = pd.to_datetime(hist["timestamp"], errors="coerce")
     hist = hist.dropna(subset=["timestamp"]).sort_values("timestamp")
-    hist = hist[hist["timestamp"] >= today - pd.Timedelta(days=7)].copy()
+    # Keep the complete available market history so the forecast track can be
+    # evaluated against actual prices over the same long period.
     hist = hist[hist["timestamp"].dt.normalize() < today]
     hist = pd.concat([
         hist[["timestamp", "close"]],
@@ -499,9 +533,10 @@ def _forecast_chart(result: dict) -> go.Figure:
     # the forecast table, so the chart and table cannot contradict each other.
     future_rows = sorted(result.get("forecasts", []), key=lambda item: int(item["horizon_days"]))
     anchor_days = [0] + [int(item["horizon_days"]) for item in future_rows]
-    anchor_values = [float(result["current_price"])] + [float(item["predicted_price"]) for item in future_rows]
-    anchor_low = [float(result["current_price"])] + [float(item["p10"]) for item in future_rows]
-    anchor_high = [float(result["current_price"])] + [float(item["p90"]) for item in future_rows]
+    forecast_origin = float(result.get("forecast_origin_price", result["current_price"]))
+    anchor_values = [forecast_origin] + [float(item["predicted_price"]) for item in future_rows]
+    anchor_low = [forecast_origin] + [float(item["p10"]) for item in future_rows]
+    anchor_high = [forecast_origin] + [float(item["p90"]) for item in future_rows]
     future_day_numbers = list(range(0, 31))
     values = np.interp(future_day_numbers, anchor_days, anchor_values)
     low = np.interp(future_day_numbers, anchor_days, anchor_low)
@@ -576,6 +611,8 @@ def _gold_display_result(result: dict, eurusd: float, fx_history: pd.DataFrame) 
     out["history"] = hist[["timestamp", "close"]].copy()
     scale = 1.0 / eurusd / 31.1034768
     out["current_price"] = result["current_price"] * scale
+    if result.get("forecast_origin_price") is not None:
+        out["forecast_origin_price"] = result["forecast_origin_price"] * scale
     out["sma20"] = result["sma20"] * scale
     out["sma50"] = result["sma50"] * scale
     out["sma200"] = result["sma200"] * scale
@@ -613,6 +650,7 @@ def render_market_forecast_dashboard() -> None:
             try:
                 result = build_forecast(asset, market["price"], market["history"], macro)
                 save_forecasts(asset, result)
+                result = _apply_archived_daily_forecast(result, asset)
                 if asset == "Gold":
                     eurusd, fx_history = _gold_usd_to_eur_per_gram()
                     display_result = _gold_display_result(result, eurusd, fx_history)
@@ -645,16 +683,17 @@ def render_market_forecast_dashboard() -> None:
 
             st.plotly_chart(_forecast_chart({**display_result, "asset": asset, "unit": display_unit, "color": market["color"]}), use_container_width=True)
 
-            st.subheader("Comparaison des prévisions avec les cours réels — 3 derniers jours")
-            comparison = _recent_forecast_comparison({**display_result, "asset": asset}, days=3)
+            st.subheader("Historique complet : prévisions archivées vs cours réels")
+            comparison = _recent_forecast_comparison({**display_result, "asset": asset})
             if comparison.empty:
-                st.info("Aucune prévision J-1 archivée et comparable n'est disponible pour ces trois jours.")
+                st.info("L'historique des prévisions se construira à partir des prochains cycles quotidiens archivés.")
             else:
                 comparison_display = comparison.copy()
                 comparison_display["Prévision"] = comparison_display["Prévision"].map(lambda value: f"{value:,.2f}")
                 comparison_display["Réel"] = comparison_display["Réel"].map(lambda value: f"{value:,.2f}")
                 comparison_display["Écart (%)"] = comparison_display["Écart (%)"].map(lambda value: f"{value:+.2f}%" if pd.notna(value) else "—")
-                st.dataframe(comparison_display, use_container_width=True, hide_index=True)
+                st.dataframe(comparison_display.tail(90), use_container_width=True, hide_index=True)
+                st.caption(f"{len(comparison)} journées de prévisions J+1 archivées et comparables · tableau : 90 dernières journées maximum ; graphique : historique complet.")
 
             st.subheader("Projections par échéance")
             table = pd.DataFrame(display_result["forecasts"])
@@ -705,7 +744,7 @@ def render_market_forecast_dashboard() -> None:
                         "mape_pct": "Erreur absolue moyenne (%)",
                         "directional_accuracy": "Direction correcte",
                     }), use_container_width=True, hide_index=True)
-                    st.caption("Précision calculée sur une seule prévision par jour et par échéance. Après 20 journées résolues, le modèle corrige automatiquement son biais historique par horizon (correction plafonnée à ±2,5 %).")
+                    st.caption("Précision calculée sur une prévision immuable par jour et par échéance. Dès 5 journées résolues, le modèle intègre le biais moyen de toutes les erreurs archivées pour cet horizon (correction plafonnée à ±5 %).")
 
             st.caption("Méthode ensemble v1 : momentum, tendance SMA20/SMA50, retour vers la moyenne et score macro pondéré. Les intervalles P10–P90 représentent une plage indicative issue de la volatilité historique, pas une garantie.")
     st.divider()
@@ -732,7 +771,7 @@ def render_market_forecast_dashboard() -> None:
 
 
 def run_batch() -> None:
-    """Hourly GitHub Actions entry point: persist forecasts and resolve matured ones."""
+    """Hourly maintenance: resolve matured forecasts; publish at most one immutable cycle per UTC day."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     market = {}
     for asset in ASSETS:
