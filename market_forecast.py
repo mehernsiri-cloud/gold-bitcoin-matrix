@@ -517,15 +517,22 @@ def _forecast_chart(result: dict) -> go.Figure:
     today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
     hist["timestamp"] = pd.to_datetime(hist["timestamp"], errors="coerce")
     hist = hist.dropna(subset=["timestamp"]).sort_values("timestamp")
-    # Keep the complete available market history so the forecast track can be
-    # evaluated against actual prices over the same long period.
-    hist = hist[hist["timestamp"].dt.normalize() < today]
+    # Display window: November 2026 onward. Older data remains available to
+    # the forecasting and calibration engine; only this chart is cropped.
+    chart_start = pd.Timestamp("2026-11-01")
+    hist = hist[
+        (hist["timestamp"].dt.normalize() >= chart_start)
+        & (hist["timestamp"].dt.normalize() < today)
+    ]
     hist = pd.concat([
         hist[["timestamp", "close"]],
         pd.DataFrame([{"timestamp": today, "close": result["current_price"]}]),
     ], ignore_index=True)
 
     comparison = _recent_forecast_comparison(result)
+    if not comparison.empty:
+        comparison_days_all = pd.to_datetime(comparison["Date réelle"], format="%d/%m/%Y")
+        comparison = comparison.loc[comparison_days_all >= chart_start].copy()
     forecast_color = result.get("color", "#D6A84B")
 
     # Build the future path from the same 1/3/7/14/30-day values shown in
