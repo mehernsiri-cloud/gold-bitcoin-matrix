@@ -324,11 +324,11 @@ def render_financial_intelligence_dashboard() -> None:
         with left:
             st.markdown('<div class="fi-section">Répartition par thématique</div>', unsafe_allow_html=True)
             topic_counts = df["topic"].fillna("Non classé").value_counts().head(9)
-            st.bar_chart(topic_counts, horizontal=True, height=300, color="#5798d0")
+            st.bar_chart(topic_counts, height=300)
         with right:
             st.markdown('<div class="fi-section">Priorités détectées</div>', unsafe_allow_html=True)
             priority_counts = alerts["priority"].value_counts().reindex(["P1", "P2", "P3"], fill_value=0) if not alerts.empty else pd.Series({"P1":0,"P2":0,"P3":0})
-            st.bar_chart(priority_counts, height=300, color="#d59b55")
+            st.bar_chart(priority_counts, height=300)
 
     st.markdown('<div class="fi-section">Centre des alertes</div>', unsafe_allow_html=True)
     if df.empty:
