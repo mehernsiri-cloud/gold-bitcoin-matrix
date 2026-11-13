@@ -62,6 +62,7 @@ from newsletter_app import newsletter_dashboard
 #from Formation_Word_Excel_PowerPoint import render_training_dashboard
 
 from market_forecast import render_market_forecast_dashboard
+from financial_intelligence_agent import render_financial_intelligence_dashboard
 
 # -------------------------------------------------------------------
 # FILE PATHS AND DATA DIRECTORIES
@@ -761,7 +762,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Gold & Bitcoin", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
+    ["Financial Intelligence", "Gold & Bitcoin", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
 )
 
 
@@ -775,7 +776,10 @@ def render_header(title: str, subtitle: Optional[str] = None):
 # -------------------------------------------------------------------
 # UNIFIED GOLD & BITCOIN MARKET INTELLIGENCE
 # -------------------------------------------------------------------
-if menu == "Gold & Bitcoin":
+if menu == "Financial Intelligence":
+    render_financial_intelligence_dashboard()
+
+elif menu == "Gold & Bitcoin":
     render_market_forecast_dashboard()
 
 
