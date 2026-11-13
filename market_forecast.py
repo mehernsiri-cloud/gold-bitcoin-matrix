@@ -782,12 +782,23 @@ def run_batch() -> None:
     if not market:
         raise RuntimeError("Aucun cours de marché disponible; aucun chiffre de remplacement n'est généré.")
     resolve_forecasts(market)
+    journal = _read_forecasts()
+    today = _utc_now().date()
     for asset, payload in market.items():
+        if not journal.empty:
+            issued = pd.to_datetime(journal["issued_at"], errors="coerce", utc=True)
+            already_published = (
+                (journal["asset"].astype(str) == asset)
+                & (issued.dt.date == today)
+            ).any()
+            if already_published:
+                print(f"[market_forecast] {asset}: prévision du {today} déjà publiée; aucune réécriture.")
+                continue
         macro, _ = load_macro_scores(asset)
         result = build_forecast(asset, payload["price"], payload["history"], macro)
         count = save_forecasts(asset, result)
         print(f"[market_forecast] {asset}: {payload['price']:.2f} USD; {count} nouvelles prévisions sauvegardées.")
-    print(f"[market_forecast] Journal: {FORECAST_FILE}")
+    print(f"[market_forecast] Journal immuable: {FORECAST_FILE}")
 
 
 if __name__ == "__main__":
