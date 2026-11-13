@@ -71,6 +71,41 @@ SOURCE_TRUST = {
     "BleepingComputer": 4,
 }
 
+# User-confirmed portfolio snapshot (13 Nov 2026). Values include €4.93 cash separately.
+# Performance percentages are broker-displayed position returns, not live quotes.
+PORTFOLIO = [
+    {"symbol":"VWCE","name":"Vanguard FTSE All-World UCITS ETF Acc","value_eur":236.61,"return_pct":3.54,"group":"Global equities","factors":["global_growth","rates","usd","equity_risk"]},
+    {"symbol":"TTE","name":"TotalEnergies","value_eur":110.84,"return_pct":0.01,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
+    {"symbol":"WELS","name":"Amundi S&P Global Health Care","value_eur":100.32,"return_pct":12.56,"group":"Healthcare","factors":["healthcare","rates","usd","equity_risk"]},
+    {"symbol":"XOM","name":"Exxon Mobil","value_eur":98.59,"return_pct":6.65,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
+    {"symbol":"XDWU","name":"Xtrackers MSCI World Utilities","value_eur":95.11,"return_pct":6.72,"group":"Utilities","factors":["electricity","rates","regulation","usd"]},
+    {"symbol":"AI","name":"Air Liquide","value_eur":64.84,"return_pct":14.43,"group":"Industrials","factors":["industrial_growth","energy_costs","rates","usd"]},
+    {"symbol":"O4JO","name":"iShares S&P 500 Equal Weight ETF","value_eur":51.54,"return_pct":3.07,"group":"US equities","factors":["us_growth","rates","usd","equity_risk"]},
+    {"symbol":"FTAI","name":"FTAI Aviation","value_eur":49.61,"return_pct":-9.12,"group":"Aerospace","factors":["aviation","credit","rates","industrial_growth"]},
+    {"symbol":"FRO","name":"Frontline","value_eur":35.45,"return_pct":1.02,"group":"Shipping","factors":["tanker_rates","brent","trade_routes","energy_supply"]},
+    {"symbol":"LMT","name":"Lockheed Martin","value_eur":28.31,"return_pct":13.31,"group":"Defence","factors":["defence_budgets","geopolitics","rates","usd"]},
+    {"symbol":"HO","name":"Thales","value_eur":23.92,"return_pct":-1.71,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
+]
+CASH_EUR = 4.93
+PORTFOLIO_TOTAL_EUR = 900.07
+PORTFOLIO_RETURN_PCT = 4.63
+
+# Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
+IMPACT_MAP = {
+    "Central banks & rates": {"positive":["TTE","XOM","FRO"],"negative":["XDWU","VWCE","WELS","O4JO","FTAI","AI","LMT","HO"],"watch":["USD exposure in US-listed holdings"],"reason":"Une hausse des taux peut peser sur les valorisations et le financement ; l'effet devise et les anticipations de croissance peuvent compenser."},
+    "Inflation, debt & economy": {"positive":["TTE","XOM"],"negative":["XDWU","VWCE","WELS","O4JO","FTAI","AI"],"watch":["FRO","LMT","HO"],"reason":"Une inflation persistante peut retarder les baisses de taux ; l'effet dépend de sa composante énergie/salaires et de la réaction des rendements."},
+    "Geopolitics & conflict": {"positive":["TTE","XOM","LMT","HO"],"negative":["VWCE","O4JO","FTAI"],"watch":["FRO","XDWU","WELS","AI"],"reason":"Le canal dépend des sanctions, des flux énergétiques, des routes maritimes et des budgets de défense ; les valeurs défense ne montent pas mécaniquement."},
+    "Energy & commodities": {"positive":["TTE","XOM"],"negative":["AI","WELS"],"watch":["FRO","VWCE","XDWU","O4JO"],"reason":"Un choc d'offre pétrolière peut soutenir les producteurs mais renchérir les coûts et peser sur la demande ; les tarifs des tankers dépendent aussi de l'offre de navires et des routes."},
+    "Financial system & liquidity": {"positive":[],"negative":["VWCE","WELS","XDWU","O4JO","FTAI"],"watch":["TTE","XOM","FRO","AI","LMT","HO"],"reason":"Un resserrement du crédit touche d'abord les actifs risqués et les entreprises dépendantes du financement ; rechercher des signes confirmés de contagion."},
+    "AI, electricity & infrastructure": {"positive":["XDWU","AI"],"negative":[],"watch":["VWCE","O4JO"],"reason":"La hausse des investissements réseau et de la demande électrique peut soutenir utilities et fournisseurs industriels, sous réserve de valorisations, contrats et financement."},
+    "Defence & aerospace": {"positive":["LMT","HO"],"negative":[],"watch":["FTAI","VWCE","O4JO"],"reason":"Les annonces budgétaires ne deviennent un catalyseur qu'après budgets votés, contrats attribués et calendrier d'exécution."},
+    "Cybersecurity": {"positive":["HO"],"negative":[],"watch":["VWCE","O4JO"],"reason":"Thales a une exposition aux activités cyber, mais l'effet boursier dépend de l'ampleur de l'incident et des contrats ; un incident n'est pas automatiquement positif."},
+    "Healthcare": {"positive":["WELS"],"negative":[],"watch":["VWCE","O4JO"],"reason":"Les décisions réglementaires et résultats cliniques peuvent toucher les composants santé ; l'ETF diversifié amortit les risques propres à une entreprise."},
+    "Crypto & Bitcoin": {"positive":[],"negative":[],"watch":["VWCE","O4JO","XDWU"],"reason":"Aucune exposition directe au Bitcoin n'apparaît dans le portefeuille communiqué ; seul un effet indirect via liquidité et appétit pour le risque est possible."},
+    "FX & safe havens": {"positive":[],"negative":[],"watch":["VWCE","TTE","XOM","WELS","O4JO","LMT"],"reason":"Les variations EUR/USD affectent la conversion en euros des actifs et revenus en dollars ; le sens dépend de la devise de cotation, couverture et revenus."},
+    "Equity markets & companies": {"positive":[],"negative":[],"watch":["VWCE","WELS","O4JO","XDWU","TTE","XOM","FTAI","FRO","AI","LMT","HO"],"reason":"L'impact dépend de l'entreprise ou de l'indice cité, de la surprise par rapport aux attentes et de la réaction du cours."},
+}
+
 COLUMNS = ["event_id", "published_at", "collected_at", "source", "domain", "title",
            "summary", "url", "topic", "impact_score", "priority", "sentiment",
            "confidence", "corroboration_count", "corroborating_sources",
@@ -251,8 +286,19 @@ def _decision_view(df: pd.DataFrame) -> pd.DataFrame:
     return out.drop_duplicates(subset=["topic"], keep="first")
 
 
+def _portfolio_impact(topic: str) -> dict:
+    mapping = IMPACT_MAP.get(topic, {})
+    by_symbol = {p["symbol"]: p for p in PORTFOLIO}
+    return {
+        "positive": [by_symbol[x] for x in mapping.get("positive", []) if x in by_symbol],
+        "negative": [by_symbol[x] for x in mapping.get("negative", []) if x in by_symbol],
+        "watch": [by_symbol[x] for x in mapping.get("watch", []) if x in by_symbol],
+        "reason": mapping.get("reason", "Transmission au portefeuille non suffisamment établie."),
+    }
+
+
 def render_financial_intelligence_dashboard() -> None:
-    """Light, decision-first investor brief matching the application's light visual language."""
+    """Decision-first dashboard connected to the user's confirmed portfolio snapshot."""
     st.markdown("""
     <style>
     .stApp{background:#F5F7FB;color:#26384D}
@@ -260,15 +306,11 @@ def render_financial_intelligence_dashboard() -> None:
     [data-testid="stSidebar"]{background:#F0F3F8}
     .block-container{padding-top:1.7rem;padding-bottom:2.5rem;max-width:1420px}
     .fi-hero{background:linear-gradient(110deg,#fff,#EDF4FC);border:1px solid #DCE5F0;border-radius:16px;padding:22px 26px;margin-bottom:16px}
-    .fi-eyebrow{font-size:11px;letter-spacing:1.5px;color:#66809F;font-weight:800}
-    .fi-title{font-size:30px;font-weight:800;color:#243B59;margin:5px 0}
-    .fi-sub{font-size:14px;color:#66778D}
+    .fi-title{font-size:29px;font-weight:800;color:#243B59;margin:5px 0}
     .fi-card{background:#fff;border:1px solid #DFE6EF;border-radius:14px;padding:17px 19px;margin:11px 0;box-shadow:0 2px 8px rgba(30,55,85,.04)}
-    .fi-card-title{font-size:17px;font-weight:750;color:#253B56;line-height:1.4;margin:8px 0}
     .fi-muted{font-size:12px;color:#718198}
     .fi-tag{display:inline-block;padding:5px 9px;border-radius:20px;background:#EAF2FB;color:#315F8A;font-size:10px;font-weight:800}
     .fi-verdict{background:#F0F6FC;border-left:3px solid #4D83B8;padding:11px 13px;border-radius:7px;color:#334B66;font-size:13px;margin-top:12px}
-    .fi-action{background:#F7F9FC;border:1px solid #E4EAF1;border-radius:8px;padding:10px 12px;color:#465B73;font-size:13px;margin-top:9px}
     </style>
     """, unsafe_allow_html=True)
 
@@ -289,73 +331,98 @@ def render_financial_intelligence_dashboard() -> None:
 
     st.markdown(f"""
     <div class="fi-hero">
-      <div class="fi-eyebrow">PERSONAL INVESTMENT INTELLIGENCE · DAILY BRIEF</div>
-      <div class="fi-title">Ce qui mérite ton attention aujourd'hui</div>
-      <div class="fi-sub">Une sélection courte des événements susceptibles de changer le contexte d'investissement — pas un flux d'actualités à trier.</div>
-      <div class="fi-muted" style="margin-top:10px">Dernière collecte : {html.escape(last_run)} · {len(decisions)} thèmes décisionnels retenus</div>
+      <div class="fi-tag">PORTFOLIO-LINKED FINANCIAL INTELLIGENCE</div>
+      <div class="fi-title">Qu'est-ce qui peut réellement affecter tes investissements ?</div>
+      <div style="color:#66778D">Sélection d'événements, transmission vers tes positions et scénarios conditionnels.</div>
+      <div class="fi-muted" style="margin-top:10px">Snapshot portefeuille communiqué · Valeurs non actualisées automatiquement · Dernière collecte : {html.escape(last_run)}</div>
     </div>""", unsafe_allow_html=True)
 
-    c1, c2 = st.columns([5, 1])
+    k1,k2,k3=st.columns(3)
+    k1.metric("Valeur du portefeuille", f"{PORTFOLIO_TOTAL_EUR:,.2f} €".replace(",", " "), f"+{PORTFOLIO_RETURN_PCT:.2f} %")
+    k2.metric("Positions investies", f"{len(PORTFOLIO)}")
+    k3.metric("Liquidités", f"{CASH_EUR:.2f} €")
+    st.caption("Snapshot de référence fourni le 13/11/2026. Les cotations, quantités et performances ne sont pas rafraîchies par cette version.")
+
+    with st.expander("Voir mes positions et leurs pondérations", expanded=False):
+        pview=pd.DataFrame(PORTFOLIO)
+        pview["poids_pct"]=(pview["value_eur"]/PORTFOLIO_TOTAL_EUR*100).round(1)
+        pview=pview.rename(columns={"symbol":"Ticker","name":"Support","value_eur":"Valeur €","return_pct":"Performance %","group":"Classe","poids_pct":"Poids %"})
+        st.dataframe(pview[["Ticker","Support","Classe","Valeur €","Performance %","Poids %"]],use_container_width=True,hide_index=True)
+        st.caption("Les 11 positions totalisent 895,14 € ; les 4,93 € restants sont des liquidités en devises. Total : 900,07 €.")
+
+    c1,c2=st.columns([5,1])
     with c1:
-        st.caption("Synthèse orientée décision · importance potentielle, fiabilité indicative et fraîcheur.")
+        st.caption("L'agent doit expliquer les effets directs, indirects et les incertitudes — pas seulement compter les articles.")
     with c2:
-        if st.button("Actualiser", use_container_width=True):
+        if st.button("Actualiser",use_container_width=True):
             st.rerun()
-    if st.button("Lancer l'analyse maintenant", type="primary"):
-        with st.spinner("Collecte et hiérarchisation des événements…"):
-            result = run_agent()
-        st.success(f"Collecte terminée : {result['collected']} articles analysés, {result['new_events']} nouveaux.")
+    if st.button("Lancer la collecte et l'analyse",type="primary"):
+        with st.spinner("Collecte et classement des événements…"):
+            result=run_agent()
+        st.success(f"{result['collected']} articles analysés · {result['new_events']} nouveaux événements.")
         if result["errors"]:
-            st.warning("Flux indisponibles : " + " · ".join(result["errors"][:5]))
+            st.warning("Flux indisponibles : "+" · ".join(result["errors"][:5]))
         st.rerun()
 
-    st.markdown("### Synthèse décisionnelle")
+    st.markdown("### Les événements qui touchent tes positions")
     if decisions.empty:
-        st.info("Aucun événement suffisamment pertinent n'a été identifié. L'agent préfère ne rien signaler plutôt que remplir le dashboard de bruit.")
+        st.info("Aucun événement suffisamment pertinent dans les archives actuelles. Pas d'alerte artificielle.")
     else:
-        for rank, (_, row) in enumerate(decisions.head(5).iterrows(), 1):
-            title = html.escape(str(row.get("title", "Événement sans titre")))
-            summary = html.escape(str(row.get("summary", "") or "Résumé non fourni.")[:520])
-            topic = html.escape(str(row.get("topic", "")))
-            source = html.escape(str(row.get("source", "")))
-            channel = html.escape(str(row.get("decision_channel", "")))
-            why = html.escape(str(row.get("decision_why", "")))
-            action = html.escape(str(row.get("decision_action", "")))
-            tag = html.escape(str(row.get("decision_tag", "")))
-            priority = str(row.get("priority", "P3"))
-            published = row["published_at"].strftime("%d/%m/%Y · %H:%M UTC")
-            score = float(row.get("decision_score", 0) or 0)
-            conf = int(row.get("confidence", 0) or 0)
-            url = str(row.get("url", ""))
+        for rank,(_,row) in enumerate(decisions.head(5).iterrows(),1):
+            impact=_portfolio_impact(str(row.get("topic","")))
+            title=html.escape(str(row.get("title","Événement sans titre")))
+            summary=html.escape(str(row.get("summary","") or "Résumé indisponible.")[:650])
+            topic=html.escape(str(row.get("topic","")))
+            source=html.escape(str(row.get("source","")))
+            reason=html.escape(impact["reason"])
+            url=str(row.get("url",""))
             st.markdown(f"""
             <div class="fi-card">
               <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                <span class="fi-tag">#{rank} · {tag}</span><span class="fi-muted">{published} · {source}</span>
+                <span class="fi-tag">ÉVÉNEMENT #{rank} · {html.escape(str(row.get('priority','P3')))}</span>
+                <span class="fi-muted">{html.escape(str(row.get('published_at').strftime('%d/%m/%Y %H:%M UTC')))} · {source}</span>
               </div>
-              <div class="fi-card-title">{title}</div>
-              <div class="fi-muted">{topic} · Canal de transmission : {channel}</div>
-              <div style="font-size:13px;color:#53677F;line-height:1.55;margin-top:9px">{summary}</div>
-              <div class="fi-verdict"><b>Pourquoi cela compte :</b> {why}</div>
-              <div class="fi-action"><b>Lecture de l'agent :</b> {action}</div>
-              <div class="fi-muted" style="margin-top:9px">Priorité de source : {priority} · Score de sélection : {score:.0f} · Confiance indicative : {conf}/95</div>
-            </div>""", unsafe_allow_html=True)
-            if url.startswith("http"):
-                st.markdown(f'<div style="margin-top:-5px;margin-bottom:10px"><a href="{html.escape(url, quote=True)}" target="_blank" style="color:#3977B5;font-size:12px;font-weight:700;text-decoration:none">Lire la source ↗</a></div>', unsafe_allow_html=True)
+              <h3 style="font-size:18px;color:#253B56;margin:12px 0 7px">{title}</h3>
+              <div style="font-size:13px;color:#53677F;line-height:1.55">{summary}</div>
+              <div class="fi-verdict"><b>Pourquoi cela touche ton portefeuille :</b> {reason}</div>
+            </div>""",unsafe_allow_html=True)
 
-    st.markdown("### Décision proposée")
-    st.info("Pour le moment : surveiller et vérifier les signaux ci-dessus, sans transaction automatique. L'agent n'a pas encore accès aux quantités, prix de revient et limites de risque de ton portefeuille ; il ne peut donc pas conclure qu'une position précise doit être renforcée ou réduite.")
-    if not df.empty:
-        background = df[~df.index.isin(decisions.index)].head(6)
-        if not background.empty:
-            with st.expander(f"{len(background)} autres sujets — arrière-plan, non prioritaires"):
-                for _, row in background.iterrows():
-                    st.write(f"• {row.get('topic','')} — {row.get('title','')} ({row.get('source','')})")
-    with st.expander("Méthode et historique technique"):
-        st.write(f"Événements archivés : {len(df)} · Sources distinctes : {df['domain'].nunique() if not df.empty and 'domain' in df else 0} · Dernière collecte : {last_run}.")
-        st.write("Le classement privilégie les thèmes macro-financiers, liquidité, géopolitique, énergie, devises, Bitcoin, cybersécurité et secteurs d'investissement. Les sujets sans canal de transmission financier identifiable sont écartés.")
+            pos_names=", ".join(f"{p['symbol']} ({p['value_eur']:.2f} €)" for p in impact["positive"]) or "Aucun bénéficiaire direct identifié"
+            neg_names=", ".join(f"{p['symbol']} ({p['value_eur']:.2f} €)" for p in impact["negative"]) or "Aucun perdant direct identifié"
+            watch_names=", ".join(f"{p['symbol']} ({p['value_eur']:.2f} €)" for p in impact["watch"]) or "Aucun"
+            a,b=st.columns(2)
+            with a:
+                st.markdown("**Canal potentiellement favorable**")
+                st.success(pos_names)
+                st.markdown("**Canal potentiellement défavorable**")
+                st.error(neg_names)
+            with b:
+                st.markdown("**À surveiller / effet incertain**")
+                st.info(watch_names)
+                st.markdown("**Lecture conditionnelle**")
+                st.write("Le sens indiqué est une sensibilité théorique au facteur identifié, pas une prévision du cours ni une recommandation d'achat/vente.")
+            if url.startswith("http"):
+                st.markdown(f"[Lire la source]({url})")
+
+    st.markdown("### Exposition transversale de ton portefeuille")
+    st.write("Plusieurs positions peuvent réagir au même facteur :")
+    factor_rows=[
+        ("Taux et valorisations","VWCE · WELS · XDWU · O4JO · FTAI · Air Liquide · LMT · Thales"),
+        ("Pétrole et énergie","TotalEnergies · Exxon Mobil · Frontline"),
+        ("Dollar et marchés américains","VWCE · Exxon Mobil · WELS · O4JO · Lockheed Martin"),
+        ("Défense et géopolitique","Lockheed Martin · Thales"),
+        ("Électricité et IA","XDWU · Air Liquide, avec exposition indirecte de VWCE/O4JO"),
+    ]
+    for label,assets in factor_rows:
+        st.markdown(f"- **{label} :** {assets}")
+
+    st.markdown("### Ce que l'agent ne sait pas encore mesurer")
+    st.warning("Cette version relie les événements à tes positions avec une cartographie explicable. Elle ne calcule pas encore de P&L prédictif en euros : il manque des sensibilités historiques, des cotations synchronisées, les devises de chaque ligne et une calibration par scénario. Aucun rendement cible ou perte chiffrée ne sera inventé.")
+    with st.expander("Historique complet et méthode"):
+        st.write(f"{len(df)} événements archivés · {df['domain'].nunique() if not df.empty and 'domain' in df else 0} domaines sources · dernière collecte {last_run}.")
         if not df.empty:
-            st.dataframe(df[["published_at","priority","topic","impact_score","title","source","verification_status","url"]].head(100), use_container_width=True, hide_index=True)
-    st.caption("Limite actuelle : l'analyse repose sur titres et résumés RSS et des règles explicables. Le score hiérarchise la veille, il ne mesure pas une probabilité. La prochaine étape sera l'analyse du texte intégral et la confrontation aux données de marché.")
+            st.dataframe(df[["published_at","priority","topic","impact_score","title","source","verification_status","url"]].head(100),use_container_width=True,hide_index=True)
+    st.caption("Agent gratuit sans API payante : collecte RSS et règles explicables. La corroboration de sources ne constitue pas une vérification indépendante des faits.")
 
 
 def main():
