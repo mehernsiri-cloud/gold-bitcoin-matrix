@@ -762,7 +762,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Choose Dashboard",
-    ["Financial Intelligence", "Gold & Bitcoin", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
+    ["Financial Intelligence", "Gold & Bitcoin & Devises", "Jobs", "Real Estate Bot", "Formation Word & Excel", "Task Planner", "Newsletter"]
 )
 
 
@@ -779,7 +779,7 @@ def render_header(title: str, subtitle: Optional[str] = None):
 if menu == "Financial Intelligence":
     render_financial_intelligence_dashboard()
 
-elif menu == "Gold & Bitcoin":
+elif menu == "Gold & Bitcoin & Devises":
     render_market_forecast_dashboard()
 
 
