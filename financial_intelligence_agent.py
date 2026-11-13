@@ -287,64 +287,6 @@ def _decision_view(df: pd.DataFrame) -> pd.DataFrame:
     return out.drop_duplicates(subset=["topic"], keep="first")
 
 
-YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"GLHL.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA"}
-QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP"}
-QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline.json"
-
-def _portfolio_live_snapshot():
-    try:
-        import yfinance as yf
-        symbols=list(YF_SYMBOLS.values())+["EURUSD=X","EURGBP=X"]
-        raw=yf.download(symbols,period="6mo",interval="1d",auto_adjust=True,group_by="ticker",progress=False,threads=True)
-        if raw.empty: return None,"Yahoo Finance n'a retourné aucun cours."
-        close={}
-        for sym in symbols:
-            try:
-                series=raw[sym]["Close"].dropna()
-                if not series.empty: close[sym]=series
-            except Exception: pass
-        if "EURUSD=X" not in close: return None,"Taux EUR/USD indisponible."
-        baseline={}
-        if QUOTE_BASELINE_FILE.exists():
-            try: baseline=json.loads(QUOTE_BASELINE_FILE.read_text(encoding="utf-8"))
-            except Exception: baseline={}
-        latest={}
-        histories={}
-        for p in PORTFOLIO:
-            sym=p["symbol"]; yf_sym=YF_SYMBOLS[sym]
-            if yf_sym not in close: continue
-            s=close[yf_sym].dropna()
-            cur=QUOTE_CURRENCY.get(sym,"EUR")
-            if cur=="USD": s=s/close["EURUSD=X"].reindex(s.index).ffill()
-            elif cur=="GBP" and "EURGBP=X" in close: s=s/close["EURGBP=X"].reindex(s.index).ffill()
-            histories[sym]=s
-            latest[sym]=float(s.iloc[-1])
-            if sym not in baseline: baseline[sym]={"price_eur":latest[sym],"initial_value_eur":float(p["value_eur"])}
-        QUOTE_BASELINE_FILE.write_text(json.dumps(baseline,indent=2),encoding="utf-8")
-        rows=[]
-        for p in PORTFOLIO:
-            sym=p["symbol"]
-            if sym not in latest or sym not in baseline: continue
-            b=baseline[sym]
-            value=float(b["initial_value_eur"])*latest[sym]/float(b["price_eur"])
-            rows.append({"symbol":sym,"value_eur":value,"change_pct":(latest[sym]/float(b["price_eur"])-1)*100,"initial_value_eur":float(b["initial_value_eur"])})
-        if not rows: return None,"Aucun actif coté récupéré."
-        holdings=pd.DataFrame(rows); total=float(holdings.value_eur.sum()+CASH_EUR)
-        initial=float(holdings.initial_value_eur.sum()+CASH_EUR)
-        returns=pd.DataFrame(histories).pct_change().dropna(how="all")
-        weights={r.symbol:r.initial_value_eur/initial for r in holdings.itertuples()}
-        port_ret=sum(returns[s].fillna(0)*weights[s] for s in weights if s in returns)
-        vol=float(port_ret.tail(90).std()) if len(port_ret.dropna())>=20 else None
-        projection=None
-        if vol is not None:
-            dates=pd.bdate_range(pd.Timestamp.now().normalize(),periods=31)
-            projection=pd.DataFrame({"date":dates,
-                "Best case":[total*(1+1.645*vol*(d**.5)) for d in range(31)],
-                "Worst case":[total*(1-1.645*vol*(d**.5)) for d in range(31)]})
-        return {"holdings":holdings,"total":total,"initial":initial,"projection":projection,"updated":max(s.index.max() for s in histories.values())},None
-    except Exception as exc:
-        return None,f"Erreur cours : {type(exc).__name__}: {exc}"
-
 def _portfolio_impact(topic: str) -> dict:
     mapping = IMPACT_MAP.get(topic, {})
     by_symbol = {p["symbol"]: p for p in PORTFOLIO}
@@ -425,13 +367,8 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
         for item in impact_rows:
             # 0.55 sigma envelope for favorable/adverse branch over each horizon.
             magnitude = item["value"] * item["daily_vol"] * (h ** 0.5) * 0.55 * min(1.35,max(0.35,item["daily_vol"]/0.02))
-            if direction == 0:
-                best_delta += magnitude
-                worst_delta -= magnitude
-            else:
-                expected_sign = item["signed"]
-                best_delta += expected_sign * magnitude
-                worst_delta -= expected_sign * magnitude
+            best_delta += magnitude
+            worst_delta -= magnitude
         best.append(baseline + best_delta)
         worst.append(baseline + worst_delta)
     rows = []
@@ -439,7 +376,7 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
         if direction == 0:
             label = "Sensibilité à confirmer"
         else:
-            sign = item["signed"] * direction
+            sign = item["signed"]
             label = "Bénéficiaire potentiel" if sign > 0 else "Exposé négativement" if sign < 0 else "À surveiller"
         rows.append({"symbol":item["symbol"], "value_eur":item["value"], "role":label})
     return {"horizons":horizons,"best":best,"worst":worst,"baseline":baseline,
@@ -552,7 +489,7 @@ def render_financial_intelligence_dashboard() -> None:
             if not impact_df.empty:
                 impact_df=impact_df.rename(columns={"symbol":"Actif","value_eur":"Valeur exposée (€)","role":"Lecture"})
                 st.dataframe(impact_df,use_container_width=True,hide_index=True)
-            st.info("Projection de sensibilité événementielle, pas une prévision de cours : enveloppe calculée à partir de la volatilité observée des positions concernées et du sens économique identifié. Si le titre ne permet pas d'établir le sens, les deux branches restent symétriques.")
+            st.info("Scénarios conditionnels propres à cet événement. L'écart des courbes est une enveloppe de volatilité observée des seules positions exposées ; le sens de transmission est expliqué séparément. Sans modèle causal validé ni quantités/PRU du courtier, ce ne sont pas des objectifs de cours ni une estimation certaine de gain/perte.")
             st.markdown(f"[Lire la source originale]({row.get('url','')})")
     if shown==0:
         st.info("Les événements disponibles ne correspondent pas encore aux facteurs de risque identifiés de ton portefeuille. L'agent préfère ne pas inventer de projection.")
