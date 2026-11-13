@@ -689,91 +689,10 @@ def render_market_forecast_dashboard() -> None:
 
             st.plotly_chart(_forecast_chart({**display_result, "asset": asset, "unit": display_unit, "color": market["color"]}), use_container_width=True)
 
-            st.subheader("Historique complet : prévisions archivées vs cours réels")
-            comparison = _recent_forecast_comparison({**display_result, "asset": asset})
-            if comparison.empty:
-                st.info("L'historique des prévisions se construira à partir des prochains cycles quotidiens archivés.")
-            else:
-                comparison_display = comparison.copy()
-                comparison_display["Prévision"] = comparison_display["Prévision"].map(lambda value: f"{value:,.2f}")
-                comparison_display["Réel"] = comparison_display["Réel"].map(lambda value: f"{value:,.2f}")
-                comparison_display["Écart (%)"] = comparison_display["Écart (%)"].map(lambda value: f"{value:+.2f}%" if pd.notna(value) else "—")
-                st.dataframe(comparison_display.tail(90), use_container_width=True, hide_index=True)
-                st.caption(f"{len(comparison)} journées de prévisions J+1 archivées et comparables · tableau : 90 dernières journées maximum ; graphique : historique complet.")
 
-            st.subheader("Projections par échéance")
-            table = pd.DataFrame(display_result["forecasts"])
-            table["predicted_price"] = table["predicted_price"].map(lambda x: f"{x:,.2f}")
-            table["p10"] = table["p10"].map(lambda x: f"{x:,.2f}")
-            table["p90"] = table["p90"].map(lambda x: f"{x:,.2f}")
-            table["expected_return_pct"] = table["expected_return_pct"].map(lambda x: f"{x:+.2f}%")
-            table["calibration"] = table.apply(
-                lambda row: f"{row['calibration_bias_pct']:+.2f}% (n={int(row['calibration_sample'])})"
-                if int(row["calibration_sample"]) >= 20 else "En apprentissage",
-                axis=1,
-            )
-            table = table.rename(columns={
-                "horizon_days": "Horizon (jours)", "target_date": "Date cible",
-                "predicted_price": "Projection centrale", "p10": "Borne basse P10",
-                "p90": "Borne haute P90", "expected_return_pct": "Variation estimée",
-                "calibration": "Biais historique détecté",
-            })
-            st.dataframe(table, use_container_width=True, hide_index=True)
-
-            left, right = st.columns([1.1, 1])
-            with left:
-                st.subheader("Facteurs qui influencent le modèle")
-                factor_rows = []
-                for label, value in result["factors"].items():
-                    if "Volatilité" in label:
-                        detail = f"{value*100:.2f}% / jour"
-                    elif "RSI" in label:
-                        detail = f"{50 + value*50:.1f}/100"
-                    elif label.startswith("Macro ·"):
-                        detail = f"{value:+.3f} (score pondéré)"
-                    else:
-                        detail = f"{value*100:+.3f}% / jour"
-                    factor_rows.append({"Facteur": label, "Signal": detail})
-                st.dataframe(pd.DataFrame(factor_rows), use_container_width=True, hide_index=True)
-                if macro:
-                    st.caption(f"Scores macro pondérés issus de weight.yaml · dernière modification : {macro_updated or 'inconnue'}. Les rubriques adoption, réglementation et géopolitique restent des proxys, pas des mesures directes d'événements.")
-                else:
-                    st.warning("Aucun score macro disponible : la projection repose principalement sur les facteurs de marché.")
-            with right:
-                st.subheader("Suivi des performances")
-                metrics = _metrics_for_asset(asset)
-                if metrics.empty:
-                    st.info("Pas encore assez de prévisions arrivées à échéance pour calculer la précision. Les prévisions restent enregistrées.")
-                else:
-                    st.dataframe(metrics.rename(columns={
-                        "horizon_days": "Horizon (j)", "forecasts": "Échantillon",
-                        "mape_pct": "Erreur absolue moyenne (%)",
-                        "directional_accuracy": "Direction correcte",
-                    }), use_container_width=True, hide_index=True)
-                    st.caption("Précision calculée sur une prévision immuable par jour et par échéance. Dès 5 journées résolues, le modèle intègre le biais moyen de toutes les erreurs archivées pour cet horizon (correction plafonnée à ±5 %).")
-
-            st.caption("Méthode ensemble v1 : momentum, tendance SMA20/SMA50, retour vers la moyenne et score macro pondéré. Les intervalles P10–P90 représentent une plage indicative issue de la volatilité historique, pas une garantie.")
     st.divider()
-    st.subheader("Journal des prévisions")
-    log = _read_forecasts()
-    if log.empty:
-        st.info("Le journal sera alimenté dès le premier cycle de prévision.")
-    else:
-        display = log.sort_values("issued_at", ascending=False).head(40).copy()
-        cols = ["asset", "issued_at", "target_date", "horizon_days", "current_price", "predicted_price", "actual_price", "error_pct", "status"]
-        display = display[[c for c in cols if c in display.columns]]
-        if not display.empty and (display["asset"] == "Gold").any():
-            try:
-                eurusd, _ = _gold_usd_to_eur_per_gram()
-                gold_rows = display["asset"] == "Gold"
-                for col in ["current_price", "predicted_price", "actual_price"]:
-                    if col in display.columns:
-                        display.loc[gold_rows, col] = pd.to_numeric(display.loc[gold_rows, col], errors="coerce") / eurusd / 31.1034768
-                display.loc[gold_rows, "asset"] = "Or (EUR/g)"
-            except Exception:
-                display.loc[display["asset"] == "Gold", "asset"] = "Or (historique USD/oz — conversion indisponible)"
-        st.dataframe(display, use_container_width=True, hide_index=True)
-        st.caption("L'or est affiché en €/g. Les valeurs techniques archivées restent en USD/oz; le journal applique le taux EUR/USD courant à l'affichage.")
+    from newsletter_app import fx_chf_page
+    fx_chf_page()
 
 
 def run_batch() -> None:
