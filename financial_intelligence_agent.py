@@ -214,42 +214,61 @@ def run_agent(days: int = 4) -> dict:
             "errors": errors, "run_at": datetime.now(timezone.utc).isoformat()}
 
 
+def _decision_view(df: pd.DataFrame) -> pd.DataFrame:
+    """Select market-moving topics and attach a concise investor interpretation."""
+    if df.empty:
+        return df.copy()
+    out = df.copy()
+    text = (out["title"].fillna("").astype(str) + " " + out["summary"].fillna("").astype(str)).str.lower()
+    noise = ["sex scandal", "celebrity", "reality tv", "dating", "royal family", "football transfer", "movie star", "pop star", "gossip", "influencer"]
+    out = out[~text.loc[out.index].apply(lambda s: any(k in s for k in noise))].copy()
+    lenses = {
+        "Central banks & rates": ("Taux, obligations, devises et valorisation des actions", "Une inflexion des banques centrales peut modifier rapidement les anticipations de taux et les valorisations.", "Surveiller les rendements obligataires et les anticipations de taux ; ne pas agir sur un titre seul.", "SURVEILLER LES TAUX"),
+        "Inflation, debt & economy": ("Inflation, croissance, crédit et pouvoir d'achat", "Une surprise macroéconomique peut déplacer les taux, les devises et l'appétit pour le risque.", "Attendre la donnée confirmée puis observer la réaction des taux et des indices.", "ATTENDRE CONFIRMATION"),
+        "Geopolitics & conflict": ("Pétrole, transport, défense, devises refuges et volatilité", "Le risque devient financier s'il perturbe l'approvisionnement, les routes commerciales, les sanctions ou les flux de capitaux.", "Vérifier les conséquences concrètes sur énergie, transport maritime, or et actifs refuges.", "VÉRIFIER L'IMPACT MARCHÉ"),
+        "Energy & commodities": ("Brent, gaz, inflation et producteurs d'énergie", "Un choc d'offre peut affecter les marges des producteurs, les coûts de transport et l'inflation.", "Comparer l'annonce aux prix et aux volumes réellement perturbés.", "SURVEILLER LES PRIX"),
+        "Financial system & liquidity": ("Liquidité, banques, crédit et risque de contrepartie", "C'est un signal de préservation du capital si dépôts, financement ou paiements sont touchés.", "Rechercher des confirmations auprès des autorités et de plusieurs sources indépendantes.", "VÉRIFICATION PRIORITAIRE"),
+        "AI, electricity & infrastructure": ("Électricité, réseaux, semi-conducteurs et investissement IA", "Peut signaler une évolution structurelle de la demande électrique et des dépenses d'infrastructure.", "Distinguer contrats financés et projets annoncés ; surveiller résultats et carnets de commandes.", "SUIVRE LES FONDAMENTAUX"),
+        "Defence & aerospace": ("Budgets de défense, commandes et industriels", "L'effet dépend des budgets votés, contrats attribués et calendriers de livraison.", "Vérifier les financements et commandes réels avant toute conclusion sectorielle.", "VÉRIFIER LES CONTRATS"),
+        "Crypto & Bitcoin": ("Bitcoin, liquidité globale, réglementation et flux ETF", "Les flux et conditions de liquidité peuvent amplifier les mouvements à court terme.", "Comparer l'annonce aux flux, volumes et prix ; tenir compte de la volatilité.", "SURVEILLER LES FLUX"),
+        "Cybersecurity": ("Risque opérationnel et infrastructures critiques", "Un incident devient systémique s'il touche paiements, énergie, télécoms ou fournisseurs majeurs.", "Vérifier l'ampleur et les systèmes touchés avant d'extrapoler.", "ÉVALUER L'AMPLEUR"),
+        "FX & safe havens": ("EUR/CHF, dollar, or et flux refuges", "Les mouvements de change influencent la valeur en euros des actifs en devises.", "Comparer le mouvement aux taux et au contexte de risque avant toute réallocation.", "SURVEILLER LES DEVISES"),
+        "Equity markets & companies": ("Résultats, guidance, crédit et sentiment actions", "L'impact dépend de l'écart entre résultats publiés, attentes et perspectives.", "Comparer les chiffres aux attentes puis observer la réaction du cours.", "COMPARER AUX ATTENTES"),
+    }
+    out = out[out["topic"].isin(lenses)].copy()
+    if out.empty:
+        return out
+    out["decision_channel"] = out["topic"].map(lambda t: lenses[t][0])
+    out["decision_why"] = out["topic"].map(lambda t: lenses[t][1])
+    out["decision_action"] = out["topic"].map(lambda t: lenses[t][2])
+    out["decision_tag"] = out["topic"].map(lambda t: lenses[t][3])
+    for col, default in [("impact_score", 0), ("confidence", 0), ("corroboration_count", 1)]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(default)
+    age = (pd.Timestamp.now(tz="UTC") - out["published_at"]).dt.total_seconds().clip(lower=0) / 3600
+    recency = (24 / (24 + age)).clip(0.15, 1.0)
+    out["decision_score"] = (out["impact_score"] * .55 + out["confidence"] * .25 + out["corroboration_count"].clip(upper=3) * 7) * recency
+    out = out.sort_values(["decision_score", "published_at"], ascending=False)
+    return out.drop_duplicates(subset=["topic"], keep="first")
+
+
 def render_financial_intelligence_dashboard() -> None:
-    """Modern editorial-style financial intelligence dashboard."""
+    """Light, decision-first investor brief matching the application's light visual language."""
     st.markdown("""
     <style>
-    .stApp {background: radial-gradient(ellipse at 15% 0%, #172b45 0%, #0b1422 42%, #080f1b 100%); color:#e8eef7;}
-    [data-testid="stHeader"] {background:transparent;}
-    [data-testid="stSidebar"] {background:#0b1524;}
-    .block-container {padding-top:2rem; padding-bottom:3rem; max-width:1500px;}
-    h1,h2,h3,p,label,span {color:inherit;}
-    .fi-hero {padding:26px 30px; border:1px solid #263b55; border-radius:20px;
-      background:linear-gradient(115deg,rgba(26,49,76,.96),rgba(13,27,44,.96)); margin-bottom:18px;}
-    .fi-eyebrow {font-size:11px; letter-spacing:2px; color:#86a9cf; font-weight:700; text-transform:uppercase;}
-    .fi-title {font-size:32px; font-weight:800; color:#f5f8fc; margin:6px 0 4px;}
-    .fi-sub {color:#9fb2c9; font-size:14px;}
-    .fi-pill {display:inline-block; border:1px solid #35516f; color:#b8d3ee; background:#142a42;
-      border-radius:30px; padding:5px 11px; font-size:11px; margin:12px 6px 0 0;}
-    .fi-kpi {background:linear-gradient(145deg,#14263b,#101d2e); border:1px solid #263d57;
-      border-radius:15px; padding:17px 18px; min-height:112px;}
-    .fi-kpi-label {font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#91a8c2;}
-    .fi-kpi-value {font-size:30px; font-weight:800; color:#f5f8fc; margin-top:8px;}
-    .fi-kpi-note {font-size:11px; color:#8199b5; margin-top:2px;}
-    .fi-section {font-size:19px; font-weight:750; color:#f0f5fb; margin:24px 0 12px;}
-    .fi-alert {background:linear-gradient(145deg,#14263a,#101d2c); border:1px solid #2a4058;
-      border-left:4px solid #5b9bd5; border-radius:14px; padding:16px 18px; margin:10px 0;}
-    .fi-alert.p1 {border-left-color:#ff5d6c;}
-    .fi-alert.p2 {border-left-color:#f2ad55;}
-    .fi-alert.p3 {border-left-color:#62a8e8;}
-    .fi-alert-title {font-size:15px; font-weight:700; color:#f2f6fc; line-height:1.45; margin:7px 0;}
-    .fi-meta {font-size:11px; color:#91a8c2;}
-    .fi-chip {font-size:10px; font-weight:800; padding:4px 8px; border-radius:20px; background:#20364d; color:#b9d7f4;}
-    .fi-score {font-size:12px; color:#a9bed5; font-weight:700;}
-    .fi-empty {padding:28px; text-align:center; border:1px dashed #38516b; border-radius:14px; color:#9eb1c7;}
-    div[data-testid="stMetric"] {background:#14263b; border:1px solid #263d57; padding:12px 15px; border-radius:13px;}
-    div[data-testid="stMetricLabel"] {color:#91a8c2;}
-    div[data-testid="stMetricValue"] {color:#f5f8fc;}
-    .stButton button, .stLinkButton a {border-radius:10px; font-weight:700;}
+    .stApp{background:#F5F7FB;color:#26384D}
+    [data-testid="stHeader"]{background:rgba(255,255,255,.92)}
+    [data-testid="stSidebar"]{background:#F0F3F8}
+    .block-container{padding-top:1.7rem;padding-bottom:2.5rem;max-width:1420px}
+    .fi-hero{background:linear-gradient(110deg,#fff,#EDF4FC);border:1px solid #DCE5F0;border-radius:16px;padding:22px 26px;margin-bottom:16px}
+    .fi-eyebrow{font-size:11px;letter-spacing:1.5px;color:#66809F;font-weight:800}
+    .fi-title{font-size:30px;font-weight:800;color:#243B59;margin:5px 0}
+    .fi-sub{font-size:14px;color:#66778D}
+    .fi-card{background:#fff;border:1px solid #DFE6EF;border-radius:14px;padding:17px 19px;margin:11px 0;box-shadow:0 2px 8px rgba(30,55,85,.04)}
+    .fi-card-title{font-size:17px;font-weight:750;color:#253B56;line-height:1.4;margin:8px 0}
+    .fi-muted{font-size:12px;color:#718198}
+    .fi-tag{display:inline-block;padding:5px 9px;border-radius:20px;background:#EAF2FB;color:#315F8A;font-size:10px;font-weight:800}
+    .fi-verdict{background:#F0F6FC;border-left:3px solid #4D83B8;padding:11px 13px;border-radius:7px;color:#334B66;font-size:13px;margin-top:12px}
+    .fi-action{background:#F7F9FC;border:1px solid #E4EAF1;border-radius:8px;padding:10px 12px;color:#465B73;font-size:13px;margin-top:9px}
     </style>
     """, unsafe_allow_html=True)
 
@@ -259,146 +278,84 @@ def render_financial_intelligence_dashboard() -> None:
             state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-
     if EVENTS_FILE.exists() and EVENTS_FILE.stat().st_size:
         df = pd.read_csv(EVENTS_FILE)
         df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
         df = df.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
     else:
         df = pd.DataFrame(columns=COLUMNS)
-
-    alerts = df[df["priority"].isin(["P1", "P2", "P3"])].copy() if not df.empty else df.copy()
-    p1 = int((alerts["priority"] == "P1").sum()) if not alerts.empty else 0
-    p2 = int((alerts["priority"] == "P2").sum()) if not alerts.empty else 0
-    p3 = int((alerts["priority"] == "P3").sum()) if not alerts.empty else 0
-    last_run = str(state.get("last_run_utc", "En attente"))
-    last_run_label = last_run[:16].replace("T", " ") + " UTC" if last_run != "En attente" else last_run
+    decisions = _decision_view(df) if not df.empty else df.copy()
+    last_run = str(state.get("last_run_utc", "Non disponible"))[:16].replace("T", " ") + " UTC"
 
     st.markdown(f"""
     <div class="fi-hero">
-      <div class="fi-eyebrow">PERSONAL MARKET INTELLIGENCE · DAILY MONITOR</div>
-      <div class="fi-title">Financial Intelligence</div>
-      <div class="fi-sub">Veille macroéconomique, géopolitique et marchés · collecte gratuite · analyse explicable</div>
-      <span class="fi-pill">● AGENT ACTIF</span><span class="fi-pill">11 FLUX RSS CONFIGURÉS</span>
-      <span class="fi-pill">DERNIÈRE ANALYSE : {html.escape(last_run_label)}</span>
-    </div>
-    """, unsafe_allow_html=True)
+      <div class="fi-eyebrow">PERSONAL INVESTMENT INTELLIGENCE · DAILY BRIEF</div>
+      <div class="fi-title">Ce qui mérite ton attention aujourd'hui</div>
+      <div class="fi-sub">Une sélection courte des événements susceptibles de changer le contexte d'investissement — pas un flux d'actualités à trier.</div>
+      <div class="fi-muted" style="margin-top:10px">Dernière collecte : {html.escape(last_run)} · {len(decisions)} thèmes décisionnels retenus</div>
+    </div>""", unsafe_allow_html=True)
 
-    top_left, top_right = st.columns([5, 1])
-    with top_left:
-        st.caption("Vue exécutive · événements récents et signaux susceptibles d'influencer les marchés")
-    with top_right:
-        if st.button("↻ Actualiser", use_container_width=True):
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        st.caption("Synthèse orientée décision · importance potentielle, fiabilité indicative et fraîcheur.")
+    with c2:
+        if st.button("Actualiser", use_container_width=True):
             st.rerun()
-    if st.button("▶ Lancer une analyse maintenant", type="primary"):
-        with st.spinner("Collecte des flux, déduplication et analyse des événements…"):
+    if st.button("Lancer l'analyse maintenant", type="primary"):
+        with st.spinner("Collecte et hiérarchisation des événements…"):
             result = run_agent()
-        st.success(f"Analyse terminée · {result['collected']} événements collectés · {result['new_events']} nouveaux")
+        st.success(f"Collecte terminée : {result['collected']} articles analysés, {result['new_events']} nouveaux.")
         if result["errors"]:
-            st.warning("Flux indisponibles : " + " · ".join(result["errors"][:6]))
+            st.warning("Flux indisponibles : " + " · ".join(result["errors"][:5]))
         st.rerun()
 
-    k1, k2, k3, k4 = st.columns(4)
-    cards = [
-        (k1, "ÉVÉNEMENTS ARCHIVÉS", f"{len(df):,}", "Historique glissant · 45 jours"),
-        (k2, "ALERTES À EXAMINER", f"{len(alerts):,}", "Priorités P1 à P3"),
-        (k3, "SOURCES DISTINCTES", f"{df['domain'].nunique() if not df.empty else 0:,}", "Domaines détectés"),
-        (k4, "NOUVEAUX AU DERNIER RUN", f"{int(state.get('new_events', 0)):,}", "Depuis la dernière collecte"),
-    ]
-    for col, label, value, note in cards:
-        with col:
-            st.markdown(f'<div class="fi-kpi"><div class="fi-kpi-label">{label}</div><div class="fi-kpi-value">{value}</div><div class="fi-kpi-note">{note}</div></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="fi-section">Niveau de vigilance</div>', unsafe_allow_html=True)
-    v1, v2, v3 = st.columns(3)
-    for col, label, count, color, desc in [
-        (v1, "P1 · CRITIQUE", p1, "#ff6675", "Événements à vérifier immédiatement"),
-        (v2, "P2 · ÉLEVÉE", p2, "#f2ad55", "Impact potentiel significatif"),
-        (v3, "P3 · SURVEILLANCE", p3, "#65a9e8", "Signaux à suivre et contextualiser"),
-    ]:
-        with col:
-            st.markdown(f'<div class="fi-kpi"><div class="fi-kpi-label">{label}</div><div class="fi-kpi-value" style="color:{color}">{count}</div><div class="fi-kpi-note">{desc}</div></div>', unsafe_allow_html=True)
-
-    if not df.empty:
-        left, right = st.columns([1.15, 1])
-        with left:
-            st.markdown('<div class="fi-section">Répartition par thématique</div>', unsafe_allow_html=True)
-            topic_counts = df["topic"].fillna("Non classé").value_counts().head(9)
-            st.bar_chart(topic_counts, height=300)
-        with right:
-            st.markdown('<div class="fi-section">Priorités détectées</div>', unsafe_allow_html=True)
-            priority_counts = alerts["priority"].value_counts().reindex(["P1", "P2", "P3"], fill_value=0) if not alerts.empty else pd.Series({"P1":0,"P2":0,"P3":0})
-            st.bar_chart(priority_counts, height=300)
-
-    st.markdown('<div class="fi-section">Centre des alertes</div>', unsafe_allow_html=True)
-    if df.empty:
-        st.markdown('<div class="fi-empty">Aucun événement disponible pour le moment.<br> Lance une collecte pour initialiser le flux.</div>', unsafe_allow_html=True)
-        return
-
-    f1, f2, f3 = st.columns([1.5, 1, 1])
-    topic_options = ["Toutes les thématiques"] + sorted(alerts["topic"].dropna().unique().tolist())
-    with f1:
-        chosen_topic = st.selectbox("Thématique", topic_options, label_visibility="collapsed")
-    with f2:
-        chosen_priority = st.multiselect("Priorité", ["P1", "P2", "P3"], default=["P1", "P2", "P3"])
-    with f3:
-        period = st.selectbox("Période", ["24 dernières heures", "3 derniers jours", "7 derniers jours", "Tout l'historique"])
-    view = alerts.copy()
-    if chosen_topic != "Toutes les thématiques":
-        view = view[view["topic"] == chosen_topic]
-    if chosen_priority:
-        view = view[view["priority"].isin(chosen_priority)]
-    now = pd.Timestamp.now(tz="UTC")
-    if period != "Tout l'historique":
-        hours = {"24 dernières heures": 24, "3 derniers jours": 72, "7 derniers jours": 168}[period]
-        view = view[view["published_at"] >= now - pd.Timedelta(hours=hours)]
-
-    st.caption(f"{len(view)} alertes correspondant aux filtres · triées par date de publication")
-    if view.empty:
-        st.markdown('<div class="fi-empty">Aucune alerte ne correspond à ces filtres.</div>', unsafe_allow_html=True)
+    st.markdown("### Synthèse décisionnelle")
+    if decisions.empty:
+        st.info("Aucun événement suffisamment pertinent n'a été identifié. L'agent préfère ne rien signaler plutôt que remplir le dashboard de bruit.")
     else:
-        for _, row in view.head(35).iterrows():
-            priority = str(row.get("priority", "P3"))
-            pclass = priority.lower()
-            icon = {"P1":"🚨","P2":"⚠️","P3":"◈"}.get(priority, "•")
-            published = row["published_at"].strftime("%d/%m/%Y · %H:%M UTC")
+        for rank, (_, row) in enumerate(decisions.head(5).iterrows(), 1):
             title = html.escape(str(row.get("title", "Événement sans titre")))
-            topic = html.escape(str(row.get("topic", "Non classé")))
-            source = html.escape(str(row.get("source", "Source inconnue")))
-            summary = html.escape(str(row.get("summary", "") or "Résumé non fourni."))
-            why = html.escape(str(row.get("why_it_matters", "") or "Impact à approfondir."))
-            status = html.escape(str(row.get("verification_status", "Vérification incomplète")))
-            corroboration = html.escape(str(row.get("corroborating_sources", source)))
-            score = int(row.get("impact_score", 0) or 0)
-            confidence = int(row.get("confidence", 0) or 0)
+            summary = html.escape(str(row.get("summary", "") or "Résumé non fourni.")[:520])
+            topic = html.escape(str(row.get("topic", "")))
+            source = html.escape(str(row.get("source", "")))
+            channel = html.escape(str(row.get("decision_channel", "")))
+            why = html.escape(str(row.get("decision_why", "")))
+            action = html.escape(str(row.get("decision_action", "")))
+            tag = html.escape(str(row.get("decision_tag", "")))
+            priority = str(row.get("priority", "P3"))
+            published = row["published_at"].strftime("%d/%m/%Y · %H:%M UTC")
+            score = float(row.get("decision_score", 0) or 0)
+            conf = int(row.get("confidence", 0) or 0)
             url = str(row.get("url", ""))
             st.markdown(f"""
-            <div class="fi-alert {pclass}">
-              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-                <span class="fi-chip">{icon} {priority} · {topic}</span>
-                <span class="fi-meta">{published}</span>
+            <div class="fi-card">
+              <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                <span class="fi-tag">#{rank} · {tag}</span><span class="fi-muted">{published} · {source}</span>
               </div>
-              <div class="fi-alert-title">{title}</div>
-              <div class="fi-meta">{source} · Impact {score}/100 · Confiance indicative {confidence}/95</div>
-              <div style="height:5px;background:#26394d;border-radius:8px;margin:10px 0 12px">
-                <div style="height:5px;width:{max(0,min(100,score))}%;background:#5798d0;border-radius:8px"></div>
-              </div>
-              <div style="font-size:12px;color:#b8c8d9;line-height:1.55">{summary[:650]}</div>
-              <div style="font-size:12px;color:#9eb4cb;margin-top:9px"><b>Pourquoi c'est important :</b> {why}</div>
-              <div class="fi-meta" style="margin-top:8px">{status} · Sources associées : {corroboration}</div>
-            </div>
-            """, unsafe_allow_html=True)
+              <div class="fi-card-title">{title}</div>
+              <div class="fi-muted">{topic} · Canal de transmission : {channel}</div>
+              <div style="font-size:13px;color:#53677F;line-height:1.55;margin-top:9px">{summary}</div>
+              <div class="fi-verdict"><b>Pourquoi cela compte :</b> {why}</div>
+              <div class="fi-action"><b>Lecture de l'agent :</b> {action}</div>
+              <div class="fi-muted" style="margin-top:9px">Priorité de source : {priority} · Score de sélection : {score:.0f} · Confiance indicative : {conf}/95</div>
+            </div>""", unsafe_allow_html=True)
             if url.startswith("http"):
-                st.markdown(f'<div style="margin-top:-7px;margin-bottom:12px"><a href="{html.escape(url, quote=True)}" target="_blank" style="color:#80b9ed;font-size:12px;text-decoration:none;font-weight:700">Consulter la source ↗</a></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:-5px;margin-bottom:10px"><a href="{html.escape(url, quote=True)}" target="_blank" style="color:#3977B5;font-size:12px;font-weight:700;text-decoration:none">Lire la source ↗</a></div>', unsafe_allow_html=True)
 
-    with st.expander("Journal complet des événements", expanded=False):
-        all_topics = ["Toutes"] + sorted(df["topic"].dropna().unique().tolist())
-        selected_all_topic = st.selectbox("Filtrer le journal", all_topics, key="all_events_topic")
-        all_view = df if selected_all_topic == "Toutes" else df[df["topic"] == selected_all_topic]
-        st.dataframe(all_view[["published_at", "priority", "topic", "impact_score", "title", "source", "confidence", "verification_status", "url"]].head(250),
-                     use_container_width=True, hide_index=True)
-
-    st.caption("Méthode : scoring déterministe et explicable, validation technique des liens/dates et rapprochement de titres RSS. La corroboration ne constitue pas une vérification indépendante des faits. Les alertes sont des signaux de veille, pas des recommandations d'achat ou de vente.")
+    st.markdown("### Décision proposée")
+    st.info("Pour le moment : surveiller et vérifier les signaux ci-dessus, sans transaction automatique. L'agent n'a pas encore accès aux quantités, prix de revient et limites de risque de ton portefeuille ; il ne peut donc pas conclure qu'une position précise doit être renforcée ou réduite.")
+    if not df.empty:
+        background = df[~df.index.isin(decisions.index)].head(6)
+        if not background.empty:
+            with st.expander(f"{len(background)} autres sujets — arrière-plan, non prioritaires"):
+                for _, row in background.iterrows():
+                    st.write(f"• {row.get('topic','')} — {row.get('title','')} ({row.get('source','')})")
+    with st.expander("Méthode et historique technique"):
+        st.write(f"Événements archivés : {len(df)} · Sources distinctes : {df['domain'].nunique() if not df.empty and 'domain' in df else 0} · Dernière collecte : {last_run}.")
+        st.write("Le classement privilégie les thèmes macro-financiers, liquidité, géopolitique, énergie, devises, Bitcoin, cybersécurité et secteurs d'investissement. Les sujets sans canal de transmission financier identifiable sont écartés.")
+        if not df.empty:
+            st.dataframe(df[["published_at","priority","topic","impact_score","title","source","verification_status","url"]].head(100), use_container_width=True, hide_index=True)
+    st.caption("Limite actuelle : l'analyse repose sur titres et résumés RSS et des règles explicables. Le score hiérarchise la veille, il ne mesure pas une probabilité. La prochaine étape sera l'analyse du texte intégral et la confrontation aux données de marché.")
 
 
 def main():
