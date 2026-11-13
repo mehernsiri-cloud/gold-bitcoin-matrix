@@ -618,6 +618,59 @@ def render_financial_intelligence_dashboard() -> None:
             if url.startswith("http"):
                 st.markdown(f"[Source de l'événement]({url})")
 
+    # Biais directionnel agrégé sur les événements actuellement retenus.
+    # Les événements peuvent se recouper : ce cumul est un indicateur de pression,
+    # pas une prévision de performance ni une probabilité statistique.
+    favorable_pressure=sum(item["net"] for item in positive_events)
+    adverse_pressure=sum(abs(item["net"]) for item in risk_events)
+    directional_net=favorable_pressure-adverse_pressure
+    gross_pressure=favorable_pressure+adverse_pressure
+    directional_pct=(directional_net/live["total"]*100) if live["total"] else 0.0
+    adverse_share=(adverse_pressure/gross_pressure*100) if gross_pressure else 0.0
+    if gross_pressure <= 0.005:
+        bias_label="Neutre · aucun biais net mesurable"
+        bias_color="#68727D"
+        bias_icon="⚪"
+    elif directional_net > gross_pressure*0.10:
+        bias_label="Biais favorable"
+        bias_color="#168653"
+        bias_icon="🟢"
+    elif directional_net < -gross_pressure*0.10:
+        bias_label="Biais défavorable"
+        bias_color="#C74646"
+        bias_icon="🔴"
+    else:
+        bias_label="Biais équilibré · incertitude élevée"
+        bias_color="#B7791F"
+        bias_icon="🟠"
+
+    st.markdown("### Biais directionnel net du portefeuille")
+    with st.container(border=True):
+        st.markdown(
+            f"<div style='padding:12px 14px;border-radius:10px;background:#F4F6F8;"
+            f"border-left:5px solid {bias_color};margin-bottom:10px'>"
+            f"<div style='font-size:0.78rem;color:#59636E;font-weight:700'>PRESSION AGRÉGÉE DES ÉVÉNEMENTS SUIVIS</div>"
+            f"<div style='font-size:1.35rem;font-weight:750;color:{bias_color};margin-top:3px'>{bias_icon} {bias_label}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        m1,m2,m3=st.columns(3)
+        m1.metric("Impact net estimé",f"{directional_net:+,.2f} €",f"{directional_pct:+.2f}% du portefeuille")
+        m2.metric("Pression favorable",f"+{favorable_pressure:,.2f} €",f"{len(positive_events)} événement(s)")
+        m3.metric("Pression défavorable",f"-{adverse_pressure:,.2f} €",f"{len(risk_events)} événement(s)")
+        if gross_pressure > 0.005:
+            green_width=100.0-adverse_share
+            st.markdown(
+                f"<div style='display:flex;justify-content:space-between;font-size:0.76rem;color:#59636E;margin:5px 0 4px'>"
+                f"<span>Favorable {green_width:.0f}%</span><span>Défavorable {adverse_share:.0f}%</span></div>"
+                f"<div style='height:13px;display:flex;overflow:hidden;border-radius:20px;background:#E7EAEE'>"
+                f"<div style='width:{green_width:.2f}%;background:#20A36A'></div>"
+                f"<div style='width:{adverse_share:.2f}%;background:#D94B4B'></div></div>",
+                unsafe_allow_html=True,
+            )
+        st.caption("Lecture directionnelle des impacts nets estimés sur les événements affichés. Les événements peuvent se recouper : les montants ne sont pas additifs au sens d'une prévision de perte ou de gain.")
+    st.markdown("---")
+
     left,right=st.columns(2,gap="large")
     with left:
         st.markdown("### 🟢 Événements favorables")
@@ -638,6 +691,7 @@ def render_financial_intelligence_dashboard() -> None:
     with st.expander("Méthode et limites"):
         st.write("Les événements sont répartis dans la colonne gauche si la somme des impacts positifs estimés dépasse la somme des impacts négatifs ; ils sont placés à droite dans le cas inverse. Chaque colonne est triée par ampleur de l'impact net, pondérée par la confiance dans les sources et leur corroboration.")
         st.write("Ce classement ne constitue pas une probabilité que l'événement se produise ni une probabilité statistique de gain ou de perte. Les sensibilités restent heuristiques et conditionnelles ; elles ne sont pas des prévisions de cours.")
+        st.write("Le biais directionnel net additionne les impacts estimés des événements retenus pour donner une indication de pression favorable ou défavorable. Des événements peuvent se recouper ou décrire le même facteur macroéconomique : ce cumul ne doit donc pas être interprété comme une perte/gain attendu ni comme une prévision de performance.")
         st.write("Le suivi des cours est ancré à l'instantané communiqué. Sans quantités exactes, les variations sont estimées à partir des valeurs de départ. Certains tickers ou conversions peuvent être indisponibles.")
 
 def main():
