@@ -536,29 +536,46 @@ def render_financial_intelligence_dashboard() -> None:
             st.markdown(f"<div style='height:4px;background:{color};border-radius:5px;margin-bottom:8px'></div>",unsafe_allow_html=True)
             st.markdown(f"**{row.get('title','')}**")
             st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
-            st.metric("Impact net estimé",f"{item['net']:+.2f} €")
+            # Compact KPI gadgets: net impact, positive and negative contributions.
+            k1,k2,k3=st.columns(3)
+            k1.metric("Impact net",f"{item['net']:+.2f} €")
+            k2.metric("Potentiel +",f"+{item['gain_total']:.2f} €")
+            k3.metric("Risque −",f"−{item['loss_total']:.2f} €")
             st.caption(f"{scenario['affected_count']} supports exposés · {scenario['exposed_value']:,.0f} € concernés")
+            # Relative balance gauge: share of positive contribution (not probability).
+            total_swing=item["gain_total"]+item["loss_total"]
+            if total_swing>0:
+                st.progress(max(0.0,min(1.0,item["gain_total"]/total_swing)),
+                             text=f"Équilibre des impacts · gain {item['gain_total']:.2f} € / risque {item['loss_total']:.2f} €")
             if side=="positive":
-                st.markdown(f"**Contributions positives : +{item['gain_total']:.2f} €**")
-                if item["gains"].empty:
+                st.markdown("**Principaux moteurs positifs**")
+                assets=item["gains"].head(4)
+                if assets.empty:
                     st.caption("Aucun support positif identifié.")
                 else:
-                    for _,asset in item["gains"].head(4).iterrows():
-                        st.markdown(f"**{asset['name']}**")
-                        st.caption(f"+{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
+                    max_delta=max(float(x) for x in assets["delta_eur"].abs()) or 1.0
+                    for _,asset in assets.iterrows():
+                        name_col,value_col,bar_col=st.columns([2.1,0.9,1.2])
+                        name_col.markdown(f"**{asset['name']}**")
+                        value_col.markdown(f"<div style='text-align:right;color:#16845B;font-weight:600'>+{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
+                        bar_col.progress(min(1.0,abs(float(asset["delta_eur"]))/max_delta))
                 if item["loss_total"]>0.005:
-                    st.caption(f"Compensation négative estimée : −{item['loss_total']:.2f} €")
+                    st.caption(f"Contre-effet négatif : −{item['loss_total']:.2f} €")
             else:
-                st.markdown(f"**Contributions négatives : −{item['loss_total']:.2f} €**")
-                if item["losses"].empty:
+                st.markdown("**Principaux facteurs de perte**")
+                assets=item["losses"].head(4)
+                if assets.empty:
                     st.caption("Aucun support négatif identifié.")
                 else:
-                    for _,asset in item["losses"].head(4).iterrows():
-                        st.markdown(f"**{asset['name']}**")
-                        st.caption(f"{asset['delta_eur']:.2f} € · sensibilité {asset['impact_pct']:+.2f}%")
+                    max_delta=max(float(x) for x in assets["delta_eur"].abs()) or 1.0
+                    for _,asset in assets.iterrows():
+                        name_col,value_col,bar_col=st.columns([2.1,0.9,1.2])
+                        name_col.markdown(f"**{asset['name']}**")
+                        value_col.markdown(f"<div style='text-align:right;color:#C44E62;font-weight:600'>{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
+                        bar_col.progress(min(1.0,abs(float(asset["delta_eur"]))/max_delta))
                 if item["gain_total"]>0.005:
-                    st.caption(f"Compensation positive estimée : +{item['gain_total']:.2f} €")
-            st.caption("Classement indicatif : impact net estimé pondéré par la qualité des éléments disponibles, pas une probabilité statistique.")
+                    st.caption(f"Compensation positive : +{item['gain_total']:.2f} €")
+            st.caption("Barres = poids relatif des contributions affichées, pas probabilité de réalisation.")
             url=str(row.get("url","") or "")
             if url.startswith("http"):
                 st.markdown(f"[Source de l'événement]({url})")
