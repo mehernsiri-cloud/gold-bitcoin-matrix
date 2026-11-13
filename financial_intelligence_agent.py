@@ -215,62 +215,190 @@ def run_agent(days: int = 4) -> dict:
 
 
 def render_financial_intelligence_dashboard() -> None:
-    st.title("🧠 Financial Intelligence Agent")
-    st.caption("Veille quotidienne gratuite · collecte RSS · validation des sources · corroboration · classification et scoring explicable")
+    """Modern editorial-style financial intelligence dashboard."""
+    st.markdown("""
+    <style>
+    .stApp {background: radial-gradient(ellipse at 15% 0%, #172b45 0%, #0b1422 42%, #080f1b 100%); color:#e8eef7;}
+    [data-testid="stHeader"] {background:transparent;}
+    [data-testid="stSidebar"] {background:#0b1524;}
+    .block-container {padding-top:2rem; padding-bottom:3rem; max-width:1500px;}
+    h1,h2,h3,p,label,span {color:inherit;}
+    .fi-hero {padding:26px 30px; border:1px solid #263b55; border-radius:20px;
+      background:linear-gradient(115deg,rgba(26,49,76,.96),rgba(13,27,44,.96)); margin-bottom:18px;}
+    .fi-eyebrow {font-size:11px; letter-spacing:2px; color:#86a9cf; font-weight:700; text-transform:uppercase;}
+    .fi-title {font-size:32px; font-weight:800; color:#f5f8fc; margin:6px 0 4px;}
+    .fi-sub {color:#9fb2c9; font-size:14px;}
+    .fi-pill {display:inline-block; border:1px solid #35516f; color:#b8d3ee; background:#142a42;
+      border-radius:30px; padding:5px 11px; font-size:11px; margin:12px 6px 0 0;}
+    .fi-kpi {background:linear-gradient(145deg,#14263b,#101d2e); border:1px solid #263d57;
+      border-radius:15px; padding:17px 18px; min-height:112px;}
+    .fi-kpi-label {font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#91a8c2;}
+    .fi-kpi-value {font-size:30px; font-weight:800; color:#f5f8fc; margin-top:8px;}
+    .fi-kpi-note {font-size:11px; color:#8199b5; margin-top:2px;}
+    .fi-section {font-size:19px; font-weight:750; color:#f0f5fb; margin:24px 0 12px;}
+    .fi-alert {background:linear-gradient(145deg,#14263a,#101d2c); border:1px solid #2a4058;
+      border-left:4px solid #5b9bd5; border-radius:14px; padding:16px 18px; margin:10px 0;}
+    .fi-alert.p1 {border-left-color:#ff5d6c;}
+    .fi-alert.p2 {border-left-color:#f2ad55;}
+    .fi-alert.p3 {border-left-color:#62a8e8;}
+    .fi-alert-title {font-size:15px; font-weight:700; color:#f2f6fc; line-height:1.45; margin:7px 0;}
+    .fi-meta {font-size:11px; color:#91a8c2;}
+    .fi-chip {font-size:10px; font-weight:800; padding:4px 8px; border-radius:20px; background:#20364d; color:#b9d7f4;}
+    .fi-score {font-size:12px; color:#a9bed5; font-weight:700;}
+    .fi-empty {padding:28px; text-align:center; border:1px dashed #38516b; border-radius:14px; color:#9eb1c7;}
+    div[data-testid="stMetric"] {background:#14263b; border:1px solid #263d57; padding:12px 15px; border-radius:13px;}
+    div[data-testid="stMetricLabel"] {color:#91a8c2;}
+    div[data-testid="stMetricValue"] {color:#f5f8fc;}
+    .stButton button, .stLinkButton a {border-radius:10px; font-weight:700;}
+    </style>
+    """, unsafe_allow_html=True)
+
     state = {}
     if STATE_FILE.exists():
         try:
             state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Dernière exécution (UTC)", str(state.get("last_run_utc", "Pas encore exécuté"))[:16].replace("T", " "))
-    c2.metric("Événements archivés", int(state.get("events_total", 0)))
-    c3.metric("Alertes actives", int(state.get("alerts_total", 0)))
-    if st.button("🔄 Lancer une collecte maintenant", type="primary"):
-        with st.spinner("Collecte et analyse des flux RSS…"):
+
+    if EVENTS_FILE.exists() and EVENTS_FILE.stat().st_size:
+        df = pd.read_csv(EVENTS_FILE)
+        df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
+        df = df.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
+    else:
+        df = pd.DataFrame(columns=COLUMNS)
+
+    alerts = df[df["priority"].isin(["P1", "P2", "P3"])].copy() if not df.empty else df.copy()
+    p1 = int((alerts["priority"] == "P1").sum()) if not alerts.empty else 0
+    p2 = int((alerts["priority"] == "P2").sum()) if not alerts.empty else 0
+    p3 = int((alerts["priority"] == "P3").sum()) if not alerts.empty else 0
+    last_run = str(state.get("last_run_utc", "En attente"))
+    last_run_label = last_run[:16].replace("T", " ") + " UTC" if last_run != "En attente" else last_run
+
+    st.markdown(f"""
+    <div class="fi-hero">
+      <div class="fi-eyebrow">PERSONAL MARKET INTELLIGENCE · DAILY MONITOR</div>
+      <div class="fi-title">Financial Intelligence</div>
+      <div class="fi-sub">Veille macroéconomique, géopolitique et marchés · collecte gratuite · analyse explicable</div>
+      <span class="fi-pill">● AGENT ACTIF</span><span class="fi-pill">11 FLUX RSS CONFIGURÉS</span>
+      <span class="fi-pill">DERNIÈRE ANALYSE : {html.escape(last_run_label)}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    top_left, top_right = st.columns([5, 1])
+    with top_left:
+        st.caption("Vue exécutive · événements récents et signaux susceptibles d'influencer les marchés")
+    with top_right:
+        if st.button("↻ Actualiser", use_container_width=True):
+            st.rerun()
+    if st.button("▶ Lancer une analyse maintenant", type="primary"):
+        with st.spinner("Collecte des flux, déduplication et analyse des événements…"):
             result = run_agent()
-        st.success(f"Collectés : {result['collected']} · Nouveaux : {result['new_events']} · Alertes : {result['alerts_total']}")
+        st.success(f"Analyse terminée · {result['collected']} événements collectés · {result['new_events']} nouveaux")
         if result["errors"]:
-            st.warning("Flux indisponibles : " + " · ".join(result["errors"][:8]))
+            st.warning("Flux indisponibles : " + " · ".join(result["errors"][:6]))
         st.rerun()
-    if not EVENTS_FILE.exists() or EVENTS_FILE.stat().st_size == 0:
-        st.info("Aucun événement archivé. Lance une collecte ou attends la prochaine exécution GitHub Actions.")
+
+    k1, k2, k3, k4 = st.columns(4)
+    cards = [
+        (k1, "ÉVÉNEMENTS ARCHIVÉS", f"{len(df):,}", "Historique glissant · 45 jours"),
+        (k2, "ALERTES À EXAMINER", f"{len(alerts):,}", "Priorités P1 à P3"),
+        (k3, "SOURCES DISTINCTES", f"{df['domain'].nunique() if not df.empty else 0:,}", "Domaines détectés"),
+        (k4, "NOUVEAUX AU DERNIER RUN", f"{int(state.get('new_events', 0)):,}", "Depuis la dernière collecte"),
+    ]
+    for col, label, value, note in cards:
+        with col:
+            st.markdown(f'<div class="fi-kpi"><div class="fi-kpi-label">{label}</div><div class="fi-kpi-value">{value}</div><div class="fi-kpi-note">{note}</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="fi-section">Niveau de vigilance</div>', unsafe_allow_html=True)
+    v1, v2, v3 = st.columns(3)
+    for col, label, count, color, desc in [
+        (v1, "P1 · CRITIQUE", p1, "#ff6675", "Événements à vérifier immédiatement"),
+        (v2, "P2 · ÉLEVÉE", p2, "#f2ad55", "Impact potentiel significatif"),
+        (v3, "P3 · SURVEILLANCE", p3, "#65a9e8", "Signaux à suivre et contextualiser"),
+    ]:
+        with col:
+            st.markdown(f'<div class="fi-kpi"><div class="fi-kpi-label">{label}</div><div class="fi-kpi-value" style="color:{color}">{count}</div><div class="fi-kpi-note">{desc}</div></div>', unsafe_allow_html=True)
+
+    if not df.empty:
+        left, right = st.columns([1.15, 1])
+        with left:
+            st.markdown('<div class="fi-section">Répartition par thématique</div>', unsafe_allow_html=True)
+            topic_counts = df["topic"].fillna("Non classé").value_counts().head(9)
+            st.bar_chart(topic_counts, horizontal=True, height=300, color="#5798d0")
+        with right:
+            st.markdown('<div class="fi-section">Priorités détectées</div>', unsafe_allow_html=True)
+            priority_counts = alerts["priority"].value_counts().reindex(["P1", "P2", "P3"], fill_value=0) if not alerts.empty else pd.Series({"P1":0,"P2":0,"P3":0})
+            st.bar_chart(priority_counts, height=300, color="#d59b55")
+
+    st.markdown('<div class="fi-section">Centre des alertes</div>', unsafe_allow_html=True)
+    if df.empty:
+        st.markdown('<div class="fi-empty">Aucun événement disponible pour le moment.<br> Lance une collecte pour initialiser le flux.</div>', unsafe_allow_html=True)
         return
-    df = pd.read_csv(EVENTS_FILE)
-    df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce", utc=True)
-    df = df.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
-    alerts = df[df["priority"].isin(["P1", "P2", "P3"])].copy()
-    a, b, c, d = st.columns(4)
-    a.metric("P1 — Critique", int((alerts["priority"] == "P1").sum()))
-    b.metric("P2 — Élevée", int((alerts["priority"] == "P2").sum()))
-    c.metric("P3 — À surveiller", int((alerts["priority"] == "P3").sum()))
-    d.metric("Sources distinctes", int(df["domain"].nunique()))
-    st.subheader("Alertes prioritaires")
-    selected = alerts[alerts["priority"].isin(["P1", "P2", "P3"])].head(60)
-    if selected.empty:
-        st.success("Aucune alerte P1–P3 dans les événements collectés.")
-    for _, row in selected.iterrows():
-        icon = {"P1": "🚨", "P2": "⚠️", "P3": "🔎"}.get(row["priority"], "ℹ️")
-        with st.expander(f"{icon} {row['priority']} · {row['topic']} · {row['title']}", expanded=row["priority"] == "P1"):
-            st.write(row.get("summary", "") or "Résumé non fourni par le flux.")
-            st.caption(f"Publié : {row['published_at']} · Source : {row['source']} · Confiance heuristique : {row['confidence']}/95")
-            st.write(f"**Impact estimé :** {row['impact_score']}/100 · **Sentiment lexical :** {row['sentiment']}")
-            st.write(f"**Pourquoi c'est important :** {row['why_it_matters']}")
-            st.write(f"**Vérification :** {row['verification_status']} · Sources : {row['corroborating_sources']}")
-            st.link_button("Ouvrir la source", row["url"])
-    st.subheader("Filtre des événements")
-    topics = ["Tous"] + sorted(df["topic"].dropna().unique().tolist())
-    chosen_topic = st.selectbox("Thématique", topics)
-    priorities = st.multiselect("Priorités", ["P1", "P2", "P3", "P4"], default=["P1", "P2", "P3"])
-    view = df.copy()
-    if chosen_topic != "Tous":
+
+    f1, f2, f3 = st.columns([1.5, 1, 1])
+    topic_options = ["Toutes les thématiques"] + sorted(alerts["topic"].dropna().unique().tolist())
+    with f1:
+        chosen_topic = st.selectbox("Thématique", topic_options, label_visibility="collapsed")
+    with f2:
+        chosen_priority = st.multiselect("Priorité", ["P1", "P2", "P3"], default=["P1", "P2", "P3"])
+    with f3:
+        period = st.selectbox("Période", ["24 dernières heures", "3 derniers jours", "7 derniers jours", "Tout l'historique"])
+    view = alerts.copy()
+    if chosen_topic != "Toutes les thématiques":
         view = view[view["topic"] == chosen_topic]
-    if priorities:
-        view = view[view["priority"].isin(priorities)]
-    st.dataframe(view[["published_at", "priority", "topic", "impact_score", "title", "source", "confidence", "verification_status", "url"]].head(150),
-                 use_container_width=True, hide_index=True)
-    st.caption("Limite méthodologique : sans API LLM payante, l'analyse est fondée sur des règles transparentes. La corroboration RSS n'est pas une preuve indépendante ; lire les sources avant toute décision.")
+    if chosen_priority:
+        view = view[view["priority"].isin(chosen_priority)]
+    now = pd.Timestamp.now(tz="UTC")
+    if period != "Tout l'historique":
+        hours = {"24 dernières heures": 24, "3 derniers jours": 72, "7 derniers jours": 168}[period]
+        view = view[view["published_at"] >= now - pd.Timedelta(hours=hours)]
+
+    st.caption(f"{len(view)} alertes correspondant aux filtres · triées par date de publication")
+    if view.empty:
+        st.markdown('<div class="fi-empty">Aucune alerte ne correspond à ces filtres.</div>', unsafe_allow_html=True)
+    else:
+        for _, row in view.head(35).iterrows():
+            priority = str(row.get("priority", "P3"))
+            pclass = priority.lower()
+            icon = {"P1":"🚨","P2":"⚠️","P3":"◈"}.get(priority, "•")
+            published = row["published_at"].strftime("%d/%m/%Y · %H:%M UTC")
+            title = html.escape(str(row.get("title", "Événement sans titre")))
+            topic = html.escape(str(row.get("topic", "Non classé")))
+            source = html.escape(str(row.get("source", "Source inconnue")))
+            summary = html.escape(str(row.get("summary", "") or "Résumé non fourni."))
+            why = html.escape(str(row.get("why_it_matters", "") or "Impact à approfondir."))
+            status = html.escape(str(row.get("verification_status", "Vérification incomplète")))
+            corroboration = html.escape(str(row.get("corroborating_sources", source)))
+            score = int(row.get("impact_score", 0) or 0)
+            confidence = int(row.get("confidence", 0) or 0)
+            url = str(row.get("url", ""))
+            st.markdown(f"""
+            <div class="fi-alert {pclass}">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                <span class="fi-chip">{icon} {priority} · {topic}</span>
+                <span class="fi-meta">{published}</span>
+              </div>
+              <div class="fi-alert-title">{title}</div>
+              <div class="fi-meta">{source} · Impact {score}/100 · Confiance indicative {confidence}/95</div>
+              <div style="height:5px;background:#26394d;border-radius:8px;margin:10px 0 12px">
+                <div style="height:5px;width:{max(0,min(100,score))}%;background:#5798d0;border-radius:8px"></div>
+              </div>
+              <div style="font-size:12px;color:#b8c8d9;line-height:1.55">{summary[:650]}</div>
+              <div style="font-size:12px;color:#9eb4cb;margin-top:9px"><b>Pourquoi c'est important :</b> {why}</div>
+              <div class="fi-meta" style="margin-top:8px">{status} · Sources associées : {corroboration}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            if url.startswith("http"):
+                st.markdown(f'<div style="margin-top:-7px;margin-bottom:12px"><a href="{html.escape(url, quote=True)}" target="_blank" style="color:#80b9ed;font-size:12px;text-decoration:none;font-weight:700">Consulter la source ↗</a></div>', unsafe_allow_html=True)
+
+    with st.expander("Journal complet des événements", expanded=False):
+        all_topics = ["Toutes"] + sorted(df["topic"].dropna().unique().tolist())
+        selected_all_topic = st.selectbox("Filtrer le journal", all_topics, key="all_events_topic")
+        all_view = df if selected_all_topic == "Toutes" else df[df["topic"] == selected_all_topic]
+        st.dataframe(all_view[["published_at", "priority", "topic", "impact_score", "title", "source", "confidence", "verification_status", "url"]].head(250),
+                     use_container_width=True, hide_index=True)
+
+    st.caption("Méthode : scoring déterministe et explicable, validation technique des liens/dates et rapprochement de titres RSS. La corroboration ne constitue pas une vérification indépendante des faits. Les alertes sont des signaux de veille, pas des recommandations d'achat ou de vente.")
 
 
 def main():
