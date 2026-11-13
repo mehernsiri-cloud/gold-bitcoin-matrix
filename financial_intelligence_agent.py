@@ -529,53 +529,87 @@ def render_financial_intelligence_dashboard() -> None:
     positive_events.sort(key=lambda x:x["rank"],reverse=True)
     risk_events.sort(key=lambda x:x["rank"],reverse=True)
 
-    def render_event(item, side):
+    def render_event(item, side, card_index):
         row=item["row"]; scenario=item["scenario"]
         color=topic_colors.get(str(row.get("topic","")),"#68727D")
-        with st.container(border=True):
+        pastel_topics = {
+            "Central banks & rates":"#EEF3FC", "Inflation, debt & economy":"#FFF4E8",
+            "Geopolitics & conflict":"#FCEEF0", "Energy & commodities":"#FFF8E8",
+            "Financial system & liquidity":"#F3EFFB", "AI, electricity & infrastructure":"#EAF7F5",
+            "Defence & aerospace":"#EEF1F9", "Cybersecurity":"#EAF6F0",
+            "Healthcare":"#F9EEF5", "FX & safe havens":"#EDF5FA",
+            "Equity markets & companies":"#F0F2F4",
+        }
+        # The side tint reinforces the meaning while topic colors keep events visually distinct.
+        bg=pastel_topics.get(str(row.get("topic","")), "#F4F5F7")
+        if side=="positive":
+            bg={"#FCEEF0":"#F0F8F1","#FFF4E8":"#F3F9EF"}.get(bg,bg)
+            accent="#23845B"
+        else:
+            bg={"#EEF3FC":"#FFF0EF","#EAF7F5":"#FFF1F0"}.get(bg,bg)
+            accent="#C43D4D"
+        card_key=f"event_card_{side}_{card_index}"
+        st.markdown(
+            f"<style>.st-key-{card_key}{{background:{bg};border:1px solid {color}55;"
+            f"border-left:5px solid {accent};border-radius:12px;padding:14px 16px 10px 16px;}}</style>",
+            unsafe_allow_html=True,
+        )
+        with st.container(key=card_key):
             st.markdown(f"<div style='height:4px;background:{color};border-radius:5px;margin-bottom:8px'></div>",unsafe_allow_html=True)
             st.markdown(f"**{row.get('title','')}**")
             st.caption(f"{scenario['event_type']} · {row.get('source','')} · {pd.to_datetime(row['published_at']).strftime('%d/%m %H:%M UTC')}")
-            # Compact KPI gadgets: net impact, positive and negative contributions.
             k1,k2,k3=st.columns(3)
             k1.metric("Impact net",f"{item['net']:+.2f} €")
             k2.metric("Potentiel +",f"+{item['gain_total']:.2f} €")
             k3.metric("Risque −",f"−{item['loss_total']:.2f} €")
             st.caption(f"{scenario['affected_count']} supports exposés · {scenario['exposed_value']:,.0f} € concernés")
-            # Relative balance gauge: share of positive contribution (not probability).
             total_swing=item["gain_total"]+item["loss_total"]
             if total_swing>0:
-                st.progress(max(0.0,min(1.0,item["gain_total"]/total_swing)),
-                             text=f"Équilibre des impacts · gain {item['gain_total']:.2f} € / risque {item['loss_total']:.2f} €")
+                gain_share=item["gain_total"]/total_swing
+                risk_share=item["loss_total"]/total_swing
+                st.markdown(
+                    f"<div style='font-size:0.78rem;font-weight:600;margin:5px 0 4px'>Répartition gain / risque</div>"
+                    f"<div style='display:flex;height:12px;border-radius:8px;overflow:hidden;background:#E5E7EB'>"
+                    f"<div style='width:{gain_share*100:.1f}%;background:#26966A'></div>"
+                    f"<div style='width:{risk_share*100:.1f}%;background:#D94B58'></div></div>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:0.72rem;margin-top:3px'>"
+                    f"<span style='color:#18764F'>Gain {item['gain_total']:.2f} €</span>"
+                    f"<span style='color:#B83243'>Risque {item['loss_total']:.2f} €</span></div>",
+                    unsafe_allow_html=True,
+                )
             if side=="positive":
                 st.markdown("**Principaux moteurs positifs**")
                 assets=item["gains"].head(4)
+                bar_color="#26966A"
                 if assets.empty:
                     st.caption("Aucun support positif identifié.")
                 else:
                     max_delta=max(float(x) for x in assets["delta_eur"].abs()) or 1.0
                     for _,asset in assets.iterrows():
-                        name_col,value_col,bar_col=st.columns([2.1,0.9,1.2])
+                        name_col,value_col=st.columns([2.5,1])
                         name_col.markdown(f"**{asset['name']}**")
-                        value_col.markdown(f"<div style='text-align:right;color:#16845B;font-weight:600'>+{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
-                        bar_col.progress(min(1.0,abs(float(asset["delta_eur"]))/max_delta))
+                        value_col.markdown(f"<div style='text-align:right;color:{bar_color};font-weight:700'>+{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
+                        width=max(2.0,min(100.0,abs(float(asset["delta_eur"]))/max_delta*100))
+                        st.markdown(f"<div style='height:7px;background:#DCE8E0;border-radius:8px;margin:-5px 0 7px'><div style='height:7px;width:{width:.1f}%;background:{bar_color};border-radius:8px'></div></div>",unsafe_allow_html=True)
                 if item["loss_total"]>0.005:
                     st.caption(f"Contre-effet négatif : −{item['loss_total']:.2f} €")
             else:
                 st.markdown("**Principaux facteurs de perte**")
                 assets=item["losses"].head(4)
+                bar_color="#D94B58"
                 if assets.empty:
                     st.caption("Aucun support négatif identifié.")
                 else:
                     max_delta=max(float(x) for x in assets["delta_eur"].abs()) or 1.0
                     for _,asset in assets.iterrows():
-                        name_col,value_col,bar_col=st.columns([2.1,0.9,1.2])
+                        name_col,value_col=st.columns([2.5,1])
                         name_col.markdown(f"**{asset['name']}**")
-                        value_col.markdown(f"<div style='text-align:right;color:#C44E62;font-weight:600'>{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
-                        bar_col.progress(min(1.0,abs(float(asset["delta_eur"]))/max_delta))
+                        value_col.markdown(f"<div style='text-align:right;color:{bar_color};font-weight:700'>{asset['delta_eur']:.2f} €</div>",unsafe_allow_html=True)
+                        width=max(2.0,min(100.0,abs(float(asset["delta_eur"]))/max_delta*100))
+                        st.markdown(f"<div style='height:7px;background:#F1DCDD;border-radius:8px;margin:-5px 0 7px'><div style='height:7px;width:{width:.1f}%;background:{bar_color};border-radius:8px'></div></div>",unsafe_allow_html=True)
                 if item["gain_total"]>0.005:
                     st.caption(f"Compensation positive : +{item['gain_total']:.2f} €")
-            st.caption("Barres = poids relatif des contributions affichées, pas probabilité de réalisation.")
+            st.caption("Barres vertes = contributions positives · barres rouges = contributions négatives. Longueur relative aux supports affichés, pas une probabilité.")
             url=str(row.get("url","") or "")
             if url.startswith("http"):
                 st.markdown(f"[Source de l'événement]({url})")
@@ -587,16 +621,16 @@ def render_financial_intelligence_dashboard() -> None:
         if not positive_events:
             st.info("Aucun événement avec un avantage net identifiable pour le moment.")
         else:
-            for item in positive_events[:6]:
-                render_event(item,"positive")
+            for idx,item in enumerate(positive_events[:6]):
+                render_event(item,"positive",idx)
     with right:
         st.markdown("### 🔴 Événements à risque")
         st.caption("Impact négatif net estimé le plus élevé sur le portefeuille.")
         if not risk_events:
             st.info("Aucun événement avec un risque net identifiable pour le moment.")
         else:
-            for item in risk_events[:6]:
-                render_event(item,"risk")
+            for idx,item in enumerate(risk_events[:6]):
+                render_event(item,"risk",idx)
     with st.expander("Méthode et limites"):
         st.write("Les événements sont répartis dans la colonne gauche si la somme des impacts positifs estimés dépasse la somme des impacts négatifs ; ils sont placés à droite dans le cas inverse. Chaque colonne est triée par ampleur de l'impact net, pondérée par la confiance dans les sources et leur corroboration.")
         st.write("Ce classement ne constitue pas une probabilité que l'événement se produise ni une probabilité statistique de gain ou de perte. Les sensibilités restent heuristiques et conditionnelles ; elles ne sont pas des prévisions de cours.")
