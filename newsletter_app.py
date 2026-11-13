@@ -2960,7 +2960,7 @@ def main():
         page = st.radio("Navigation", [
             "Vue d'ensemble & Géopolitique", "Newsletter stratégique — IA",
             "Follow the Money — Investissements", "Follow the Money — Financial Intelligence",
-            "Marchés & portefeuille", "CHF & devises"
+            "Marchés & portefeuille"
         ], key="wels_navigation_v4")
         # Revenir systématiquement aux widgets régionaux lorsqu'on ouvre la page,
         # sans effacer la sélection lors des reruns provoqués par un clic régional.
@@ -2985,7 +2985,6 @@ def main():
     elif page == "Follow the Money — Investissements": investment_flows_page()
     elif page == "Follow the Money — Financial Intelligence": financial_intelligence_page()
     elif page == "Marchés & portefeuille": market_watch_page()
-    elif page == "CHF & devises": fx_chf_page()
 
 def newsletter_dashboard():
     """Point d’entrée compatible avec app.py sur Streamlit Cloud."""
