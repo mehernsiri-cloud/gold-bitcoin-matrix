@@ -477,16 +477,16 @@ def _portfolio_live_snapshot():
 # -------------------------------------------------------------------
 # A diversified watchlist; avoid duplicating the portfolio's largest sector bets.
 ENRICHMENT_CANDIDATES = [
-    {"symbol": "MSFT", "name": "Microsoft", "type": "Action", "theme": "Logiciels · cloud · IA", "color": "#4776C8"},
-    {"symbol": "GOOGL", "name": "Alphabet", "type": "Action", "theme": "Publicité · cloud · IA", "color": "#168C87"},
-    {"symbol": "SAP", "name": "SAP", "type": "Action", "theme": "Logiciels d'entreprise", "color": "#D49A28"},
-    {"symbol": "ASML", "name": "ASML", "type": "Action", "theme": "Semi-conducteurs", "color": "#7656B5"},
-    {"symbol": "V", "name": "Visa", "type": "Action", "theme": "Paiements", "color": "#C44E62"},
-    {"symbol": "DBK.DE", "name": "Deutsche Bank", "type": "Action", "theme": "Banques / finance", "color": "#4776C8"},
-    {"symbol": "ALV.DE", "name": "Allianz", "type": "Action", "theme": "Assurance / finance", "color": "#168C87"},
-    {"symbol": "CARL-B.CO", "name": "Carlsberg", "type": "Action", "theme": "Biens de consommation", "color": "#D49A28"},
-    {"symbol": "EUNI.L", "name": "iShares MSCI Emerging Markets Small Cap UCITS ETF", "type": "ETF UCITS", "theme": "Marchés émergents", "color": "#7656B5"},
-    {"symbol": "XDJP.DE", "name": "Xtrackers Nikkei 225 UCITS ETF", "type": "ETF UCITS", "theme": "Japon", "color": "#C44E62"},
+    {"symbol": "MSFT", "name": "Microsoft", "type": "Action", "theme": "Logiciels · cloud · IA", "color": "#4776C8", "reason": "FY2026 : Azure progresse de 41 % et Microsoft Cloud de 27 %, tandis que les engagements commerciaux restant à exécuter atteignent 678 Md$ (+84 %), donnant une forte visibilité sur les revenus futurs."},
+    {"symbol": "GOOGL", "name": "Alphabet", "type": "Action", "theme": "Publicité · cloud · IA", "color": "#168C87", "reason": "T3 2026 : Google Cloud croît de 103 % à 30,7 Md$ et la recherche de 12 %, montrant qu'Alphabet monétise l'IA tout en conservant un moteur publicitaire majeur."},
+    {"symbol": "SAP", "name": "SAP", "type": "Action", "theme": "Logiciels d'entreprise", "color": "#D49A28", "reason": "S1 2026 : le carnet de commandes cloud courant atteint 22,9 Md€ (+27 %) et le chiffre d'affaires cloud progresse de 22 %, apportant visibilité et revenus récurrents."},
+    {"symbol": "ASML", "name": "ASML", "type": "Action", "theme": "Semi-conducteurs", "color": "#7656B5", "reason": "T3 2026 : ventes record de 11,7 Md€ et marge brute de 57,5 % ; ASML indique que sa capacité prévue pour 2027–2028 ne suffira pas à répondre à la demande de ses clients."},
+    {"symbol": "V", "name": "Visa", "type": "Action", "theme": "Paiements", "color": "#C44E62", "reason": "Exercice 2026 : chiffre d'affaires +15 %, volume de paiements +9 % et transactions transfrontalières +13 %, confirmant la croissance du réseau de paiement mondial."},
+    {"symbol": "DBK.DE", "name": "Deutsche Bank", "type": "Action", "theme": "Banques / finance", "color": "#4776C8", "reason": "9 premiers mois 2026 : bénéfice après impôt record de 5,9 Md€ (+7 %) et ratio coûts/revenus ramené à 61,4 % ; la hausse des provisions de crédit reste un risque à surveiller."},
+    {"symbol": "ALV.DE", "name": "Allianz", "type": "Action", "theme": "Assurance / finance", "color": "#168C87", "reason": "9 premiers mois 2026 : résultat opérationnel record de 14,1 Md€ (+7,8 %) et ratio de solvabilité Solvency II de 219 %, combinant progression des bénéfices et coussin de capital élevé."},
+    {"symbol": "CARL-B.CO", "name": "Carlsberg", "type": "Action", "theme": "Biens de consommation", "color": "#D49A28", "reason": "T3 2026 : chiffre d'affaires organique +3 %, catégories de croissance en volume +5 % et boissons sans alcool +11 % ; la faiblesse de l'Asie (-6,7 % en volume) reste un risque."},
+    {"symbol": "EUNI.L", "name": "iShares MSCI Emerging Markets Small Cap UCITS ETF", "type": "ETF UCITS", "theme": "Marchés émergents", "color": "#7656B5", "reason": "L'ETF répartit l'exposition sur 1 783 petites capitalisations émergentes ; ses dix premières lignes pèsent 4,77 %, mais les frais de 0,74 % et le poids de Taïwan (26,46 %) comptent."},
+    {"symbol": "XDJP.DE", "name": "Xtrackers Nikkei 225 UCITS ETF", "type": "ETF UCITS", "theme": "Japon", "color": "#C44E62", "reason": "L'ETF donne accès à 225 grandes sociétés japonaises, notamment dans les semi-conducteurs et l'automatisation ; attention, ses dix premières lignes représentent 47,09 % du portefeuille."},
 ]
 SP500_REFERENCE_RETURN = 17.0
 SP500_REFERENCE_LABEL = "Goldman Sachs · prévision S&P 500 d'environ +17 % jusqu'à fin 2027 (17/11/2026)"
@@ -832,6 +832,16 @@ def render_portfolio_enrichment() -> None:
                         unsafe_allow_html=True,
                     )
 
+                    reason = row.get("reason")
+                    if reason:
+                        st.markdown(
+                            f"<div style='font-size:12px;line-height:1.45;color:#344054;"
+                            f"background:#F7F9FC;border-left:3px solid {accent};"
+                            f"padding:8px 10px;border-radius:5px;margin:2px 0 9px'>"
+                            f"<b>Pourquoi cette valeur est suivie :</b> {html.escape(str(reason))}</div>",
+                            unsafe_allow_html=True,
+                        )
+
                     metrics = []
                     if pd.notna(row.get("expected_return")):
                         price = row.get("price")
@@ -853,7 +863,7 @@ def render_portfolio_enrichment() -> None:
                     if pd.notna(score):
                         st.progress(min(1.0, max(0.0, float(score) / 100.0)), text=f"Score complet · {score:.1f}/100")
                     else:
-                        st.caption("Score global non calculé : au moins un pilier de notation est indisponible.")
+                        st.caption("Score non calculé : objectif de cours ou consensus vérifiable indisponible.")
                     if row.get("errors"):
                         with st.expander(f"Sources à vérifier · {row['symbol']}"):
                             st.caption(" · ".join(row["errors"][:5]))
