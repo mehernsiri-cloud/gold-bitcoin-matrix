@@ -518,7 +518,7 @@ def _load_enrichment_data(symbol: str) -> dict:
         "price": None, "target": None, "expected_return": None, "opinions": None,
         "strong_buy": None, "buy": None, "hold": None, "sell": None, "strong_sell": None,
         "ratings_total": None, "buy_share": None, "holder_count": None,
-        "institutional_pct": None, "errors": [],
+        "institutional_pct": None, "consensus_label": None, "analyst_source": None, "price_source": None, "errors": [],
     }
     try:
         import yfinance as yf
@@ -610,9 +610,7 @@ def _load_enrichment_data(symbol: str) -> dict:
             if result["ratings_total"] > 0:
                 result["buy_share"] = ((counts["strongbuy"] or 0) + (counts["buy"] or 0)) / result["ratings_total"]
 
-    # 3b) HTML fallback: Yahoo's public quote page can expose embedded quote,
-    # analyst-target and recommendation data even when yfinance's JSON endpoints fail.
-    # This is still live-source data; never substitute hard-coded analyst estimates.
+    # 3b) Yahoo public-page fallback. The old regex was over-escaped.
     if result["price"] is None or result["target"] is None or result["buy_share"] is None:
         try:
             page = requests.get(
@@ -623,10 +621,15 @@ def _load_enrichment_data(symbol: str) -> dict:
             page.raise_for_status()
             body = page.text
             def _html_raw(key):
-                match = re.search(r'"' + re.escape(key) + r'"\\?"\\?:\\?\\{\\?"raw\\?":(-?[0-9]+(?:\\.[0-9]+)?)', body)
-                if not match:
-                    match = re.search(r'"' + re.escape(key) + r'"\\?"\\?:\\?(-?[0-9]+(?:\\.[0-9]+)?)', body)
-                return _as_number(match.group(1)) if match else None
+                patterns = (
+                    rf'"{re.escape(key)}"\s*:\s*\{{\s*"raw"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)',
+                    rf'"{re.escape(key)}"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)',
+                )
+                for pattern in patterns:
+                    match = re.search(pattern, body)
+                    if match:
+                        return _as_number(match.group(1))
+                return None
             result["price"] = result["price"] or _html_raw("regularMarketPrice") or _html_raw("currentPrice")
             result["target"] = result["target"] or _html_raw("targetMeanPrice")
             result["opinions"] = result["opinions"] or _html_raw("numberOfAnalystOpinions")
@@ -643,7 +646,45 @@ def _load_enrichment_data(symbol: str) -> dict:
                     result["opinions"] = result["opinions"] or total
                     result["buy_share"] = (result["strong_buy"] + result["buy"]) / total
         except Exception as exc:
-            result["errors"].append(f"Page Yahoo Finance de secours : {type(exc).__name__}")
+            result["errors"].append(f"Page Yahoo Finance : {type(exc).__name__}")
+
+    # 3c) StockAnalysis fallback for US-listed shares (S&P Global analyst data).
+    if (result["price"] is None or result["target"] is None or
+            result["buy_share"] is None) and "." not in symbol and symbol.isalpha():
+        try:
+            page = requests.get(
+                f"https://stockanalysis.com/stocks/{symbol.lower()}/",
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
+                timeout=(5, 12),
+            )
+            page.raise_for_status()
+            visible = html.unescape(re.sub(r"<[^>]+>", " ", page.text))
+            visible = re.sub(r"\s+", " ", visible)
+            if result["price"] is None:
+                price_match = re.search(
+                    r"(?:Real-Time|Delayed) Price\s*[·|]\s*[A-Z]{3}\s+([0-9,]+(?:\.[0-9]+)?)",
+                    visible, re.I,
+                )
+                if price_match:
+                    result["price"] = _as_number(price_match.group(1).replace(",", ""))
+            analyst_match = re.search(
+                r"According to\s+(\d+)\s+analysts.*?average price target of\s*[$€£]\s*([0-9,]+(?:\.[0-9]+)?)",
+                visible, re.I,
+            )
+            if analyst_match:
+                result["opinions"] = result["opinions"] or _as_number(analyst_match.group(1))
+                result["target"] = result["target"] or _as_number(analyst_match.group(2).replace(",", ""))
+            consensus_match = re.search(
+                r'(?:consensus rating is|Analyst Consensus:)\s*["\']?(Strong Buy|Buy|Hold|Neutral|Sell|Strong Sell)',
+                visible, re.I,
+            )
+            if consensus_match:
+                result["consensus_label"] = consensus_match.group(1).title()
+                result["analyst_source"] = "StockAnalysis / S&P Global"
+            if result["price"] is not None:
+                result["price_source"] = result.get("price_source") or "StockAnalysis"
+        except Exception as exc:
+            result["errors"].append(f"StockAnalysis : {type(exc).__name__}")
 
     if result["price"] and result["target"]:
         result["expected_return"] = (result["target"] / result["price"] - 1) * 100
@@ -666,35 +707,37 @@ def _load_enrichment_data(symbol: str) -> dict:
 
 
 def _score_enrichment_candidate(candidate: dict, data: dict) -> dict:
-    """Score /100 only when all three pillars are available; retain partial diagnostics."""
+    """Score /100 from analyst-implied upside and consensus; ownership is optional."""
     result = {**candidate, **data, "score": None, "return_score": None,
               "analyst_score": None, "institutional_score": None, "excess_return": None}
+    expected_return = data.get("expected_return")
+    opinions = _as_number(data.get("opinions") or data.get("ratings_total"))
+    consensus_label = str(data.get("consensus_label") or "").lower()
+    label_score = {
+        "strong buy": 1.0, "buy": 0.8, "hold": 0.5, "neutral": 0.5,
+        "sell": 0.2, "strong sell": 0.0,
+    }.get(consensus_label)
+    buy_share = data.get("buy_share")
+    if buy_share is None:
+        buy_share = label_score
     missing = []
-    if data.get("expected_return") is None:
+    if expected_return is None:
         missing.append("objectif analyste ou cours manquant")
-    if data.get("buy_share") is None or not data.get("ratings_total"):
-        missing.append("consensus analystes manquant")
-    if data.get("institutional_pct") is None or data.get("holder_count") is None:
-        missing.append("détention institutionnelle incomplète")
+    if buy_share is None or not opinions or opinions <= 0:
+        missing.append("consensus analystes ou nombre d’analystes manquant")
     if missing:
         result["status"] = " · ".join(missing)
         return result
-
-    excess = float(data["expected_return"]) - SP500_REFERENCE_RETURN
-    return_score = max(0.0, min(50.0, (excess + 10.0) / 20.0 * 50.0))
-    analyst_reliability = min(1.0, float(data.get("ratings_total") or 0) / 10.0)
-    analyst_score = 30.0 * float(data["buy_share"]) * analyst_reliability
-    inst_pct = max(0.0, min(0.80, float(data["institutional_pct"])))
-    holder_score = max(0.0, min(1.0, float(data["holder_count"]) / 50.0))
-    institutional_score = 10.0 * inst_pct / 0.80 + 10.0 * holder_score
+    return_score = max(0.0, min(60.0, (float(expected_return) + 10.0) / 40.0 * 60.0))
+    analyst_reliability = min(1.0, float(opinions) / 10.0)
+    analyst_score = 40.0 * float(buy_share) * analyst_reliability
     result.update({
-        "excess_return": excess, "return_score": return_score,
-        "analyst_score": analyst_score, "institutional_score": institutional_score,
-        "score": round(return_score + analyst_score + institutional_score, 1),
-        "status": "Données complètes",
+        "return_score": return_score, "analyst_score": analyst_score,
+        "institutional_score": None,
+        "score": round(return_score + analyst_score, 1),
+        "status": "Score calculable · détention institutionnelle informative uniquement",
     })
     return result
-
 
 def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
     detail_html = f"<div style='font-size:11px;color:#64748b;margin-top:3px'>{detail}</div>" if detail else ""
@@ -715,7 +758,7 @@ def render_portfolio_enrichment() -> None:
     with refresh_col:
         refresh = st.button("🔄 Actualiser les données", key="refresh_enrichment")
     with info_col:
-        st.caption("Sources : Yahoo Finance (API et page publique) · cache 6 h · actualisation manuelle.")
+        st.caption("Sources : Yahoo Finance puis StockAnalysis / S&P Global pour les actions US · cache 6 h.")
     if refresh:
         _load_enrichment_data.clear()
 
@@ -827,7 +870,7 @@ def render_portfolio_enrichment() -> None:
         )
         st.write(
             "Les cartes sans signal exploitable sont volontairement masquées. Une donnée absente n’est jamais assimilée à zéro. "
-            "La détention institutionnelle déclarée n’est pas un flux d’achats récents et peut être publiée avec retard. "
+            "La détention institutionnelle déclarée n’est pas un flux d’achats récents, peut être publiée avec retard et n’est plus un critère éliminatoire. "
             "Les ETF UCITS sont évalués séparément lorsque les données de fonds pertinentes sont disponibles ; "
             "un consensus d’action ne leur est pas artificiellement attribué."
         )
