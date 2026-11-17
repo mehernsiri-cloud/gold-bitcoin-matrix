@@ -192,7 +192,7 @@ def _search_links():
 def _render_listing(item):
     price = f'{item["price"]:,}'.replace(",", " ")
     title = item["title"].replace("<", "&lt;").replace(">", "&gt;")
-    st.image(item["image"], use_container_width=True)
+    st.image(item["image"], use_column_width=True)
     st.markdown(
         f"""
         <div style="border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:13px;margin-bottom:10px;min-height:155px">
