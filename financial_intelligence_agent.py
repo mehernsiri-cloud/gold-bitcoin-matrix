@@ -721,7 +721,7 @@ def render_portfolio_enrichment() -> None:
                     f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
                     f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
                     f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
-                    f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div>",
+                    f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div></div>",
                     unsafe_allow_html=True,
                 )
                 price = f"{row['price']:.2f}" if pd.notna(row.get("price")) else "N/D"
@@ -742,7 +742,6 @@ def render_portfolio_enrichment() -> None:
                     errors = " · ".join(row["errors"][:3])
                     with st.expander("Diagnostic de récupération"):
                         st.caption(errors)
-                st.markdown("</div>", unsafe_allow_html=True)
 
     if complete_count:
         best = ranked.iloc[0]
