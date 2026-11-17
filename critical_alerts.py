@@ -81,7 +81,7 @@ COUNTRY_TERMS = {
 }
 
 def _clean(value):
-    return re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(str(value or "")))).strip()
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(str(value or "")))).strip()
 
 def _parse_date(entry):
     for key in ("published_parsed", "updated_parsed", "created_parsed"):
