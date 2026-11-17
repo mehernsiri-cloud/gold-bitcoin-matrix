@@ -477,6 +477,11 @@ def _portfolio_live_snapshot():
 # -------------------------------------------------------------------
 # A diversified watchlist; avoid duplicating the portfolio's largest sector bets.
 ENRICHMENT_CANDIDATES = [
+    {"symbol": "MSFT", "name": "Microsoft", "type": "Action", "theme": "Logiciels · cloud · IA", "color": "#4776C8"},
+    {"symbol": "GOOGL", "name": "Alphabet", "type": "Action", "theme": "Publicité · cloud · IA", "color": "#168C87"},
+    {"symbol": "SAP", "name": "SAP", "type": "Action", "theme": "Logiciels d'entreprise", "color": "#D49A28"},
+    {"symbol": "ASML", "name": "ASML", "type": "Action", "theme": "Semi-conducteurs", "color": "#7656B5"},
+    {"symbol": "V", "name": "Visa", "type": "Action", "theme": "Paiements", "color": "#C44E62"},
     {"symbol": "DBK.DE", "name": "Deutsche Bank", "type": "Action", "theme": "Banques / finance", "color": "#4776C8"},
     {"symbol": "ALV.DE", "name": "Allianz", "type": "Action", "theme": "Assurance / finance", "color": "#168C87"},
     {"symbol": "CARL-B.CO", "name": "Carlsberg", "type": "Action", "theme": "Biens de consommation", "color": "#D49A28"},
@@ -605,6 +610,41 @@ def _load_enrichment_data(symbol: str) -> dict:
             if result["ratings_total"] > 0:
                 result["buy_share"] = ((counts["strongbuy"] or 0) + (counts["buy"] or 0)) / result["ratings_total"]
 
+    # 3b) HTML fallback: Yahoo's public quote page can expose embedded quote,
+    # analyst-target and recommendation data even when yfinance's JSON endpoints fail.
+    # This is still live-source data; never substitute hard-coded analyst estimates.
+    if result["price"] is None or result["target"] is None or result["buy_share"] is None:
+        try:
+            page = requests.get(
+                f"https://finance.yahoo.com/quote/{symbol}/",
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
+                timeout=(5, 12),
+            )
+            page.raise_for_status()
+            body = page.text
+            def _html_raw(key):
+                match = re.search(r'"' + re.escape(key) + r'"\\?"\\?:\\?\\{\\?"raw\\?":(-?[0-9]+(?:\\.[0-9]+)?)', body)
+                if not match:
+                    match = re.search(r'"' + re.escape(key) + r'"\\?"\\?:\\?(-?[0-9]+(?:\\.[0-9]+)?)', body)
+                return _as_number(match.group(1)) if match else None
+            result["price"] = result["price"] or _html_raw("regularMarketPrice") or _html_raw("currentPrice")
+            result["target"] = result["target"] or _html_raw("targetMeanPrice")
+            result["opinions"] = result["opinions"] or _html_raw("numberOfAnalystOpinions")
+            rec_counts = {k: _html_raw(k) for k in ("strongBuy", "buy", "hold", "sell", "strongSell")}
+            if any(v is not None for v in rec_counts.values()):
+                total = sum(int(v or 0) for v in rec_counts.values())
+                if total:
+                    result["strong_buy"] = int(rec_counts["strongBuy"] or 0)
+                    result["buy"] = int(rec_counts["buy"] or 0)
+                    result["hold"] = int(rec_counts["hold"] or 0)
+                    result["sell"] = int(rec_counts["sell"] or 0)
+                    result["strong_sell"] = int(rec_counts["strongSell"] or 0)
+                    result["ratings_total"] = total
+                    result["opinions"] = result["opinions"] or total
+                    result["buy_share"] = (result["strong_buy"] + result["buy"]) / total
+        except Exception as exc:
+            result["errors"].append(f"Page Yahoo Finance de secours : {type(exc).__name__}")
+
     if result["price"] and result["target"]:
         result["expected_return"] = (result["target"] / result["price"] - 1) * 100
 
@@ -669,13 +709,13 @@ def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
 
 def render_portfolio_enrichment() -> None:
     st.markdown("### ⭐ Opportunités d’investissement")
-    st.caption("Sélection orientée diversification · seuls les candidats disposant de signaux vérifiables sont affichés.")
+    st.caption("Univers élargi d’actions et d’ETF · sélection finale orientée diversification du portefeuille.")
 
     refresh_col, info_col = st.columns([1, 3])
     with refresh_col:
         refresh = st.button("🔄 Actualiser les données", key="refresh_enrichment")
     with info_col:
-        st.caption("Source : Yahoo Finance · cache 6 h · actualisation manuelle.")
+        st.caption("Sources : Yahoo Finance (API et page publique) · cache 6 h · actualisation manuelle.")
     if refresh:
         _load_enrichment_data.clear()
 
