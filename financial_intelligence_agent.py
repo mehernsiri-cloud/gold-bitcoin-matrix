@@ -945,6 +945,40 @@ def render_portfolio_enrichment() -> None:
                             st.progress(min(1.0, max(0.0, float(score) / 100.0)), text=f"Score complet · {score:.1f}/100")
                         else:
                             st.caption("Score non calculé : objectif de cours ou consensus vérifiable indisponible.")
+                        if row.get("type") == "Action":
+                            with st.expander(f"🔎 Analyse détaillée · {row['name']} ({row['symbol']})"):
+                                if row["symbol"] == "GOOGL":
+                                    render_alphabet_analysis()
+                                else:
+                                    st.caption("Cours ajustés et performances calculés à partir de Yahoo Finance · cache 1 heure.")
+                                    market = _candidate_market_data(row["symbol"])
+                                    if market.get("error"):
+                                        st.warning(market["error"])
+                                    else:
+                                        ma, mb, mc, md = st.columns(4)
+                                        ma.metric("Cours indicatif", f"{market['price']:,.2f}")
+                                        mb.metric("Performance 6 mois", f"{market['change_6m']:+.1f} %")
+                                        mc.metric("Performance 1 mois", f"{market['change_1m']:+.1f} %")
+                                        md.metric("Écart au plus haut 52 sem.", f"{market['drawdown_high']:.1f} %")
+                                        st.line_chart(market["history"].rename(f"{row['symbol']} · cours ajusté"), height=180)
+                                        st.caption(f"Dernière séance : {pd.Timestamp(market['updated']).strftime('%d/%m/%Y')} · plus haut 52 semaines : {market['high_52w']:,.2f}.")
+                                    st.markdown("**Thèse d’investissement / fondamentaux**")
+                                    st.write(row.get("reason") or "Aucune thèse fondamentale suffisamment documentée.")
+                                    held = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == row["symbol"]), 0.0)
+                                    st.metric("Exposition directe actuelle", f"{held:.2f} €", f"{held / PORTFOLIO_TOTAL_EUR * 100:.2f} % du portefeuille")
+                                    if pd.notna(row.get("expected_return")):
+                                        st.metric("Potentiel indicatif 12 mois", f"{float(row['expected_return']):+.1f} %", "objectif moyen analystes")
+                                    if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and float(row.get("ratings_total") or 0) > 0:
+                                        st.caption(f"Consensus : {float(row['buy_share'])*100:.0f} % Buy / Strong Buy sur {int(row['ratings_total'])} recommandations. Indicateur secondaire, pas un signal d’achat autonome.")
+                                    st.markdown("**À vérifier avant achat**")
+                                    st.write("Valorisation au cours actuel, trajectoire des marges et du cash-flow, endettement, dernières perspectives de la direction et date des prochains résultats. Les données non disponibles ne sont pas inventées.")
+                                    if not market.get("error") and market["change_6m"] <= -15:
+                                        st.warning("Correction importante : elle justifie une analyse approfondie, mais ne constitue pas à elle seule un signal d’achat. Privilégier une entrée fractionnée si les fondamentaux restent solides.")
+                                    elif not market.get("error") and market["change_6m"] < 0:
+                                        st.info("Le titre recule sur six mois : distinguer correction de marché et dégradation durable des fondamentaux.")
+                                    elif not market.get("error"):
+                                        st.info("Le titre progresse sur six mois : éviter de poursuivre le cours sans comparer valorisation, croissance et risques.")
+
                         if row.get("errors"):
                             with st.expander(f"Sources à vérifier · {row['symbol']}"):
                                 st.caption(" · ".join(row["errors"][:5]))
@@ -974,8 +1008,6 @@ def render_portfolio_enrichment() -> None:
         )
 
 def render_financial_intelligence_dashboard() -> None:
-    render_alphabet_analysis()
-    st.markdown("---")
     render_portfolio_enrichment()
     st.markdown("---")
     st.markdown("## Financial Intelligence · Event Impact")
