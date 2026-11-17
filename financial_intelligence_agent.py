@@ -815,58 +815,59 @@ def render_portfolio_enrichment() -> None:
             cols = st.columns(2, gap="medium")
             for col, (_, row) in zip(cols, usable.iloc[offset:offset + 2].iterrows()):
                 with col:
-                    accent = row.get("color", "#64748b")
-                    score = row.get("score")
-                    score_text = f"{score:.1f}/100" if pd.notna(score) else "Signaux partiels"
-                    score_color = "#168653" if pd.notna(score) and score >= 70 else "#B7791F" if pd.notna(score) else "#64748b"
-                    st.markdown(
-                        f"<div style='background:linear-gradient(110deg,{accent}16,#ffffff 72%);"
-                        f"border:1px solid {accent}55;border-left:5px solid {accent};border-radius:13px;"
-                        f"padding:13px 14px 10px;margin:3px 0 8px'>"
-                        f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:flex-start'>"
-                        f"<div><div style='font-size:11px;color:#64748b;font-weight:700'>{row['type']} · {row['symbol']}</div>"
-                        f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
-                        f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
-                        f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
-                        f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div></div>",
-                        unsafe_allow_html=True,
-                    )
-
-                    reason = row.get("reason")
-                    if reason:
+                    with st.container(border=True):
+                        accent = row.get("color", "#64748b")
+                        score = row.get("score")
+                        score_text = f"{score:.1f}/100" if pd.notna(score) else "Signaux partiels"
+                        score_color = "#168653" if pd.notna(score) and score >= 70 else "#B7791F" if pd.notna(score) else "#64748b"
                         st.markdown(
-                            f"<div style='font-size:12px;line-height:1.45;color:#344054;"
-                            f"background:#F7F9FC;border-left:3px solid {accent};"
-                            f"padding:8px 10px;border-radius:5px;margin:2px 0 9px'>"
-                            f"<b>Pourquoi cette valeur est suivie :</b> {html.escape(str(reason))}</div>",
+                            f"<div style='background:linear-gradient(110deg,{accent}16,#ffffff 72%);"
+                            f"border:1px solid {accent}55;border-left:5px solid {accent};border-radius:13px;"
+                            f"padding:13px 14px 10px;margin:3px 0 8px'>"
+                            f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:flex-start'>"
+                            f"<div><div style='font-size:11px;color:#64748b;font-weight:700'>{row['type']} · {row['symbol']}</div>"
+                            f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
+                            f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
+                            f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
+                            f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div></div>",
                             unsafe_allow_html=True,
                         )
 
-                    metrics = []
-                    if pd.notna(row.get("expected_return")):
-                        price = row.get("price")
-                        target = row.get("target")
-                        detail = f"Cours {price:.2f} · objectif moyen {target:.2f}" if pd.notna(price) and pd.notna(target) else "Objectif moyen des analystes"
-                        metrics.append(("Potentiel 12 mois", f"{row['expected_return']:+.1f} %", "#4776C8", detail))
-                    if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and row.get("ratings_total", 0) > 0:
-                        metrics.append(("Buy / Strong Buy", f"{row['buy_share']*100:.0f} %", "#168C87", f"{int(row['ratings_total'])} recommandations"))
-                    elif row.get("consensus_label"):
-                        analyst_count = int(row.get("opinions") or 0)
-                        metrics.append(("Consensus analystes", str(row["consensus_label"]), "#168C87", f"{analyst_count} analystes · {row.get('analyst_source') or 'source publique'}"))
-                    if pd.notna(row.get("institutional_pct")) and pd.notna(row.get("holder_count")) and row.get("holder_count", 0) > 0:
-                        metrics.append(("Détention institutionnelle", f"{row['institutional_pct']*100:.0f} %", "#7656B5", f"{int(row['holder_count'])} détenteurs déclarés"))
+                        reason = row.get("reason")
+                        if reason:
+                            st.markdown(
+                                f"<div style='font-size:12px;line-height:1.45;color:#344054;"
+                                f"background:#F7F9FC;border-left:3px solid {accent};"
+                                f"padding:8px 10px;border-radius:5px;margin:2px 0 9px'>"
+                                f"<b>Pourquoi cette valeur est suivie :</b> {html.escape(str(reason))}</div>",
+                                unsafe_allow_html=True,
+                            )
 
-                    metric_cols = st.columns(len(metrics))
-                    for metric_col, (label, value, color, detail) in zip(metric_cols, metrics):
-                        metric_col.markdown(_gadget_metric(label, value, color, detail), unsafe_allow_html=True)
+                        metrics = []
+                        if pd.notna(row.get("expected_return")):
+                            price = row.get("price")
+                            target = row.get("target")
+                            detail = f"Cours {price:.2f} · objectif moyen {target:.2f}" if pd.notna(price) and pd.notna(target) else "Objectif moyen des analystes"
+                            metrics.append(("Potentiel 12 mois", f"{row['expected_return']:+.1f} %", "#4776C8", detail))
+                        if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and row.get("ratings_total", 0) > 0:
+                            metrics.append(("Buy / Strong Buy", f"{row['buy_share']*100:.0f} %", "#168C87", f"{int(row['ratings_total'])} recommandations"))
+                        elif row.get("consensus_label"):
+                            analyst_count = int(row.get("opinions") or 0)
+                            metrics.append(("Consensus analystes", str(row["consensus_label"]), "#168C87", f"{analyst_count} analystes · {row.get('analyst_source') or 'source publique'}"))
+                        if pd.notna(row.get("institutional_pct")) and pd.notna(row.get("holder_count")) and row.get("holder_count", 0) > 0:
+                            metrics.append(("Détention institutionnelle", f"{row['institutional_pct']*100:.0f} %", "#7656B5", f"{int(row['holder_count'])} détenteurs déclarés"))
 
-                    if pd.notna(score):
-                        st.progress(min(1.0, max(0.0, float(score) / 100.0)), text=f"Score complet · {score:.1f}/100")
-                    else:
-                        st.caption("Score non calculé : objectif de cours ou consensus vérifiable indisponible.")
-                    if row.get("errors"):
-                        with st.expander(f"Sources à vérifier · {row['symbol']}"):
-                            st.caption(" · ".join(row["errors"][:5]))
+                        metric_cols = st.columns(len(metrics))
+                        for metric_col, (label, value, color, detail) in zip(metric_cols, metrics):
+                            metric_col.markdown(_gadget_metric(label, value, color, detail), unsafe_allow_html=True)
+
+                        if pd.notna(score):
+                            st.progress(min(1.0, max(0.0, float(score) / 100.0)), text=f"Score complet · {score:.1f}/100")
+                        else:
+                            st.caption("Score non calculé : objectif de cours ou consensus vérifiable indisponible.")
+                        if row.get("errors"):
+                            with st.expander(f"Sources à vérifier · {row['symbol']}"):
+                                st.caption(" · ".join(row["errors"][:5]))
 
     if complete_count:
         best = ranked.iloc[0]
