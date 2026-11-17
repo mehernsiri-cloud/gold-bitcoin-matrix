@@ -13,7 +13,7 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 
-MAX_PRICE_TND = 500_000
+MIN_PRICE_DEFAULT_TND = 300_000
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; NabeulPropertyWatch/1.0)",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
@@ -31,6 +31,8 @@ COASTAL_TOWNS = {
     "Mrezga": ["mrezga"],
     "Maâmoura": ["maamoura", "maâmoura"],
     "Tazarka": ["tazarka"],
+    "Hammam Ghezèze": ["hammam ghezaz", "hammam ghezèze"],
+    "Béni Khalled": ["beni khalled", "béni khalled"],
 }
 TAYARA_URL = "https://www.tayara.tn/listing/c/immobilier/maisons-et-villas/l/nabeul/?page=1"
 SOURCE_URLS = {
@@ -38,6 +40,10 @@ SOURCE_URLS = {
     "TounesImmo – maisons": "https://www.tounesimmo.com/maison-a-vendre-nabeul",
     "Limmobilier.tn – villas": "https://limmobilier.tn/vente/villa/nabeul",
     "Limmobilier.tn – maisons": "https://limmobilier.tn/vente/maison/nabeul",
+    "Menzili": "https://www.menzili.tn/vente/nabeul",
+    "Mubawab": "https://www.mubawab.tn/fr/ct/nabeul/immobilier-a-vendre",
+    "Cava.tn": "https://www.cava.tn/category/immobilier/maisons_et_villas/a/Nabeul",
+    "Affare.tn": "https://www.affare.tn/petites-annonces/nabeul/immobilier",
 }
 
 def _norm(value):
@@ -78,8 +84,8 @@ def _town_from_text(text):
 def _is_eligible(text, sale_context=False):
     value = _norm(text)
     sale_terms = ("a vendre", "à vendre", "vente", "for sale", "للبيع", "av ")
-    property_terms = ("maison", "villa", "duplex", "maisonnette", "دار", "فيلا")
-    excluded = ("a louer", "location", "loyer", "rent", "studio a louer", "appartement")
+    property_terms = ("maison", "villa", "duplex", "maisonnette", "appartement", "terrain", "immeuble", "دار", "فيلا", "أرض")
+    excluded = ("a louer", "location", "loyer", "rent", "studio a louer", "à louer")
     return (
         (sale_context or any(term in value for term in sale_terms))
         and any(term in value for term in property_terms)
@@ -99,42 +105,50 @@ def _candidate_container(anchor):
 
 def _extract_cards(html_text, base_url, source):
     soup = BeautifulSoup(html_text, "html.parser")
-    found = []
-    seen = set()
+    found, seen = [], set()
+    sale_context = any(x in base_url.lower() for x in ("/vente", "a-vendre", "immobilier-a-vendre"))
     for anchor in soup.find_all("a", href=True):
         href = urljoin(base_url, anchor["href"])
+        if href.rstrip("/") == base_url.rstrip("/") or href in seen:
+            continue
         if source == "Tayara" and "/item/maisons-et-villas/" not in href:
             continue
-        if source != "Tayara" and not any(x in href for x in ("/annonce", "/bien", "/vente/", "/maison", "/villa")):
-            continue
-        if href in seen:
+        if source != "Tayara" and not any(x in href.lower() for x in ("/annonce", "/bien", "/vente/", "/maison", "/villa", "/property", "/listing", "/immobilier")):
             continue
         seen.add(href)
         card = _candidate_container(anchor)
         title = anchor.get_text(" ", strip=True)
+        headings = [x.get_text(" ", strip=True) for x in card.find_all(["h1", "h2", "h3", "h4"])]
+        if len(title) < 8:
+            title = next((x for x in headings if len(x) > 8), title)
         card_text = card.get_text(" ", strip=True)
         combined = f"{title} {card_text}"
-        sale_context = "/vente/" in base_url or "a-vendre" in base_url
         if not title or not _is_eligible(combined, sale_context=sale_context):
             continue
         price = _price_tnd(combined)
         town = _town_from_text(combined)
-        if price is None or price > MAX_PRICE_TND or town is None:
+        if price is None or town is None:
             continue
-        if len(title) < 8:
-            title = next((x.get_text(" ", strip=True) for x in card.find_all(["h2", "h3", "h4"]) if len(x.get_text(" ", strip=True)) > 8), title)
-        image = card.find("img")
         image_url = ""
+        image = card.find("img")
         if image:
-            image_url = image.get("src") or image.get("data-src") or ""
-            image_url = urljoin(base_url, image_url)
+            for attr in ("src", "data-src", "data-lazy-src", "data-original", "data-original-src"):
+                candidate = image.get(attr)
+                if candidate and not candidate.startswith("data:"):
+                    image_url = candidate
+                    break
+            if not image_url and image.get("srcset"):
+                image_url = image["srcset"].split(",")[0].strip().split(" ")[0]
+        if not image_url:
+            og = card.find("meta", property="og:image") or soup.find("meta", property="og:image")
+            if og:
+                image_url = og.get("content", "")
+        image_url = urljoin(base_url, image_url) if image_url else ""
+        if not image_url or image_url.startswith("data:"):
+            continue
         found.append({
-            "title": title[:180],
-            "town": town,
-            "price": price,
-            "url": href,
-            "source": source,
-            "image": image_url,
+            "title": title[:180], "town": town, "price": price,
+            "url": href, "source": source, "image": image_url,
             "details": card_text[:500],
         })
     return found
@@ -147,7 +161,8 @@ def fetch_listings():
         try:
             response = requests.get(url, headers=HEADERS, timeout=(5, 18))
             response.raise_for_status()
-            cards = _extract_cards(response.text, url, "Tayara" if source == "Tayara" else "TounesImmo" if source.startswith("TounesImmo") else "Limmobilier.tn")
+            source_label = source.split(" – ")[0]
+            cards = _extract_cards(response.text, url, source_label)
             results.extend(cards)
             statuses[source] = f"OK · {len(cards)} annonce(s) retenue(s)"
         except requests.RequestException as exc:
@@ -165,16 +180,19 @@ def fetch_listings():
 
 def _search_links():
     return [
-        ("Tayara – Maisons et villas à Nabeul", TAYARA_URL),
+        ("Tayara – Immobilier Nabeul", SOURCE_URLS["Tayara"]),
+        ("Menzili – Ventes à Nabeul", SOURCE_URLS["Menzili"]),
+        ("Mubawab – Immobilier à vendre", SOURCE_URLS["Mubawab"]),
+        ("Cava.tn – Maisons et villas", SOURCE_URLS["Cava.tn"]),
+        ("Affare.tn – Immobilier Nabeul", SOURCE_URLS["Affare.tn"]),
         ("TounesImmo – Maisons à vendre", SOURCE_URLS["TounesImmo – maisons"]),
         ("Limmobilier.tn – Villas à vendre", SOURCE_URLS["Limmobilier.tn – villas"]),
         ("Limmobilier.tn – Maisons à vendre", SOURCE_URLS["Limmobilier.tn – maisons"]),
-        ("Cava.tn – Maisons et villas à Hammamet", "https://www.cava.tn/category/immobilier/maisons_et_villas/a/Nabeul/Hammamet"),
     ]
-
 def _render_listing(item):
     price = f'{item["price"]:,}'.replace(",", " ")
     title = item["title"].replace("<", "&lt;").replace(">", "&gt;")
+    st.image(item["image"], use_container_width=True)
     st.markdown(
         f"""
         <div style="border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:13px;margin-bottom:10px;min-height:155px">
@@ -190,47 +208,46 @@ def _render_listing(item):
 def real_estate_dashboard():
     st.title("🏡 Immobilier – Cap Bon, Tunisie")
     st.markdown(
-        "Maisons et villas **à vendre** dans les villes côtières du gouvernorat de Nabeul. "
-        "Budget maximal : **500 000 TND**."
+        "Agrégation multi-sites des biens **à vendre** dans le gouvernorat de Nabeul : "
+        "maisons, villas, appartements, terrains et immeubles. "
+        "Le filtre démarre à **300 000 TND**, sans plafond de prix."
     )
     metric_cols = st.columns(3)
-    metric_cols[0].metric("Budget maximum", "500 000 TND")
-    metric_cols[1].metric("Type de bien", "Maison / Villa")
-    metric_cols[2].metric("Zone", "Littoral de Nabeul")
+    metric_cols[0].metric("Prix minimum affiché", "300 000 TND")
+    metric_cols[1].metric("Types de biens", "Tous les biens à vendre")
+    metric_cols[2].metric("Zone", "Gouvernorat de Nabeul")
 
     with st.sidebar:
         st.markdown("### Filtres immobilier")
         selected_towns = st.multiselect(
-            "Villes côtières",
+            "Villes / zones",
             list(COASTAL_TOWNS.keys()),
             default=list(COASTAL_TOWNS.keys()),
             key="nabeul_towns",
         )
-        max_price = st.slider(
-            "Budget maximum (TND)",
-            min_value=50_000,
-            max_value=MAX_PRICE_TND,
-            value=MAX_PRICE_TND,
-            step=10_000,
-            key="nabeul_max_price",
+        min_price = st.number_input(
+            "Prix minimum (TND)",
+            min_value=0, max_value=10_000_000,
+            value=MIN_PRICE_DEFAULT_TND, step=25_000,
+            key="nabeul_min_price",
         )
         refresh = st.button("🔄 Actualiser les annonces", use_container_width=True)
     if refresh:
         fetch_listings.clear()
 
-    with st.spinner("Récupération des annonces immobilières publiques…"):
+    with st.spinner("Recherche multi-sources : Tayara, Menzili, Mubawab, Cava, Affare et autres portails…"):
         listings, statuses = fetch_listings()
 
     filtered = [
         item for item in listings
-        if item["town"] in selected_towns and item["price"] <= max_price
+        if item["town"] in selected_towns and item["price"] >= min_price
     ]
-    st.subheader(f"{len(filtered)} annonce(s) correspondant aux critères")
+    st.subheader(f"{len(filtered)} annonce(s) avec photo · prix ≥ {min_price:,.0f} TND".replace(",", " "))
     if not filtered:
         st.warning(
-            "Aucune annonce n’a pu être récupérée avec les filtres actuels. "
-            "Cela ne signifie pas qu’il n’existe aucun bien : certains sites bloquent "
-            "l’agrégation automatique ou modifient leur structure."
+            "Aucune annonce avec photo n’a été récupérée pour ces critères. "
+            "Cela ne signifie pas qu’il n’existe aucun bien : certains portails bloquent "
+            "l’extraction automatique ou chargent les annonces par JavaScript."
         )
     else:
         for start in range(0, len(filtered), 3):
@@ -239,12 +256,15 @@ def real_estate_dashboard():
                 with col:
                     _render_listing(item)
 
-    with st.expander("État des sources automatiques"):
+    with st.expander("État des sources automatiques", expanded=True):
         for source, status in statuses.items():
             st.write(f"**{source}** : {status}")
-        st.caption("Les annonces sont filtrées sur le prix affiché et la localité détectée. Vérifie toujours le prix, la disponibilité, le titre foncier et les autorisations auprès du vendeur ou d’un notaire.")
+        st.caption(
+            "Une annonce n'est affichée que si son prix, sa localité et au moins une photo sont détectés. "
+            "Les portails peuvent limiter l'accès automatique ; les liens ci-dessous permettent de consulter "
+            "leurs résultats directement. Vérifie toujours la disponibilité, le titre foncier et les autorisations."
+        )
 
-    with st.expander("Autres sites à consulter directement"):
+    with st.expander("Tous les portails immobiliers suivis"):
         for label, url in _search_links():
             st.markdown(f"- [{label}]({url})")
-        st.caption("Les liens externes permettent de poursuivre la recherche si un site ne permet pas la lecture automatique de ses annonces.")
