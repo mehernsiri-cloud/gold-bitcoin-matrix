@@ -775,6 +775,31 @@ def _alphabet_market_data() -> dict:
         return {"error": f"Impossible de récupérer GOOGL : {type(exc).__name__}"}
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _candidate_market_data(symbol: str) -> dict:
+    """Comparable adjusted market history for recommended equities."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(symbol).history(period="1y", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty or "Close" not in hist:
+            return {"error": "Historique Yahoo Finance indisponible."}
+        close = hist["Close"].dropna()
+        if len(close) < 30:
+            return {"error": "Historique de cours insuffisant."}
+        last = float(close.iloc[-1])
+        six_month = close.loc[close.index >= close.index[-1] - pd.DateOffset(months=6)]
+        month = close.loc[close.index >= close.index[-1] - pd.DateOffset(months=1)]
+        if len(six_month) < 2 or len(month) < 2:
+            return {"error": "Historique récent incomplet."}
+        high = float(close.tail(252).max())
+        return {"history": six_month, "price": last,
+                "change_6m": (last / float(six_month.iloc[0]) - 1) * 100,
+                "change_1m": (last / float(month.iloc[0]) - 1) * 100,
+                "high_52w": high, "drawdown_high": (last / high - 1) * 100,
+                "updated": close.index[-1]}
+    except Exception as exc:
+        return {"error": f"Historique indisponible : {type(exc).__name__}"}
+
 def render_alphabet_analysis() -> None:
     st.markdown("### 🔎 Alphabet (GOOGL) · Analyse d'achat et exposition indirecte")
     st.caption("Cours et performance actualisés depuis Yahoo Finance · exposition ETF calculée à partir des dernières positions connues du portefeuille.")
