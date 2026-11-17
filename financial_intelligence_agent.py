@@ -222,19 +222,20 @@ def collect_events(days: int = 4, max_per_feed: int = 30) -> tuple[pd.DataFrame,
 
 
 def persist_events(new_events: pd.DataFrame) -> tuple[int, int]:
+    """Merge fresh events with the existing store, even when a feed returns zero rows."""
     DATA_DIR.mkdir(exist_ok=True)
-    if new_events.empty:
-        return 0, 0
     existing = pd.read_csv(EVENTS_FILE) if EVENTS_FILE.exists() and EVENTS_FILE.stat().st_size else pd.DataFrame(columns=COLUMNS)
-    combined = pd.concat([existing, new_events.reindex(columns=COLUMNS)], ignore_index=True)
-    combined = combined.drop_duplicates("event_id", keep="first")
-    combined["published_at"] = pd.to_datetime(combined["published_at"], errors="coerce", utc=True)
-    combined = combined.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
-    combined = combined[combined["published_at"] >= pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=45)]
+    incoming = new_events.reindex(columns=COLUMNS) if new_events is not None else pd.DataFrame(columns=COLUMNS)
+    combined = pd.concat([existing.reindex(columns=COLUMNS), incoming], ignore_index=True)
+    if not combined.empty:
+        combined = combined.drop_duplicates("event_id", keep="first")
+        combined["published_at"] = pd.to_datetime(combined["published_at"], errors="coerce", utc=True)
+        combined = combined.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
+        combined = combined[combined["published_at"] >= pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=45)]
     added = max(0, len(combined) - len(existing.drop_duplicates("event_id")))
     combined.to_csv(EVENTS_FILE, index=False)
     # Alert only P1-P3; P4 remains searchable in the event log.
-    alerts = combined[combined["priority"].isin(["P1", "P2", "P3"])].copy()
+    alerts = combined[combined["priority"].isin(["P1", "P2", "P3"])].copy() if not combined.empty else pd.DataFrame(columns=COLUMNS)
     alerts.to_csv(ALERTS_FILE, index=False)
     STATE_FILE.write_text(json.dumps({"last_run_utc": datetime.now(timezone.utc).isoformat(),
         "events_total": int(len(combined)), "alerts_total": int(len(alerts)),
@@ -242,7 +243,7 @@ def persist_events(new_events: pd.DataFrame) -> tuple[int, int]:
     return added, len(alerts)
 
 
-def run_agent(days: int = 4) -> dict:
+def run_agent(days: int = 7) -> dict:
     events, errors = collect_events(days=days)
     added, alert_count = persist_events(events)
     return {"collected": int(len(events)), "new_events": added, "alerts_total": alert_count,
@@ -484,8 +485,44 @@ def render_financial_intelligence_dashboard() -> None:
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
     st.caption("Instantané communiqué : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles ; elles ne remplacent pas le PRU du courtier.")
     st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
-    if not EVENTS_FILE.exists() or not EVENTS_FILE.stat().st_size:
-        st.info("Aucun événement collecté. Lance une collecte.")
+
+    # A missing or stale CSV must trigger a real collection, not a dead-end empty state.
+    state = {}
+    if STATE_FILE.exists():
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+    last_run = pd.to_datetime(state.get("last_run_utc"), errors="coerce", utc=True)
+    stale = pd.isna(last_run) or (pd.Timestamp.now(tz="UTC") - last_run) > pd.Timedelta(hours=12)
+    has_store = EVENTS_FILE.exists() and EVENTS_FILE.stat().st_size > 0
+    col_collect, col_status = st.columns([1, 3])
+    with col_collect:
+        manual_collect = st.button("🔄 Collecter les événements", key="financial_intelligence_collect")
+    if manual_collect or (not has_store and not st.session_state.get("_fi_initial_collection_attempted", False)) or (stale and not st.session_state.get("_fi_stale_collection_attempted", False)):
+        if not has_store:
+            st.session_state["_fi_initial_collection_attempted"] = True
+        if stale:
+            st.session_state["_fi_stale_collection_attempted"] = True
+        with st.spinner("Collecte des actualités financières et géopolitiques depuis les flux RSS…"):
+            result = run_agent(days=7)
+        st.session_state["_fi_last_collection_result"] = result
+        if result["collected"] > 0:
+            st.success(f"Collecte terminée : {result['collected']} événement(s) détecté(s), {result['new_events']} nouveau(x), {result['alerts_total']} alerte(s) suivie(s).")
+        elif result["errors"]:
+            st.warning("La collecte n'a retourné aucun événement. Consulte les erreurs de flux ci-dessous ; les événements déjà enregistrés sont conservés.")
+        else:
+            st.info("Les flux ont répondu, mais aucun article daté des 7 derniers jours n'a été retenu.")
+        st.rerun()
+
+    last_result = st.session_state.get("_fi_last_collection_result")
+    if last_result:
+        with st.expander("Détails de la dernière collecte", expanded=bool(last_result.get("errors"))):
+            st.write(f"Exécution : {last_result.get('run_at', 'inconnue')} · {last_result.get('collected', 0)} événement(s) · {last_result.get('new_events', 0)} nouveau(x)")
+            if last_result.get("errors"):
+                st.warning("Sources en erreur : " + " · ".join(last_result["errors"]))
+    if not has_store:
+        st.error("Le fichier d'événements est absent ou vide et aucune actualité n'a pu être enregistrée. Utilise « Collecter les événements » pour relancer la collecte et consulte les erreurs de flux.")
         return
     events=pd.read_csv(EVENTS_FILE)
     events["published_at"]=pd.to_datetime(events["published_at"],errors="coerce",utc=True)
