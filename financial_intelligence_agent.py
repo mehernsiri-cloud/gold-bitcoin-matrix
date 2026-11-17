@@ -503,11 +503,14 @@ def _load_enrichment_data(symbol: str) -> dict:
         strong_buy = buy = hold = sell = strong_sell = 0
         if isinstance(rec, pd.DataFrame) and not rec.empty:
             row = rec.iloc[0]
-            strong_buy = int(pd.to_numeric(row.get("strongBuy", 0), errors="coerce") or 0)
-            buy = int(pd.to_numeric(row.get("buy", 0), errors="coerce") or 0)
-            hold = int(pd.to_numeric(row.get("hold", 0), errors="coerce") or 0)
-            sell = int(pd.to_numeric(row.get("sell", 0), errors="coerce") or 0)
-            strong_sell = int(pd.to_numeric(row.get("strongSell", 0), errors="coerce") or 0)
+            def safe_int(value):
+                number = pd.to_numeric(value, errors="coerce")
+                return int(number) if pd.notna(number) else 0
+            strong_buy = safe_int(row.get("strongBuy", 0))
+            buy = safe_int(row.get("buy", 0))
+            hold = safe_int(row.get("hold", 0))
+            sell = safe_int(row.get("sell", 0))
+            strong_sell = safe_int(row.get("strongSell", 0))
         holders = ticker.institutional_holders
         holder_count = int(len(holders)) if isinstance(holders, pd.DataFrame) else 0
         inst_pct = float(info.get("heldPercentInstitutions") or 0)
@@ -536,7 +539,10 @@ def _score_enrichment_candidate(candidate: dict, data: dict) -> dict:
     result = {**candidate, **data, "score": None, "return_score": None,
               "analyst_score": None, "institutional_score": None, "excess_return": None}
     if data.get("expected_return") is None or data.get("buy_share") is None:
-        result["status"] = "Données insuffisantes pour un score complet"
+        result["status"] = "Données analystes insuffisantes"
+        return result
+    if not data.get("holder_count") or not data.get("institutional_pct"):
+        result["status"] = "Données institutionnelles insuffisantes pour le score complet"
         return result
     excess = float(data["expected_return"]) - SP500_REFERENCE_RETURN
     # 0 points at -10 pp excess, 50 points at +10 pp or more.
