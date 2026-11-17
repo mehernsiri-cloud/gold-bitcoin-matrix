@@ -59,6 +59,7 @@ from newsletter_app import newsletter_dashboard
 
 from market_forecast import render_market_forecast_dashboard
 from financial_intelligence_agent import render_financial_intelligence_dashboard
+from critical_alerts import render_critical_alerts_dashboard
 
 # -------------------------------------------------------------------
 # FILE PATHS AND DATA DIRECTORIES
@@ -757,8 +758,9 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # MAIN MENU: one unified Gold & Bitcoin market module
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
-    "📊 Choose Dashboard",
-    ["Financial Intelligence", "Gold & Bitcoin & Devises", "Jobs", "Real Estate Bot", "Newsletter"]
+    "📊 Navigation principale",
+    ["🚨 Critical Alerts", "Financial Intelligence", "Gold & Bitcoin & Devises", "Jobs", "Real Estate Bot", "Newsletter"],
+    index=0
 )
 
 
@@ -772,7 +774,10 @@ def render_header(title: str, subtitle: Optional[str] = None):
 # -------------------------------------------------------------------
 # UNIFIED GOLD & BITCOIN MARKET INTELLIGENCE
 # -------------------------------------------------------------------
-if menu == "Financial Intelligence":
+if menu == "🚨 Critical Alerts":
+    render_critical_alerts_dashboard()
+
+elif menu == "Financial Intelligence":
     render_financial_intelligence_dashboard()
 
 elif menu == "Gold & Bitcoin & Devises":
