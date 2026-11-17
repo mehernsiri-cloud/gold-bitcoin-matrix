@@ -475,150 +475,289 @@ def _portfolio_live_snapshot():
 # -------------------------------------------------------------------
 # PORTFOLIO ENRICHMENT — TOP 5 OPPORTUNITIES
 # -------------------------------------------------------------------
-# Screening universe is intentionally diversified and avoids duplicating
-# the user's existing energy, utilities, healthcare, shipping and defence
-# exposures. Yahoo Finance coverage is indicative and may be incomplete.
+# A diversified watchlist; avoid duplicating the portfolio's largest sector bets.
 ENRICHMENT_CANDIDATES = [
-    {"symbol": "DBK.DE", "name": "Deutsche Bank", "type": "Action", "theme": "Banques / finance"},
-    {"symbol": "ALV.DE", "name": "Allianz", "type": "Action", "theme": "Assurance / finance"},
-    {"symbol": "CARL-B.CO", "name": "Carlsberg", "type": "Action", "theme": "Biens de consommation"},
-    {"symbol": "EUNI.L", "name": "iShares MSCI Emerging Markets Small Cap UCITS ETF", "type": "ETF UCITS", "theme": "Marchés émergents"},
-    {"symbol": "XDJP.DE", "name": "Xtrackers Nikkei 225 UCITS ETF", "type": "ETF UCITS", "theme": "Japon"},
+    {"symbol": "DBK.DE", "name": "Deutsche Bank", "type": "Action", "theme": "Banques / finance", "color": "#4776C8"},
+    {"symbol": "ALV.DE", "name": "Allianz", "type": "Action", "theme": "Assurance / finance", "color": "#168C87"},
+    {"symbol": "CARL-B.CO", "name": "Carlsberg", "type": "Action", "theme": "Biens de consommation", "color": "#D49A28"},
+    {"symbol": "EUNI.L", "name": "iShares MSCI Emerging Markets Small Cap UCITS ETF", "type": "ETF UCITS", "theme": "Marchés émergents", "color": "#7656B5"},
+    {"symbol": "XDJP.DE", "name": "Xtrackers Nikkei 225 UCITS ETF", "type": "ETF UCITS", "theme": "Japon", "color": "#C44E62"},
 ]
 SP500_REFERENCE_RETURN = 17.0
 SP500_REFERENCE_LABEL = "Goldman Sachs · prévision S&P 500 d'environ +17 % jusqu'à fin 2027 (17/11/2026)"
 
 
+def _as_number(value):
+    """Convert Yahoo Finance values to finite floats, otherwise None."""
+    try:
+        number = pd.to_numeric(value, errors="coerce")
+        return float(number) if pd.notna(number) and pd.notna(float(number)) else None
+    except Exception:
+        return None
+
+
+def _first_valid(mapping, keys):
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = _as_number(mapping.get(key))
+        if value is not None and value > 0:
+            return value
+    return None
+
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def _load_enrichment_data(symbol: str) -> dict:
-    """Retrieve current quote, analyst targets/ratings and institutional ownership."""
+    """Retrieve each Yahoo Finance data family independently; one failure must not erase the others."""
+    result = {
+        "price": None, "target": None, "expected_return": None, "opinions": None,
+        "strong_buy": None, "buy": None, "hold": None, "sell": None, "strong_sell": None,
+        "ratings_total": None, "buy_share": None, "holder_count": None,
+        "institutional_pct": None, "errors": [],
+    }
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
-        info = ticker.info or {}
-        price = info.get("currentPrice") or info.get("regularMarketPrice")
-        target = info.get("targetMeanPrice")
-        opinions = int(info.get("numberOfAnalystOpinions") or 0)
-        rec = ticker.recommendations_summary
-        strong_buy = buy = hold = sell = strong_sell = 0
-        if isinstance(rec, pd.DataFrame) and not rec.empty:
-            row = rec.iloc[0]
-            def safe_int(value):
-                number = pd.to_numeric(value, errors="coerce")
-                return int(number) if pd.notna(number) else 0
-            strong_buy = safe_int(row.get("strongBuy", 0))
-            buy = safe_int(row.get("buy", 0))
-            hold = safe_int(row.get("hold", 0))
-            sell = safe_int(row.get("sell", 0))
-            strong_sell = safe_int(row.get("strongSell", 0))
-        holders = ticker.institutional_holders
-        holder_count = int(len(holders)) if isinstance(holders, pd.DataFrame) else 0
-        inst_pct = float(info.get("heldPercentInstitutions") or 0)
-        expected_return = ((float(target) / float(price)) - 1) * 100 if price and target and float(price) > 0 else None
-        ratings_total = strong_buy + buy + hold + sell + strong_sell
-        if ratings_total == 0:
-            ratings_total = opinions
-        buy_share = ((strong_buy + buy) / ratings_total) if ratings_total and (strong_buy + buy + hold + sell + strong_sell) > 0 else None
-        return {
-            "price": float(price) if price else None,
-            "target": float(target) if target else None,
-            "expected_return": expected_return,
-            "opinions": opinions,
-            "strong_buy": strong_buy, "buy": buy, "hold": hold,
-            "sell": sell, "strong_sell": strong_sell,
-            "ratings_total": ratings_total, "buy_share": buy_share,
-            "holder_count": holder_count, "institutional_pct": inst_pct,
-            "error": None,
-        }
     except Exception as exc:
-        return {"error": type(exc).__name__}
+        result["errors"].append(f"Initialisation Yahoo Finance : {type(exc).__name__}")
+        return result
+
+    # 1) Quote and summary information. Try info, fast_info and recent history separately.
+    info = {}
+    try:
+        info = ticker.get_info() or {}
+    except Exception as exc:
+        result["errors"].append(f"Fiche société : {type(exc).__name__}")
+        try:
+            info = ticker.info or {}
+        except Exception as fallback_exc:
+            result["errors"].append(f"Fiche alternative : {type(fallback_exc).__name__}")
+    result["price"] = _first_valid(info, ("currentPrice", "regularMarketPrice", "navPrice"))
+    result["target"] = _first_valid(info, ("targetMeanPrice",))
+    result["opinions"] = _first_valid(info, ("numberOfAnalystOpinions",))
+    result["institutional_pct"] = _as_number(info.get("heldPercentInstitutions"))
+    if result["institutional_pct"] is not None:
+        result["institutional_pct"] = max(0.0, min(1.0, result["institutional_pct"]))
+
+    if result["price"] is None:
+        try:
+            fast_info = ticker.fast_info
+            result["price"] = _first_valid(dict(fast_info), ("last_price", "regular_market_price"))
+        except Exception as exc:
+            result["errors"].append(f"Cours fast_info : {type(exc).__name__}")
+    if result["price"] is None:
+        try:
+            hist = ticker.history(period="5d", auto_adjust=False)
+            if isinstance(hist, pd.DataFrame) and not hist.empty and "Close" in hist:
+                result["price"] = _as_number(hist["Close"].dropna().iloc[-1])
+        except Exception as exc:
+            result["errors"].append(f"Historique des cours : {type(exc).__name__}")
+
+    # 2) Analyst price target: info first, then the dedicated price-target endpoint.
+    try:
+        targets = ticker.analyst_price_targets
+        if isinstance(targets, dict):
+            result["target"] = result["target"] or _first_valid(targets, ("mean", "median", "current"))
+        elif isinstance(targets, pd.Series):
+            result["target"] = result["target"] or _first_valid(targets.to_dict(), ("mean", "median", "current"))
+    except Exception as exc:
+        result["errors"].append(f"Objectifs analystes : {type(exc).__name__}")
+
+    # 3) Consensus: try recommendations_summary, then recommendations/get_recommendations.
+    rec_frame = None
+    try:
+        rec_frame = ticker.recommendations_summary
+    except Exception as exc:
+        result["errors"].append(f"Consensus résumé : {type(exc).__name__}")
+    if not isinstance(rec_frame, pd.DataFrame) or rec_frame.empty:
+        try:
+            rec_frame = ticker.recommendations
+        except Exception as exc:
+            result["errors"].append(f"Consensus détaillé : {type(exc).__name__}")
+    if (not isinstance(rec_frame, pd.DataFrame) or rec_frame.empty) and hasattr(ticker, "get_recommendations"):
+        try:
+            rec_frame = ticker.get_recommendations()
+        except Exception as exc:
+            result["errors"].append(f"Consensus alternatif : {type(exc).__name__}")
+    if isinstance(rec_frame, pd.DataFrame) and not rec_frame.empty:
+        normalized = {str(c).lower().replace("_", "").replace(" ", ""): c for c in rec_frame.columns}
+        row = rec_frame.iloc[0]
+        counts = {}
+        for key in ("strongbuy", "buy", "hold", "sell", "strongsell"):
+            col = normalized.get(key)
+            counts[key] = max(0, int(_as_number(row.get(col)) or 0)) if col is not None else None
+        # Recommendations history may use a single "To Grade" column instead of counts.
+        if all(v is None for v in counts.values()) and "tograde" in normalized:
+            grades = rec_frame[normalized["tograde"]].astype(str).str.lower()
+            counts = {
+                "strongbuy": int(grades.str.contains("strong buy", regex=False).sum()),
+                "buy": int((grades.eq("buy") | grades.eq("outperform") | grades.eq("overweight")).sum()),
+                "hold": int((grades.eq("hold") | grades.eq("neutral") | grades.eq("equal-weight")).sum()),
+                "sell": int((grades.eq("sell") | grades.eq("underperform") | grades.eq("underweight")).sum()),
+                "strongsell": int(grades.str.contains("strong sell", regex=False).sum()),
+            }
+        if any(v is not None for v in counts.values()):
+            for key, value in counts.items():
+                result[{"strongbuy":"strong_buy","strongsell":"strong_sell"}.get(key,key)] = value
+            vals = [v for v in counts.values() if v is not None]
+            result["ratings_total"] = sum(vals)
+            result["opinions"] = result["opinions"] or result["ratings_total"]
+            if result["ratings_total"] > 0:
+                result["buy_share"] = ((counts["strongbuy"] or 0) + (counts["buy"] or 0)) / result["ratings_total"]
+
+    if result["price"] and result["target"]:
+        result["expected_return"] = (result["target"] / result["price"] - 1) * 100
+
+    # 4) Institutional data is independent from the analyst endpoints.
+    try:
+        holders = ticker.get_institutional_holders()
+        if isinstance(holders, pd.DataFrame):
+            result["holder_count"] = int(len(holders))
+    except Exception as exc:
+        result["errors"].append(f"Détention institutionnelle : {type(exc).__name__}")
+        try:
+            holders = ticker.institutional_holders
+            if isinstance(holders, pd.DataFrame):
+                result["holder_count"] = int(len(holders))
+        except Exception as fallback_exc:
+            result["errors"].append(f"Détention alternative : {type(fallback_exc).__name__}")
+
+    return result
 
 
 def _score_enrichment_candidate(candidate: dict, data: dict) -> dict:
-    """Score 0–100: excess return 50%, analyst buying 30%, institutional backing 20%."""
+    """Score /100 only when all three pillars are available; retain partial diagnostics."""
     result = {**candidate, **data, "score": None, "return_score": None,
               "analyst_score": None, "institutional_score": None, "excess_return": None}
-    if data.get("expected_return") is None or data.get("buy_share") is None:
-        result["status"] = "Données analystes insuffisantes"
+    missing = []
+    if data.get("expected_return") is None:
+        missing.append("objectif analyste ou cours manquant")
+    if data.get("buy_share") is None or not data.get("ratings_total"):
+        missing.append("consensus analystes manquant")
+    if data.get("institutional_pct") is None or data.get("holder_count") is None:
+        missing.append("détention institutionnelle incomplète")
+    if missing:
+        result["status"] = " · ".join(missing)
         return result
-    if not data.get("holder_count") or not data.get("institutional_pct"):
-        result["status"] = "Données institutionnelles insuffisantes pour le score complet"
-        return result
+
     excess = float(data["expected_return"]) - SP500_REFERENCE_RETURN
-    # 0 points at -10 pp excess, 50 points at +10 pp or more.
     return_score = max(0.0, min(50.0, (excess + 10.0) / 20.0 * 50.0))
     analyst_reliability = min(1.0, float(data.get("ratings_total") or 0) / 10.0)
     analyst_score = 30.0 * float(data["buy_share"]) * analyst_reliability
-    # Ownership is a backing indicator, not proof of recent net purchases.
-    inst_pct = max(0.0, min(0.80, float(data.get("institutional_pct") or 0.0)))
-    holder_score = max(0.0, min(1.0, float(data.get("holder_count") or 0) / 50.0))
+    inst_pct = max(0.0, min(0.80, float(data["institutional_pct"])))
+    holder_score = max(0.0, min(1.0, float(data["holder_count"]) / 50.0))
     institutional_score = 10.0 * inst_pct / 0.80 + 10.0 * holder_score
     result.update({
         "excess_return": excess, "return_score": return_score,
         "analyst_score": analyst_score, "institutional_score": institutional_score,
         "score": round(return_score + analyst_score + institutional_score, 1),
-        "status": "Score complet" if data.get("holder_count", 0) > 0 else "Score partiel : données institutionnelles limitées",
+        "status": "Données complètes",
     })
     return result
 
 
+def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
+    detail_html = f"<div style='font-size:11px;color:#64748b;margin-top:3px'>{detail}</div>" if detail else ""
+    return (
+        f"<div style='background:#ffffff;border:1px solid #e5e7eb;border-top:3px solid {color};"
+        f"border-radius:10px;padding:9px 10px;min-height:72px'>"
+        f"<div style='font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#64748b'>{label}</div>"
+        f"<div style='font-size:17px;font-weight:750;color:{color};margin-top:4px'>{value}</div>"
+        f"{detail_html}</div>"
+    )
+
+
 def render_portfolio_enrichment() -> None:
     st.markdown("### ⭐ Top 5 – Opportunités d’investissement")
-    st.caption("Sélection dynamique d'actions et d'ETF UCITS, avec priorité à la diversification des expositions déjà détenues.")
+    st.caption("Gadget de veille multi-actifs · sélection orientée diversification du portefeuille.")
     st.markdown(
-        "**Méthode de notation /100** : potentiel de rendement relatif au S&P 500 (50 pts), "
-        "part des recommandations Buy / Strong Buy et profondeur de couverture (30 pts), "
-        "soutien institutionnel via détention déclarée (20 pts)."
+        "**Notation /100** : potentiel relatif au S&P 500 (50 pts) · consensus Buy / Strong Buy (30 pts) · "
+        "détention institutionnelle (20 pts)."
     )
     st.caption(
-        f"Référence S&P 500 : +{SP500_REFERENCE_RETURN:.0f} % — {SP500_REFERENCE_LABEL}. "
-        "Le repère de marché et les objectifs analystes n'ont pas exactement le même horizon : comparaison indicative."
+        f"Repère S&P 500 : +{SP500_REFERENCE_RETURN:.0f} % — {SP500_REFERENCE_LABEL}. "
+        "Comparaison indicative : horizons des objectifs analystes et du repère de marché différents."
     )
-    if st.button("🔄 Actualiser le Top 5", key="refresh_enrichment"):
+    refresh_col, info_col = st.columns([1, 3])
+    with refresh_col:
+        refresh = st.button("🔄 Actualiser", key="refresh_enrichment")
+    with info_col:
+        st.caption("Données Yahoo Finance · cache 6 h · actualisation manuelle disponible.")
+    if refresh:
         _load_enrichment_data.clear()
-    with st.spinner("Analyse des objectifs analystes et des positions institutionnelles…"):
+    with st.spinner("Récupération indépendante des cours, consensus et détenteurs institutionnels…"):
         rows = []
         for candidate in ENRICHMENT_CANDIDATES:
-            data = _load_enrichment_data(candidate["symbol"])
-            rows.append(_score_enrichment_candidate(candidate, data))
+            rows.append(_score_enrichment_candidate(candidate, _load_enrichment_data(candidate["symbol"])))
     frame = pd.DataFrame(rows)
-    ranked = frame[frame["score"].notna()].sort_values("score", ascending=False).head(5)
-    if not ranked.empty:
-        display = ranked.copy()
-        display["Potentiel 12m"] = display["expected_return"].map(lambda x: f"{x:+.1f} %")
-        display["Écart vs S&P 500"] = display["excess_return"].map(lambda x: f"{x:+.1f} pts")
-        display["Avis Buy / Strong Buy"] = display.apply(
-            lambda r: f"{int(r['strong_buy'] + r['buy'])}/{int(r['ratings_total'])} ({r['buy_share']*100:.0f} %)" if pd.notna(r["buy_share"]) else "N/D", axis=1
-        )
-        display["Soutien institutionnel"] = display.apply(
-            lambda r: f"{r['institutional_pct']*100:.0f} % · {int(r['holder_count'])} détenteurs" if r.get("institutional_pct") is not None else "N/D", axis=1
-        )
-        display["Note /100"] = display["score"].map(lambda x: f"{x:.1f}")
-        st.dataframe(
-            display[["name", "symbol", "type", "theme", "Potentiel 12m", "Écart vs S&P 500",
-                     "Avis Buy / Strong Buy", "Soutien institutionnel", "Note /100"]],
-            hide_index=True, use_container_width=True
-        )
-        best = ranked.iloc[0]
-        if best["score"] >= 80:
-            st.success(f"Priorité à étudier : {best['name']} · {best['score']:.1f}/100")
-        elif best["score"] >= 70:
-            st.info(f"Meilleur candidat actuel : {best['name']} · entrée éventuelle à échelonner.")
-        else:
-            st.warning("Aucun candidat n'atteint actuellement le seuil de 70/100 : ne pas forcer un achat.")
-    else:
-        st.warning("Aucun candidat ne dispose actuellement de données suffisantes pour calculer un score complet. Aucun classement artificiel n'est affiché.")
-    missing = frame[frame["score"].isna()]
-    if not missing.empty:
-        with st.expander("Candidats non classés / couverture insuffisante"):
-            for _, row in missing.iterrows():
-                st.write(f"**{row['name']} ({row['symbol']})** — {row.get('status', 'Données indisponibles')}.")
-    with st.expander("Détail du score et limites"):
-        st.write("Le potentiel 12 mois est calculé à partir du cours actuel et de l'objectif moyen des analystes fourni par Yahoo Finance. Les recommandations Buy / Strong Buy sont celles du résumé de consensus disponible ; le nombre d'analystes réduit le score lorsque la couverture est faible.")
-        st.write("Le soutien institutionnel mesure la part détenue par les institutions et le nombre de détenteurs remontés par la source. Ce n'est pas un décompte des achats récents ni un flux net : les déclarations institutionnelles peuvent être différées.")
-        st.write("Les données de consensus sont souvent absentes pour les ETF UCITS. Un ETF sans couverture suffisante reste non classé plutôt que de recevoir un score artificiel. La liste est un univers de surveillance, pas une recommandation personnalisée d'achat.")
-        st.caption("Source de données : Yahoo Finance ; actualisation manuelle ou cache de 6 heures. Vérifier le KID PRIIPs, les frais, la liquidité et l'éligibilité chez le courtier avant tout achat.")
+    ranked = frame[frame["score"].notna()].sort_values("score", ascending=False)
+    complete_count = len(ranked)
+    st.markdown(
+        f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px'>"
+        f"<span style='background:#E8F7EF;color:#167447;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
+        f"🟢 {complete_count} score(s) complet(s)</span>"
+        f"<span style='background:#EEF3FC;color:#315A9B;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
+        f"🔵 {len(frame)-complete_count} candidat(s) en surveillance</span>"
+        f"<span style='background:#FFF4E5;color:#9A5B08;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
+        f"🟠 {len(frame)} actifs analysés</span></div>",
+        unsafe_allow_html=True,
+    )
 
+    # Two-column dashboard cards with separate color coding for each scoring pillar.
+    for offset in range(0, len(frame), 2):
+        cols = st.columns(2, gap="medium")
+        for col, (_, row) in zip(cols, frame.iloc[offset:offset+2].iterrows()):
+            with col:
+                accent = row.get("color", "#64748b")
+                score = row.get("score")
+                score_text = f"{score:.1f}/100" if pd.notna(score) else "En surveillance"
+                score_color = "#168653" if pd.notna(score) and score >= 70 else "#B7791F" if pd.notna(score) else "#64748b"
+                st.markdown(
+                    f"<div style='background:linear-gradient(110deg,{accent}16,#ffffff 72%);"
+                    f"border:1px solid {accent}55;border-left:5px solid {accent};border-radius:13px;"
+                    f"padding:13px 14px 10px;margin:3px 0 8px'>"
+                    f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:flex-start'>"
+                    f"<div><div style='font-size:11px;color:#64748b;font-weight:700'>{row['type']} · {row['symbol']}</div>"
+                    f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
+                    f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
+                    f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
+                    f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div>",
+                    unsafe_allow_html=True,
+                )
+                price = f"{row['price']:.2f}" if pd.notna(row.get("price")) else "N/D"
+                target = f"{row['target']:.2f}" if pd.notna(row.get("target")) else "N/D"
+                expected = f"{row['expected_return']:+.1f} %" if pd.notna(row.get("expected_return")) else "N/D"
+                consensus = f"{row['buy_share']*100:.0f} %" if pd.notna(row.get("buy_share")) else "N/D"
+                institutional = f"{row['institutional_pct']*100:.0f} %" if pd.notna(row.get("institutional_pct")) else "N/D"
+                holders = str(int(row["holder_count"])) if pd.notna(row.get("holder_count")) else "N/D"
+                m1, m2, m3 = st.columns(3)
+                m1.markdown(_gadget_metric("Potentiel 12 mois", expected, "#4776C8", f"Cours {price} · cible {target}"), unsafe_allow_html=True)
+                m2.markdown(_gadget_metric("Buy / Strong Buy", consensus, "#168C87", f"{int(row['ratings_total'])} avis" if pd.notna(row.get("ratings_total")) else "Consensus indisponible"), unsafe_allow_html=True)
+                m3.markdown(_gadget_metric("Institutions", institutional, "#7656B5", f"{holders} détenteurs"), unsafe_allow_html=True)
+                if pd.notna(score):
+                    st.progress(min(1.0, max(0.0, float(score)/100.0)), text=f"Score complet · {score:.1f}/100")
+                else:
+                    st.caption("🟠 " + str(row.get("status", "Données incomplètes")))
+                if row.get("errors"):
+                    errors = " · ".join(row["errors"][:3])
+                    with st.expander("Diagnostic de récupération"):
+                        st.caption(errors)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    if complete_count:
+        best = ranked.iloc[0]
+        st.success(f"Meilleur score calculable : {best['name']} · {best['score']:.1f}/100. À analyser avant toute décision.")
+        with st.expander("Classement des scores complets"):
+            for rank, (_, row) in enumerate(ranked.iterrows(), start=1):
+                st.write(f"**{rank}. {row['name']} ({row['symbol']}) — {row['score']:.1f}/100**")
+    else:
+        st.warning("Aucun score complet pour le moment. Les cartes affichent les données réellement récupérées et les éléments manquants, sans classement artificiel.")
+
+    with st.expander("Méthode, diagnostic et limites"):
+        st.write("Les données sont interrogées séparément : fiche et cours, objectifs analystes, consensus et détenteurs institutionnels. Une erreur sur une source ne supprime plus les autres informations récupérées.")
+        st.write("Le potentiel 12 mois compare le cours disponible à l'objectif moyen des analystes. Le score analystes combine la part Buy / Strong Buy et la profondeur de couverture. La détention institutionnelle correspond à des déclarations publiées, pas à des achats récents ni à un flux net.")
+        st.write("Un score /100 n'est calculé que si les trois piliers sont suffisamment renseignés. Les ETF UCITS ont souvent peu ou pas de consensus analystes : ils restent alors en surveillance. La liste est un univers de veille, pas une recommandation personnalisée.")
+        st.caption("Avant achat : vérifier le KID PRIIPs, les frais, la liquidité, la devise, la réplication et l'éligibilité chez le courtier.")
 
 def render_financial_intelligence_dashboard() -> None:
     render_portfolio_enrichment()
