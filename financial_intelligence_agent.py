@@ -653,7 +653,7 @@ def _load_enrichment_data(symbol: str) -> dict:
             result["buy_share"] is None) and "." not in symbol and symbol.isalpha():
         try:
             page = requests.get(
-                f"https://stockanalysis.com/stocks/{symbol.lower()}/",
+                f"https://stockanalysis.com/stocks/{symbol.lower()}/forecast/",
                 headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
                 timeout=(5, 12),
             )
@@ -668,14 +668,14 @@ def _load_enrichment_data(symbol: str) -> dict:
                 if price_match:
                     result["price"] = _as_number(price_match.group(1).replace(",", ""))
             analyst_match = re.search(
-                r"According to\s+(\d+)\s+analysts.*?average price target of\s*[$€£]\s*([0-9,]+(?:\.[0-9]+)?)",
+                r"According to\s+(\d+)\s+analysts.*?(?:average price target (?:of|is)|12-month stock price target is)\s*[$€£]\s*([0-9,]+(?:\.[0-9]+)?)",
                 visible, re.I,
             )
             if analyst_match:
                 result["opinions"] = result["opinions"] or _as_number(analyst_match.group(1))
                 result["target"] = result["target"] or _as_number(analyst_match.group(2).replace(",", ""))
             consensus_match = re.search(
-                r'(?:consensus rating is|Analyst Consensus:)\s*["\']?(Strong Buy|Buy|Hold|Neutral|Sell|Strong Sell)',
+                r'(?:consensus rating (?:is|of)|Analyst Consensus:)\s*["\']?(Strong Buy|Buy|Hold|Neutral|Sell|Strong Sell)',
                 visible, re.I,
             )
             if consensus_match:
