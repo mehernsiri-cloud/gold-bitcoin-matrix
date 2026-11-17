@@ -190,16 +190,46 @@ def _search_links():
         ("Limmobilier.tn – Maisons à vendre", SOURCE_URLS["Limmobilier.tn – maisons"]),
     ]
 def _render_listing(item):
+    """Render every property as a uniform, fixed-height gadget card."""
+    from html import escape
+
     price = f'{item["price"]:,}'.replace(",", " ")
-    title = item["title"].replace("<", "&lt;").replace(">", "&gt;")
-    st.image(item["image"], use_column_width=True)
+    title = escape(str(item["title"]))
+    image_url = escape(str(item["image"]), quote=True)
+    listing_url = escape(str(item["url"]), quote=True)
+    town = escape(str(item["town"]))
+    source = escape(str(item["source"]))
     st.markdown(
         f"""
-        <div style="border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:13px;margin-bottom:10px;min-height:155px">
-          <div style="font-size:1.08rem;font-weight:750;line-height:1.35">{title}</div>
-          <div style="font-size:1.35rem;font-weight:850;margin:9px 0;color:#16804a">{price} TND</div>
-          <div style="font-size:.92rem;opacity:.85">{item["town"]} · {item["source"]}</div>
-          <div style="margin-top:10px"><a href="{item["url"]}" target="_blank" rel="noopener noreferrer">Consulter l’annonce ↗</a></div>
+        <div style="
+            height:390px; display:flex; flex-direction:column; overflow:hidden;
+            border:1px solid rgba(128,128,128,.35); border-radius:14px;
+            margin-bottom:16px; background:var(--secondary-background-color);
+        ">
+          <div style="height:180px; min-height:180px; overflow:hidden; background:rgba(128,128,128,.12)">
+            <img src="{image_url}" alt="Photo du bien"
+                 style="width:100%;height:180px;object-fit:cover;display:block">
+          </div>
+          <div style="padding:13px;display:flex;flex:1;min-height:0;flex-direction:column">
+            <div style="
+                font-size:1rem;font-weight:700;line-height:1.35;
+                height:4.05em;overflow:hidden;display:-webkit-box;
+                -webkit-line-clamp:3;-webkit-box-orient:vertical;
+            ">{title}</div>
+            <div style="font-size:1.3rem;font-weight:850;margin:8px 0;color:#16804a">
+                {price} TND
+            </div>
+            <div style="font-size:.88rem;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {town} · {source}
+            </div>
+            <div style="margin-top:auto;padding-top:12px">
+              <a href="{listing_url}" target="_blank" rel="noopener noreferrer"
+                 style="display:block;text-align:center;padding:9px 10px;border-radius:8px;
+                        border:1px solid rgba(128,128,128,.45);text-decoration:none;font-weight:650">
+                Consulter l’annonce ↗
+              </a>
+            </div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
