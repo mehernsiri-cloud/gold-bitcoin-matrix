@@ -750,6 +750,86 @@ def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
     )
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _alphabet_market_data() -> dict:
+    """Live GOOGL price history and six-month performance from Yahoo Finance."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("GOOGL").history(period="1y", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty or "Close" not in hist:
+            return {"error": "Historique Yahoo Finance indisponible."}
+        close = hist["Close"].dropna()
+        if len(close) < 2:
+            return {"error": "Historique de cours insuffisant."}
+        six_month = close.loc[close.index >= close.index[-1] - pd.DateOffset(months=6)]
+        month = close.loc[close.index >= close.index[-1] - pd.DateOffset(months=1)]
+        if len(six_month) < 2 or len(month) < 2:
+            return {"error": "Historique récent incomplet."}
+        last, high_52w = float(close.iloc[-1]), float(close.tail(252).max())
+        return {"history": six_month, "price": last,
+                "change_6m": (last / float(six_month.iloc[0]) - 1) * 100,
+                "change_1m": (last / float(month.iloc[0]) - 1) * 100,
+                "high_52w": high_52w, "drawdown_high": (last / high_52w - 1) * 100,
+                "updated": close.index[-1]}
+    except Exception as exc:
+        return {"error": f"Impossible de récupérer GOOGL : {type(exc).__name__}"}
+
+
+def render_alphabet_analysis() -> None:
+    st.markdown("### 🔎 Alphabet (GOOGL) · Analyse d'achat et exposition indirecte")
+    st.caption("Cours et performance actualisés depuis Yahoo Finance · exposition ETF calculée à partir des dernières positions connues du portefeuille.")
+    data = _alphabet_market_data()
+    if data.get("error"):
+        st.warning(data["error"])
+    else:
+        a, b, c, d = st.columns(4)
+        a.metric("Cours GOOGL", f"{data['price']:,.2f} USD")
+        b.metric("Performance 6 mois", f"{data['change_6m']:+.1f} %")
+        c.metric("Performance 1 mois", f"{data['change_1m']:+.1f} %")
+        d.metric("Écart au plus haut 52 semaines", f"{data['drawdown_high']:.1f} %")
+        st.line_chart(data["history"].rename("GOOGL · USD"), height=210)
+        st.caption(f"Dernière séance disponible : {pd.Timestamp(data['updated']).strftime('%d/%m/%Y')} · plus haut 52 semaines : {data['high_52w']:,.2f} USD. Performance calculée sur les cours ajustés.")
+
+    # VWCE: Vanguard factsheet 31 Oct 2026, Alphabet Class A + C combined.
+    # EWSP: indicative estimate for two Alphabet classes in an equal-weight S&P 500 index.
+    vwce_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "VWCE"), 0.0)
+    ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "EWSP"), 0.0)
+    vwce_weight, ewsp_weight = 0.0281, 0.0040
+    vwce_exposure, ewsp_exposure = vwce_value * vwce_weight, ewsp_value * ewsp_weight
+    total_exposure = vwce_exposure + ewsp_exposure
+    st.markdown("#### Ton exposition actuelle à Alphabet")
+    x, y, z = st.columns(3)
+    x.metric("Via VWCE", f"{vwce_exposure:.2f} €", f"{vwce_weight*100:.2f} % du fonds")
+    y.metric("Via EWSP", f"≈ {ewsp_exposure:.2f} €", "estimation · pondération égale")
+    z.metric("Total indirect estimé", f"≈ {total_exposure:.2f} €", f"{total_exposure/float(PORTFOLIO_TOTAL_EUR)*100:.2f} % du portefeuille")
+    st.caption("VWCE : poids cumulé Alphabet A + C publié par Vanguard au 31/10/2026. EWSP : estimation indicative basée sur deux classes Alphabet dans un indice S&P 500 à pondération égale ; poids exact à confirmer dans le fichier quotidien iShares. Montants calculés sur les valeurs communiquées, pas sur un inventaire broker en temps réel.")
+
+    st.markdown("#### Ce qui explique la baisse — et ce qui peut soutenir le titre")
+    left, right = st.columns(2, gap="medium")
+    with left:
+        st.markdown("**Points de pression**")
+        st.markdown("- Free cash-flow du T3 2026 : **−9,1 Md$** ; dépenses d'investissement très élevées.")
+        st.markdown("- Capex 2026 guidé à **195–205 Md$**, avec une nouvelle hausse significative annoncée pour 2027.")
+        st.markdown("- Revenus publicitaires de **82 Md$**, inférieurs aux attentes ; interrogation sur la monétisation des réponses IA.")
+        st.markdown("- Utilisation accrue de capacités cloud tierces : pression attendue sur les marges à court terme.")
+    with right:
+        st.markdown("**Éléments de solidité**")
+        st.markdown("- Chiffre d'affaires T3 : **+25 % à 127,6 Md$**.")
+        st.markdown("- Google Cloud : **+103 % à 30,7 Md$** ; forte demande en infrastructure IA.")
+        st.markdown("- Google Search : **+12 %** et croissance des requêtes au plus haut depuis cinq ans.")
+        st.markdown("- Résultat opérationnel : **+30 %** sur un an.")
+    st.caption("Prochain catalyseur à surveiller : résultats du T4 2026 attendus début février 2027, notamment le capex 2027, la croissance Search et les marges Cloud.")
+
+    st.markdown("#### Lecture d'investissement")
+    if not data.get("error") and data["change_6m"] <= -15:
+        st.warning("Correction importante : le titre mérite une surveillance active, mais une baisse de 15–20 % ne prouve pas à elle seule une sous-évaluation. Le risque central est le rendement futur des dépenses IA et la génération de trésorerie.")
+    elif not data.get("error") and data["change_6m"] < 0:
+        st.info("Le titre est en repli sur six mois ; il faut distinguer correction de marché et dégradation durable des fondamentaux.")
+    else:
+        st.info("Le cours ne montre pas actuellement une correction de six mois supérieure à 15 % ; ne pas conclure à une opportunité sur le seul prix.")
+    st.markdown("**Approche prudente :** si tu souhaites ouvrir une ligne, privilégier une entrée fractionnée en 2 ou 3 achats plutôt qu'un achat intégral immédiat, et définir à l'avance le montant maximal d'exposition directe + ETF. Ne pas renforcer automatiquement avant d'avoir vérifié les résultats et les dépenses 2027.")
+
+
 def render_portfolio_enrichment() -> None:
     st.markdown("### ⭐ Opportunités d’investissement")
     st.caption("Univers élargi d’actions et d’ETF · sélection finale orientée diversification du portefeuille.")
@@ -894,6 +974,8 @@ def render_portfolio_enrichment() -> None:
         )
 
 def render_financial_intelligence_dashboard() -> None:
+    render_alphabet_analysis()
+    st.markdown("---")
     render_portfolio_enrichment()
     st.markdown("---")
     st.markdown("## Financial Intelligence · Event Impact")
