@@ -840,6 +840,9 @@ def render_portfolio_enrichment() -> None:
                         metrics.append(("Potentiel 12 mois", f"{row['expected_return']:+.1f} %", "#4776C8", detail))
                     if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and row.get("ratings_total", 0) > 0:
                         metrics.append(("Buy / Strong Buy", f"{row['buy_share']*100:.0f} %", "#168C87", f"{int(row['ratings_total'])} recommandations"))
+                    elif row.get("consensus_label"):
+                        analyst_count = int(row.get("opinions") or 0)
+                        metrics.append(("Consensus analystes", str(row["consensus_label"]), "#168C87", f"{analyst_count} analystes · {row.get('analyst_source') or 'source publique'}"))
                     if pd.notna(row.get("institutional_pct")) and pd.notna(row.get("holder_count")) and row.get("holder_count", 0) > 0:
                         metrics.append(("Détention institutionnelle", f"{row['institutional_pct']*100:.0f} %", "#7656B5", f"{int(row['holder_count'])} détenteurs déclarés"))
 
