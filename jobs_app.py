@@ -518,7 +518,7 @@ def jobs_dashboard():
         )
         source_filter = st.selectbox(
             "Source",
-            ["Toutes les sources", "Himalayas", "Jobicy", "Remote OK", "Arbeitnow"],
+            ["Toutes les sources", "Himalayas", "Jobicy", "Remote OK", "Arbeitnow", "Remotive"],
             index=0,
             key="jobs_source",
         )
