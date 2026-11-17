@@ -110,7 +110,7 @@ def _normalise_date(value):
         return pd.NaT
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_himalayas(country_code, keyword):
     try:
         response = requests.get(
@@ -125,7 +125,7 @@ def fetch_himalayas(country_code, keyword):
         return None
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_jobicy():
     try:
         response = requests.get(
@@ -143,7 +143,7 @@ def fetch_jobicy():
         return None
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_remoteok():
     try:
         response = requests.get(
@@ -159,6 +159,22 @@ def fetch_remoteok():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_remotive():
+    """Public Remotive API; adds a separate remote-first source."""
+    try:
+        response = requests.get(
+            "https://remotive.com/api/remote-jobs",
+            params={"limit": 200},
+            headers={**HEADERS, "Accept": "application/json"}, timeout=(4, 12),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("jobs", []) if isinstance(payload, dict) else None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
 def fetch_arbeitnow():
     try:
         response = requests.get(
@@ -267,6 +283,32 @@ def fetch_country_jobs(country):
             })
 
     arbeitnow = fetch_arbeitnow()
+    remotive = fetch_remotive()
+    source_status["Remotive"] = "OK" if remotive is not None else "Erreur API"
+    for item in remotive or []:
+        geo = str(item.get("candidate_required_location") or "")
+        geo_lower = geo.lower()
+        eligible = (
+            any(x in geo_lower for x in ("anywhere", "worldwide", "all countries", "global"))
+            or (country == "France" and any(x in geo_lower for x in ("france", "europe", "eu countries", "european union")))
+            or (country == "Suisse" and any(x in geo_lower for x in ("switzerland", "suisse", "europe", "eu countries")))
+            or (country == "Dubaï" and any(x in geo_lower for x in ("united arab emirates", "uae", "dubai", "middle east")))
+        )
+        if not eligible:
+            continue
+        title = item.get("title", "")
+        description = item.get("description") or ""
+        role = classify_senior_role(title, description)
+        created = _normalise_date(item.get("publication_date"))
+        if role and not pd.isna(created):
+            url = item.get("url", "")
+            jobs.append({
+                "title": title, "company": item.get("company_name", "Entreprise non précisée"),
+                "location": geo or f"Remote · {country}", "date": created,
+                "url": url, "source_url": url, "source": "Remotive",
+                "description": description, "role": role,
+            })
+
     source_status["Arbeitnow"] = "OK" if arbeitnow is not None else "Erreur API"
     for item in arbeitnow or []:
         location = item.get("location", "")
@@ -354,6 +396,8 @@ def _external_search_links(country):
     links = [
         ("LinkedIn", f"https://www.linkedin.com/jobs/search/?keywords={query}&location={location}&f_TPR=r2592000"),
         ("Indeed", f"https://{indeed_domain}/jobs?q={query}&l={indeed_location}&fromage=30"),
+        ("Google Jobs", f"https://www.google.com/search?q={query}+jobs+{location}&ibp=htl;jobs"),
+        ("Glassdoor", f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={query}"),
     ]
     if country == "France":
         links.extend([
@@ -468,8 +512,8 @@ def jobs_dashboard():
         st.divider()
         recency = st.selectbox(
             "Date de publication",
-            ["30 derniers jours", "7 derniers jours", "14 derniers jours"],
-            index=0,
+            ["7 derniers jours", "14 derniers jours", "30 derniers jours", "60 derniers jours"],
+            index=1,
             key="jobs_recency",
         )
         source_filter = st.selectbox(
@@ -478,6 +522,15 @@ def jobs_dashboard():
             index=0,
             key="jobs_source",
         )
+        st.divider()
+        if st.button("🔄 Actualiser les offres", use_container_width=True):
+            fetch_himalayas.clear()
+            fetch_jobicy.clear()
+            fetch_remoteok.clear()
+            fetch_arbeitnow.clear()
+            fetch_remotive.clear()
+            st.rerun()
+
         st.divider()
         sort_mode = st.selectbox(
             "Trier par",
@@ -518,7 +571,7 @@ def jobs_dashboard():
                 job["country"] = country
                 collected.append(job)
 
-    days_limit = {"7 derniers jours": 7, "14 derniers jours": 14, "30 derniers jours": 30}[recency]
+    days_limit = {"7 derniers jours": 7, "14 derniers jours": 14, "30 derniers jours": 30, "60 derniers jours": 60}[recency]
     cutoff = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(days=days_limit)
     filtered = [
         job for job in collected
@@ -585,8 +638,8 @@ def jobs_dashboard():
 
     with st.expander("Sources et périmètre de recherche"):
         st.markdown(
-            "- **Sources automatiques :** Himalayas, Jobicy, Remote OK et Arbeitnow (flux publics sans clé).\n"
-            "- **Sources complémentaires :** LinkedIn, Indeed et job boards locaux via recherche directe.\n"
+            "- **Sources automatiques :** Himalayas, Jobicy, Remote OK, Arbeitnow et Remotive (flux publics sans clé).\n"
+            "- **Sources complémentaires :** LinkedIn, Indeed, Google Jobs, Glassdoor et job boards locaux via recherche directe.\n"
             "- **Périmètre :** postes expérimentés en IT RH / HRIS, SAP SuccessFactors, architecture IT RH "
             "et gestion de projets IT / WMS (Manhattan). Stages, alternances et postes juniors exclus.\n"
             "- **Tri :** pertinence des mots-clés et date, ou date seule selon le filtre."
