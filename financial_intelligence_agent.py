@@ -668,95 +668,133 @@ def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
 
 
 def render_portfolio_enrichment() -> None:
-    st.markdown("### ⭐ Top 5 – Opportunités d’investissement")
-    st.caption("Gadget de veille multi-actifs · sélection orientée diversification du portefeuille.")
-    st.markdown(
-        "**Notation /100** : potentiel relatif au S&P 500 (50 pts) · consensus Buy / Strong Buy (30 pts) · "
-        "détention institutionnelle (20 pts)."
-    )
-    st.caption(
-        f"Repère S&P 500 : +{SP500_REFERENCE_RETURN:.0f} % — {SP500_REFERENCE_LABEL}. "
-        "Comparaison indicative : horizons des objectifs analystes et du repère de marché différents."
-    )
+    st.markdown("### ⭐ Opportunités d’investissement")
+    st.caption("Sélection orientée diversification · seuls les candidats disposant de signaux vérifiables sont affichés.")
+
     refresh_col, info_col = st.columns([1, 3])
     with refresh_col:
-        refresh = st.button("🔄 Actualiser", key="refresh_enrichment")
+        refresh = st.button("🔄 Actualiser les données", key="refresh_enrichment")
     with info_col:
-        st.caption("Données Yahoo Finance · cache 6 h · actualisation manuelle disponible.")
+        st.caption("Source : Yahoo Finance · cache 6 h · actualisation manuelle.")
     if refresh:
         _load_enrichment_data.clear()
-    with st.spinner("Récupération indépendante des cours, consensus et détenteurs institutionnels…"):
-        rows = []
-        for candidate in ENRICHMENT_CANDIDATES:
-            rows.append(_score_enrichment_candidate(candidate, _load_enrichment_data(candidate["symbol"])))
+
+    with st.spinner("Vérification des données de marché et des signaux analystes…"):
+        rows = [
+            _score_enrichment_candidate(candidate, _load_enrichment_data(candidate["symbol"]))
+            for candidate in ENRICHMENT_CANDIDATES
+        ]
+
     frame = pd.DataFrame(rows)
-    ranked = frame[frame["score"].notna()].sort_values("score", ascending=False)
+    # A quote alone is not an investment signal. Hide empty cards rather than
+    # filling the dashboard with N/D values and zero institutional-holder counts.
+    def has_usable_signal(row):
+        has_target = pd.notna(row.get("expected_return"))
+        has_consensus = pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and row.get("ratings_total", 0) > 0
+        has_institutional = pd.notna(row.get("institutional_pct")) and pd.notna(row.get("holder_count")) and row.get("holder_count", 0) > 0
+        return bool(has_target or has_consensus or has_institutional)
+
+    usable = frame[frame.apply(has_usable_signal, axis=1)].copy()
+    ranked = usable[usable["score"].notna()].sort_values("score", ascending=False)
     complete_count = len(ranked)
+    hidden_count = len(frame) - len(usable)
+
     st.markdown(
         f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px'>"
         f"<span style='background:#E8F7EF;color:#167447;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
-        f"🟢 {complete_count} score(s) complet(s)</span>"
+        f"🟢 {complete_count} opportunité(s) avec score complet</span>"
         f"<span style='background:#EEF3FC;color:#315A9B;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
-        f"🔵 {len(frame)-complete_count} candidat(s) en surveillance</span>"
-        f"<span style='background:#FFF4E5;color:#9A5B08;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
-        f"🟠 {len(frame)} actifs analysés</span></div>",
+        f"🔵 {len(usable)-complete_count} candidat(s) avec signaux partiels</span>"
+        f"<span style='background:#F1F2F4;color:#59636E;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700'>"
+        f"⚪ {hidden_count} candidat(s) masqué(s) faute d’information exploitable</span></div>",
         unsafe_allow_html=True,
     )
 
-    # Two-column dashboard cards with separate color coding for each scoring pillar.
-    for offset in range(0, len(frame), 2):
-        cols = st.columns(2, gap="medium")
-        for col, (_, row) in zip(cols, frame.iloc[offset:offset+2].iterrows()):
-            with col:
-                accent = row.get("color", "#64748b")
-                score = row.get("score")
-                score_text = f"{score:.1f}/100" if pd.notna(score) else "En surveillance"
-                score_color = "#168653" if pd.notna(score) and score >= 70 else "#B7791F" if pd.notna(score) else "#64748b"
-                st.markdown(
-                    f"<div style='background:linear-gradient(110deg,{accent}16,#ffffff 72%);"
-                    f"border:1px solid {accent}55;border-left:5px solid {accent};border-radius:13px;"
-                    f"padding:13px 14px 10px;margin:3px 0 8px'>"
-                    f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:flex-start'>"
-                    f"<div><div style='font-size:11px;color:#64748b;font-weight:700'>{row['type']} · {row['symbol']}</div>"
-                    f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
-                    f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
-                    f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
-                    f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div></div>",
-                    unsafe_allow_html=True,
-                )
-                price = f"{row['price']:.2f}" if pd.notna(row.get("price")) else "N/D"
-                target = f"{row['target']:.2f}" if pd.notna(row.get("target")) else "N/D"
-                expected = f"{row['expected_return']:+.1f} %" if pd.notna(row.get("expected_return")) else "N/D"
-                consensus = f"{row['buy_share']*100:.0f} %" if pd.notna(row.get("buy_share")) else "N/D"
-                institutional = f"{row['institutional_pct']*100:.0f} %" if pd.notna(row.get("institutional_pct")) else "N/D"
-                holders = str(int(row["holder_count"])) if pd.notna(row.get("holder_count")) else "N/D"
-                m1, m2, m3 = st.columns(3)
-                m1.markdown(_gadget_metric("Potentiel 12 mois", expected, "#4776C8", f"Cours {price} · cible {target}"), unsafe_allow_html=True)
-                m2.markdown(_gadget_metric("Buy / Strong Buy", consensus, "#168C87", f"{int(row['ratings_total'])} avis" if pd.notna(row.get("ratings_total")) else "Consensus indisponible"), unsafe_allow_html=True)
-                m3.markdown(_gadget_metric("Institutions", institutional, "#7656B5", f"{holders} détenteurs"), unsafe_allow_html=True)
-                if pd.notna(score):
-                    st.progress(min(1.0, max(0.0, float(score)/100.0)), text=f"Score complet · {score:.1f}/100")
-                else:
-                    st.caption("🟠 " + str(row.get("status", "Données incomplètes")))
-                if row.get("errors"):
-                    errors = " · ".join(row["errors"][:3])
-                    with st.expander("Diagnostic de récupération"):
-                        st.caption(errors)
+    if usable.empty:
+        st.info(
+            "Aucune opportunité ne dispose actuellement de données suffisamment exploitables. "
+            "Les candidats sans objectif de cours, consensus vérifiable ni détention institutionnelle "
+            "documentée sont masqués : aucun cours isolé ni valeur N/D n’est présenté comme une opportunité."
+        )
+        with st.expander("Pourquoi aucun candidat n’est affiché ?"):
+            for _, row in frame.iterrows():
+                errors = row.get("errors") or []
+                reason = " · ".join(errors[:3]) if errors else str(row.get("status", "Signaux d’investissement indisponibles"))
+                st.write(f"**{row['name']} ({row['symbol']})** — {reason}")
+            st.caption(
+                "La couverture institutionnelle n’est pas toujours publiée pour les actions européennes. "
+                "Les ETF UCITS ne disposent généralement pas d’un consensus analystes comparable à celui d’une action. "
+                "Ces absences ne sont pas remplacées par des zéros."
+            )
+    else:
+        # Two-column opportunity gadgets. Missing metrics are omitted completely.
+        for offset in range(0, len(usable), 2):
+            cols = st.columns(2, gap="medium")
+            for col, (_, row) in zip(cols, usable.iloc[offset:offset + 2].iterrows()):
+                with col:
+                    accent = row.get("color", "#64748b")
+                    score = row.get("score")
+                    score_text = f"{score:.1f}/100" if pd.notna(score) else "Signaux partiels"
+                    score_color = "#168653" if pd.notna(score) and score >= 70 else "#B7791F" if pd.notna(score) else "#64748b"
+                    st.markdown(
+                        f"<div style='background:linear-gradient(110deg,{accent}16,#ffffff 72%);"
+                        f"border:1px solid {accent}55;border-left:5px solid {accent};border-radius:13px;"
+                        f"padding:13px 14px 10px;margin:3px 0 8px'>"
+                        f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:flex-start'>"
+                        f"<div><div style='font-size:11px;color:#64748b;font-weight:700'>{row['type']} · {row['symbol']}</div>"
+                        f"<div style='font-size:17px;font-weight:750;color:#182230;margin-top:3px'>{row['name']}</div>"
+                        f"<div style='font-size:11px;color:#64748b;margin-top:2px'>{row['theme']}</div></div>"
+                        f"<div style='background:{score_color}18;color:{score_color};padding:6px 9px;border-radius:9px;"
+                        f"font-size:13px;font-weight:800;white-space:nowrap'>{score_text}</div></div></div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    metrics = []
+                    if pd.notna(row.get("expected_return")):
+                        price = row.get("price")
+                        target = row.get("target")
+                        detail = f"Cours {price:.2f} · objectif moyen {target:.2f}" if pd.notna(price) and pd.notna(target) else "Objectif moyen des analystes"
+                        metrics.append(("Potentiel 12 mois", f"{row['expected_return']:+.1f} %", "#4776C8", detail))
+                    if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and row.get("ratings_total", 0) > 0:
+                        metrics.append(("Buy / Strong Buy", f"{row['buy_share']*100:.0f} %", "#168C87", f"{int(row['ratings_total'])} recommandations"))
+                    if pd.notna(row.get("institutional_pct")) and pd.notna(row.get("holder_count")) and row.get("holder_count", 0) > 0:
+                        metrics.append(("Détention institutionnelle", f"{row['institutional_pct']*100:.0f} %", "#7656B5", f"{int(row['holder_count'])} détenteurs déclarés"))
+
+                    metric_cols = st.columns(len(metrics))
+                    for metric_col, (label, value, color, detail) in zip(metric_cols, metrics):
+                        metric_col.markdown(_gadget_metric(label, value, color, detail), unsafe_allow_html=True)
+
+                    if pd.notna(score):
+                        st.progress(min(1.0, max(0.0, float(score) / 100.0)), text=f"Score complet · {score:.1f}/100")
+                    else:
+                        st.caption("Score global non calculé : au moins un pilier de notation est indisponible.")
+                    if row.get("errors"):
+                        with st.expander(f"Sources à vérifier · {row['symbol']}"):
+                            st.caption(" · ".join(row["errors"][:5]))
 
     if complete_count:
         best = ranked.iloc[0]
-        st.success(f"Meilleur score calculable : {best['name']} · {best['score']:.1f}/100. À analyser avant toute décision.")
-        with st.expander("Classement des scores complets"):
+        st.success(f"Meilleur score vérifiable : {best['name']} · {best['score']:.1f}/100.")
+        with st.expander("Classement des opportunités complètes"):
             for rank, (_, row) in enumerate(ranked.iterrows(), start=1):
                 st.write(f"**{rank}. {row['name']} ({row['symbol']}) — {row['score']:.1f}/100**")
-    else:
-        st.warning("Aucun score complet pour le moment. Les cartes affichent les données réellement récupérées et les éléments manquants, sans classement artificiel.")
 
-    with st.expander("Méthode, diagnostic et limites"):
-        st.write("Les données sont interrogées séparément : fiche et cours, objectifs analystes, consensus et détenteurs institutionnels. Une erreur sur une source ne supprime plus les autres informations récupérées.")
-        st.write("Le potentiel 12 mois compare le cours disponible à l'objectif moyen des analystes. Le score analystes combine la part Buy / Strong Buy et la profondeur de couverture. La détention institutionnelle correspond à des déclarations publiées, pas à des achats récents ni à un flux net.")
-        st.write("Un score /100 n'est calculé que si les trois piliers sont suffisamment renseignés. Les ETF UCITS ont souvent peu ou pas de consensus analystes : ils restent alors en surveillance. La liste est un univers de veille, pas une recommandation personnalisée.")
-        st.caption("Avant achat : vérifier le KID PRIIPs, les frais, la liquidité, la devise, la réplication et l'éligibilité chez le courtier.")
+    with st.expander("Méthode de notation et limites"):
+        st.write(
+            "Score /100 : potentiel de rendement relatif au repère S&P 500 (50 points), "
+            "part des recommandations Buy / Strong Buy et profondeur de couverture (30 points), "
+            "détention institutionnelle déclarée (20 points). Le score global n’est calculé que si les trois piliers sont renseignés."
+        )
+        st.write(
+            "Les cartes sans signal exploitable sont volontairement masquées. Une donnée absente n’est jamais assimilée à zéro. "
+            "La détention institutionnelle déclarée n’est pas un flux d’achats récents et peut être publiée avec retard. "
+            "Les ETF UCITS sont évalués séparément lorsque les données de fonds pertinentes sont disponibles ; "
+            "un consensus d’action ne leur est pas artificiellement attribué."
+        )
+        st.caption(
+            "Univers de surveillance, pas une recommandation personnalisée. Avant achat : vérifier le KID PRIIPs, "
+            "les frais, la liquidité, la devise, la réplication et l’éligibilité chez le courtier."
+        )
 
 def render_financial_intelligence_dashboard() -> None:
     render_portfolio_enrichment()
