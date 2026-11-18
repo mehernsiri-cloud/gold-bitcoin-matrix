@@ -325,17 +325,14 @@ def render_critical_alerts_dashboard():
         if not family_items:
             continue
         family_items.sort(key=lambda x: (severity_order.get(x["severity"], 9), -(x["published"].timestamp() if x["published"] else 0)))
-        st.subheader(f"{family} · {len(family_items)} événement(s)")
-        for start in range(0, min(len(family_items), 8), 2):
-            cols = st.columns(2, gap="medium")
-            for col, item in zip(cols, family_items[start:start + 2]):
-                with col:
-                    _render_alert(item)
-        if len(family_items) > 8:
-            with st.expander(f"Afficher {len(family_items) - 8} autres événements de cette famille"):
-                for item in family_items[8:]:
-                    st.markdown(f"**{item['severity']} — {item['title']}** · {item['country']} · {_fmt_date(item['published'])}")
-                    st.markdown(f"[Lire la source principale]({item['url']})")
+        # Show only the two most important incidents in each family.
+        # Sorting prioritizes severity, then the most recent publication date.
+        top_items = family_items[:2]
+        st.subheader(f"{family} · {len(top_items)} événement(s) principal(aux)")
+        cols = st.columns(2, gap="medium")
+        for col, item in zip(cols, top_items):
+            with col:
+                _render_alert(item)
 
     with st.expander("Sources complémentaires et méthode de regroupement", expanded=False):
         for item in incidents:
