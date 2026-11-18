@@ -96,26 +96,104 @@ def _parse_date(entry):
 
 def _classify(title, summary, source, official=False):
     text = (title + " " + summary).lower()
-    categories = [name for name, words in KEYWORDS.items() if any(w in text for w in words)]
-    if not categories:
-        categories = ["Risque systémique / autre"]
+    # One primary family per incident, avoiding multi-category duplication.
+    family_rules = [
+        ("Banques & paiements", ["bank", "banque", "banking", "payment", "paiement", "swift", "visa", "mastercard", "zelle", "virement", "atm", "financial system"]),
+        ("Énergie & eau", ["power grid", "electricity", "électricité", "énerg", "electric grid", "blackout", "power outage", "water supply", "eau potable", "pipeline"]),
+        ("Télécoms & Internet", ["telecom", "télécom", "internet outage", "mobile network", "réseau mobile", "cloudflare", "dns outage"]),
+        ("Santé & hôpitaux", ["hospital", "hôpital", "healthcare", "santé", "clinic", "patient", "medical systems", "pharmacy", "pharmacie"]),
+        ("Transport & logistique", ["airport", "aéroport", "rail", "train", "metro", "métro", "port", "transport", "logistics", "logistique", "air traffic"]),
+        ("Cyber & données", ["cyberattack", "cyberattaque", "ransomware", "data breach", "fuite de données", "hacked", "hacké", "intrusion", "malware", "ddos", "supply chain"]),
+    ]
+    category = next((name for name, words in family_rules if any(w in text for w in words)), "Autres risques essentiels")
     countries = [name for name, words in COUNTRY_TERMS.items() if any(w in text for w in words)]
     if not countries:
         countries = ["À préciser"]
     if any(w in text for w in CRITICAL_TERMS):
-        severity = "CRITIQUE"
-        score = 95
+        severity, score = "CRITIQUE", 95
     elif any(w in text for w in HIGH_TERMS):
-        severity = "ÉLEVÉ"
-        score = 75
+        severity, score = "ÉLEVÉ", 75
     else:
-        severity = "À SURVEILLER"
-        score = 45
-    if official:
-        confidence = "Source officielle"
-    else:
-        confidence = "Information média – à corroborer"
-    return severity, score, categories[0], ", ".join(countries[:2]), confidence
+        severity, score = "À SURVEILLER", 45
+    confidence = "Source officielle" if official else "Information média – à corroborer"
+    return severity, score, category, ", ".join(countries[:2]), confidence
+
+# Words that add little value when comparing incident headlines.
+STOPWORDS = set("""
+the and for with from that this have has was are were into after over under about
+dans pour avec sans sur les des une un aux par est sont cette ces leur leurs
+lorsque selon après avant entre contre chez depuis mais plus moins
+cyber cyberattack cyberattaque attack attaque incident update latest
+""".split())
+
+def _tokens(value):
+    words = re.findall(r"[a-z0-9]{3,}", _clean(value).lower())
+    return {w for w in words if w not in STOPWORDS and not w.isdigit()}
+
+def _headline_similarity(a, b):
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / max(1, len(ta | tb))
+
+def _same_incident(a, b):
+    if a["category"] != b["category"]:
+        return False
+    ca = set(a["country"].split(", "))
+    cb = set(b["country"].split(", "))
+    if ca != {"À préciser"} and cb != {"À préciser"} and not (ca & cb):
+        return False
+    title_score = _headline_similarity(a["title"], b["title"])
+    combined_score = _headline_similarity(
+        a["title"] + " " + a["summary"][:250],
+        b["title"] + " " + b["summary"][:250],
+    )
+    # Require topical overlap; a shared company name alone (e.g. Siemens)
+    # must never merge unrelated incidents.
+    return title_score >= 0.48 or combined_score >= 0.43
+
+def _group_incidents(items):
+    """Cluster cross-source coverage of the same event into one incident card."""
+    clusters = []
+    ordered = sorted(
+        items,
+        key=lambda x: (x["score"], x["published"] or datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+    for item in ordered:
+        match = None
+        for cluster in clusters:
+            if any(_same_incident(item, member) for member in cluster["articles"]):
+                match = cluster
+                break
+        if match is None:
+            clusters.append({"articles": [item]})
+        else:
+            match["articles"].append(item)
+
+    grouped = []
+    for cluster in clusters:
+        articles = cluster["articles"]
+        primary = max(articles, key=lambda x: (x["score"], bool(x["published"])))
+        merged = dict(primary)
+        merged["sources"] = list(dict.fromkeys(x["source"] for x in articles))
+        merged["source_count"] = len(merged["sources"])
+        merged["article_count"] = len(articles)
+        merged["related_links"] = [
+            {"source": x["source"], "url": x["url"], "title": x["title"]}
+            for x in articles
+        ]
+        dates = [x["published"] for x in articles if x["published"]]
+        merged["published"] = max(dates) if dates else None
+        # Retain official confirmation if any article in the cluster is official.
+        if any(x["confidence"] == "Source officielle" for x in articles):
+            merged["confidence"] = "Au moins une source officielle"
+        grouped.append(merged)
+    grouped.sort(
+        key=lambda x: (x["score"], x["published"] or datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+    return grouped
 
 def _google_news_url(query):
     q = quote(query)
@@ -152,18 +230,21 @@ def load_critical_alerts():
                     "country": country, "confidence": confidence,
                 })
                 count += 1
-            statuses[source] = f"OK · {count} élément(s)"
+            statuses[source] = f"OK · {count} publication(s)"
         except Exception as exc:
             statuses[source] = f"Indisponible · {type(exc).__name__}"
-    # Deduplicate near-identical headlines from overlapping feeds.
-    unique = {}
+
+    # First remove exact duplicate URLs/headlines, then cluster cross-media coverage.
+    seen = set()
+    deduped = []
     for item in items:
-        key = re.sub(r"[^a-z0-9]", "", item["title"].lower())[:110]
-        if key and (key not in unique or item["score"] > unique[key]["score"]):
-            unique[key] = item
-    result = list(unique.values())
-    result.sort(key=lambda x: (x["score"], x["published"] or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
-    return result, statuses
+        key = (item["url"].split("?")[0].rstrip("/"), re.sub(r"[^a-z0-9]", "", item["title"].lower()))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    incidents = _group_incidents(deduped)
+    return incidents, statuses
 
 def _fmt_date(value):
     return value.astimezone().strftime("%d/%m/%Y · %H:%M") if value else "Date non fournie par la source"
@@ -200,9 +281,9 @@ def _render_alert(item):
 def render_critical_alerts_dashboard():
     st.title("🚨 Critical Alerts – Daily Life & Systemic Risks")
     st.markdown(
-        "La page d'accueil prioritaire : incidents susceptibles d'affecter **l'accès à l'argent, "
-        "les paiements, l'énergie, l'eau, les télécommunications, la santé, les transports "
-        "et les infrastructures essentielles**. Indépendant des prévisions de marché et du portefeuille."
+        "Page d'accueil prioritaire : événements pouvant affecter **banques, paiements, énergie, eau, "
+        "télécommunications, santé, transports et infrastructures essentielles**. "
+        "Les articles parlant du même incident sont regroupés en une seule fiche."
     )
     c1, c2 = st.columns([1, 5])
     with c1:
@@ -210,48 +291,62 @@ def render_critical_alerts_dashboard():
             load_critical_alerts.clear()
             st.rerun()
     with c2:
-        st.caption("Sources actualisées toutes les 10 minutes · fenêtre de veille : 14 jours · fuseaux horaires locaux")
-    with st.spinner("Vérification des alertes officielles et des médias spécialisés…"):
-        alerts, statuses = load_critical_alerts()
+        st.caption("Actualisation automatique toutes les 10 min · événements des 14 derniers jours · doublons multi-sources regroupés")
 
-    critical = [x for x in alerts if x["severity"] == "CRITIQUE"]
-    high = [x for x in alerts if x["severity"] == "ÉLEVÉ"]
+    with st.spinner("Analyse des sources et regroupement des événements similaires…"):
+        incidents, statuses = load_critical_alerts()
+
+    critical = [x for x in incidents if x["severity"] == "CRITIQUE"]
+    high = [x for x in incidents if x["severity"] == "ÉLEVÉ"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Alertes critiques", len(critical))
-    c2.metric("Alertes élevées", len(high))
-    c3.metric("Éléments collectés", len(alerts))
+    c1.metric("Incidents critiques", len(critical))
+    c2.metric("Incidents élevés", len(high))
+    c3.metric("Incidents uniques", len(incidents))
     c4.metric("Sources actives", sum(v.startswith("OK") for v in statuses.values()))
     if critical:
-        st.error("🚨 Des publications classées CRITIQUES ont été détectées. Vérifie leur contenu et leur niveau de confirmation.")
+        st.error("🚨 Au moins un événement est classé CRITIQUE. Vérifie son niveau de confirmation et les conséquences concrètes.")
     elif high:
-        st.warning("⚠️ Des événements à niveau de vigilance élevé ont été détectés.")
+        st.warning("⚠️ Des événements à vigilance élevée sont remontés.")
     else:
-        st.info("Aucune publication n'a été classée critique par les règles actuelles. Cela ne signifie pas qu'il n'existe aucun incident : consulte aussi les sources et les statuts ci-dessous.")
+        st.info("Aucun événement classé critique ou élevé dans les flux collectés. Cela ne garantit pas l'absence d'incident.")
 
-    st.subheader("Priorité immédiate")
-    top = critical + high
-    if top:
-        for start in range(0, min(len(top), 12), 2):
+    # Family sections prevent unrelated topics and repeated company coverage from
+    # being mixed into a single undifferentiated stream.
+    family_order = [
+        "Banques & paiements", "Énergie & eau", "Télécoms & Internet",
+        "Santé & hôpitaux", "Transport & logistique", "Cyber & données",
+        "Autres risques essentiels",
+    ]
+    severity_order = {"CRITIQUE": 0, "ÉLEVÉ": 1, "À SURVEILLER": 2}
+    for family in family_order:
+        family_items = [x for x in incidents if x["category"] == family]
+        if not family_items:
+            continue
+        family_items.sort(key=lambda x: (severity_order.get(x["severity"], 9), x["published"] or datetime.min.replace(tzinfo=timezone.utc)), reverse=False)
+        st.subheader(f"{family} · {len(family_items)} événement(s)")
+        for start in range(0, min(len(family_items), 8), 2):
             cols = st.columns(2, gap="medium")
-            for col, item in zip(cols, top[start:start + 2]):
+            for col, item in zip(cols, family_items[start:start + 2]):
                 with col:
                     _render_alert(item)
-    else:
-        st.caption("Aucune alerte critique ou élevée remontée par les flux consultés.")
+        if len(family_items) > 8:
+            with st.expander(f"Afficher {len(family_items) - 8} autres événements de cette famille"):
+                for item in family_items[8:]:
+                    st.markdown(f"**{item['severity']} — {item['title']}** · {item['country']} · {_fmt_date(item['published'])}")
+                    st.markdown(f"[Lire la source principale]({item['url']})")
 
-    st.subheader("Autres signaux à surveiller")
-    rest = [x for x in alerts if x["severity"] == "À SURVEILLER"]
-    if rest:
-        with st.expander(f"Afficher {len(rest)} autres publications", expanded=False):
-            for item in rest[:30]:
-                st.markdown(f"**{item['title']}** · {item['source']} · {_fmt_date(item['published'])}  ")
-                st.markdown(f"[Lire la source]({item['url']})")
-    with st.expander("Sources et état de collecte", expanded=False):
+    with st.expander("Sources complémentaires et méthode de regroupement", expanded=False):
+        for item in incidents:
+            if item["source_count"] > 1:
+                st.markdown(f"**{item['title']}** — couvert par {item['source_count']} sources")
+                for related in item["related_links"]:
+                    st.markdown(f"- [{related['source']} : {related['title']}]({related['url']})")
+        st.divider()
         for source, status in statuses.items():
             st.write(f"**{source}** — {status}")
         st.caption(
-            "Les niveaux CRITIQUE / ÉLEVÉ sont attribués automatiquement à partir de mots-clés : "
-            "ils servent au tri, pas à certifier un incident. Les alertes des CERT/CISA sont des avis "
-            "de sécurité et ne signifient pas toujours qu'une attaque est en cours. Les informations "
-            "média doivent être corroborées par une source officielle ou plusieurs sources indépendantes."
+            "Regroupement par famille, pays et similarité du titre/résumé. Le nom d'une entreprise "
+            "commun à plusieurs articles ne suffit pas à fusionner deux événements : le sujet doit "
+            "également être similaire. Les niveaux de gravité sont des règles de tri, pas une "
+            "certification officielle. Les médias sont à corroborer."
         )
