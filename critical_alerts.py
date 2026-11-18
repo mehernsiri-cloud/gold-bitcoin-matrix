@@ -324,9 +324,12 @@ def render_critical_alerts_dashboard():
         family_items = [x for x in incidents if x["category"] == family]
         if not family_items:
             continue
-        family_items.sort(key=lambda x: (severity_order.get(x["severity"], 9), -(x["published"].timestamp() if x["published"] else 0)))
-        # Show only the two most important incidents in each family.
-        # Sorting prioritizes severity, then the most recent publication date.
+        # Daily dashboard: newest incidents first; severity breaks date ties.
+        family_items.sort(key=lambda x: (
+            -(x["published"].timestamp() if x["published"] else 0),
+            severity_order.get(x["severity"], 9),
+        ))
+        # Show only the two most recent incidents in each family.
         top_items = family_items[:2]
         st.subheader(f"{family} · {len(top_items)} événement(s) principal(aux)")
         cols = st.columns(2, gap="medium")
