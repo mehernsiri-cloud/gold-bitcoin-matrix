@@ -14,6 +14,7 @@ import streamlit as st
 from bs4 import BeautifulSoup
 
 MIN_PRICE_DEFAULT_TND = 300_000
+MAX_PRICE_TND = 1_000_000
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; NabeulPropertyWatch/1.0)",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
@@ -51,27 +52,37 @@ def _norm(value):
     return "".join(ch for ch in value if not unicodedata.combining(ch))
 
 def _price_tnd(text):
-    """Extract a price in TND; MD is commonly used as thousand dinars."""
-    value = _norm(text).replace("\u202f", " ").replace("\xa0", " ")
+    """Extract a realistic TND price and repair phone-number prefixes.
+
+    Some classifieds concatenate an 8-digit Tunisian phone number with the
+    actual price (e.g. 99958728 + 95000 -> 9995872895000 TND).
+    """
+    value = _norm(text).replace("\\u202f", " ").replace("\\xa0", " ")
     patterns = [
-        r"(\d[\d\s.,]*\d|\d)\s*(?:dt|tnd)\b",
-        r"(\d+(?:[.,]\d+)?)\s*md\b",
+        r"(\\d[\\d\\s.,]*\\d|\\d)\\s*(?:dt|tnd)\\b",
+        r"(\\d+(?:[.,]\\d+)?)\\s*md\\b",
     ]
     for pattern in patterns:
-        match = re.search(pattern, value)
-        if not match:
-            continue
-        raw = match.group(1).replace(" ", "").replace(",", ".")
-        try:
-            number = float(raw)
-            if "md" in match.group(0):
-                number *= 1000
-            else:
+        for match in re.finditer(pattern, value):
+            raw = match.group(1).replace(" ", "").replace(",", ".")
+            try:
+                if "md" in match.group(0):
+                    number = float(raw) * 1000
+                else:
+                    # Strip punctuation only after retaining decimal MD notation.
+                    digits = re.sub(r"\\D", "", raw)
+                    number = int(digits) if digits else 0
+                    # Repair the common Tunisia listing bug: 8 phone digits
+                    # accidentally prepended to a five/six-digit price.
+                    if number > 1_000_000_000 and len(digits) >= 12:
+                        repaired = int(digits[8:])
+                        if 10_000 <= repaired <= MAX_PRICE_TND:
+                            number = repaired
                 number = int(number)
-            if number >= 10_000:
-                return int(number)
-        except ValueError:
-            pass
+                if 10_000 <= number <= MAX_PRICE_TND:
+                    return number
+            except (ValueError, OverflowError):
+                continue
     return None
 
 def _town_from_text(text):
@@ -82,15 +93,22 @@ def _town_from_text(text):
     return None
 
 def _is_eligible(text, sale_context=False):
+    """Keep only houses and villas for sale; reject flats, studios and land."""
     value = _norm(text)
-    sale_terms = ("a vendre", "à vendre", "vente", "for sale", "للبيع", "av ")
-    property_terms = ("maison", "villa", "duplex", "maisonnette", "appartement", "terrain", "immeuble", "دار", "فيلا", "أرض")
-    excluded = ("a louer", "location", "loyer", "rent", "studio a louer", "à louer")
-    return (
-        (sale_context or any(term in value for term in sale_terms))
-        and any(term in value for term in property_terms)
-        and not any(term in value for term in excluded)
+    sale_terms = ("a vendre", "vente", "for sale", "للبيع", "av ")
+    house_villa_terms = (
+        "maison", "maisons", "villa", "villas", "maisonnette",
+        "دار", "فيلا", "فيلات",
     )
+    excluded_terms = (
+        "appartement", "appartements", "appart", "studio", "studios",
+        "terrain", "terrains", "lot de terrain", "land for sale",
+        "ارض", "أرض", "immeuble", "local commercial",
+    )
+    is_sale = sale_context or any(term in value for term in sale_terms)
+    has_house_or_villa = any(term in value for term in house_villa_terms)
+    has_excluded_type = any(term in value for term in excluded_terms)
+    return is_sale and has_house_or_villa and not has_excluded_type
 
 def _candidate_container(anchor):
     node = anchor
@@ -127,7 +145,7 @@ def _extract_cards(html_text, base_url, source):
             continue
         price = _price_tnd(combined)
         town = _town_from_text(combined)
-        if price is None or town is None:
+        if price is None or not (MIN_PRICE_DEFAULT_TND <= price <= MAX_PRICE_TND) or town is None:
             continue
         image_url = ""
         image = card.find("img")
@@ -238,13 +256,13 @@ def _render_listing(item):
 def real_estate_dashboard():
     st.title("🏡 Immobilier – Cap Bon, Tunisie")
     st.markdown(
-        "Agrégation multi-sites des biens **à vendre** dans le gouvernorat de Nabeul : "
-        "maisons, villas, appartements, terrains et immeubles. "
-        "Le filtre démarre à **300 000 TND**, sans plafond de prix."
+        "Agrégation multi-sites des **maisons et villas uniquement** à vendre dans le gouvernorat de Nabeul. "
+        "Les appartements, studios, terrains et immeubles sont exclus. "
+        "Fourchette de prix stricte : **300 000 à 1 000 000 TND**."
     )
     metric_cols = st.columns(3)
-    metric_cols[0].metric("Prix minimum affiché", "300 000 TND")
-    metric_cols[1].metric("Types de biens", "Tous les biens à vendre")
+    metric_cols[0].metric("Prix minimum", "300 000 TND")
+    metric_cols[1].metric("Prix maximum", "1 000 000 TND")
     metric_cols[2].metric("Zone", "Gouvernorat de Nabeul")
 
     with st.sidebar:
@@ -255,12 +273,6 @@ def real_estate_dashboard():
             default=list(COASTAL_TOWNS.keys()),
             key="nabeul_towns",
         )
-        min_price = st.number_input(
-            "Prix minimum (TND)",
-            min_value=0, max_value=10_000_000,
-            value=MIN_PRICE_DEFAULT_TND, step=25_000,
-            key="nabeul_min_price",
-        )
         refresh = st.button("🔄 Actualiser les annonces", use_container_width=True)
     if refresh:
         fetch_listings.clear()
@@ -270,9 +282,12 @@ def real_estate_dashboard():
 
     filtered = [
         item for item in listings
-        if item["town"] in selected_towns and item["price"] >= min_price
+        if item["town"] in selected_towns
+        and MIN_PRICE_DEFAULT_TND <= item["price"] <= MAX_PRICE_TND
     ]
-    st.subheader(f"{len(filtered)} annonce(s) avec photo · prix ≥ {min_price:,.0f} TND".replace(",", " "))
+    st.subheader(
+        f"{len(filtered)} annonce(s) avec photo · 300 000 à 1 000 000 TND"
+    )
     if not filtered:
         st.warning(
             "Aucune annonce avec photo n’a été récupérée pour ces critères. "
@@ -290,7 +305,8 @@ def real_estate_dashboard():
         for source, status in statuses.items():
             st.write(f"**{source}** : {status}")
         st.caption(
-            "Une annonce n'est affichée que si son prix, sa localité et au moins une photo sont détectés. "
+            "Une annonce n'est affichée que si elle correspond à une maison ou villa, si son prix corrigé "
+            "est compris entre 300 000 et 1 000 000 TND, si sa localité et au moins une photo sont détectées. "
             "Les portails peuvent limiter l'accès automatique ; les liens ci-dessous permettent de consulter "
             "leurs résultats directement. Vérifie toujours la disponibilité, le titre foncier et les autorisations."
         )
