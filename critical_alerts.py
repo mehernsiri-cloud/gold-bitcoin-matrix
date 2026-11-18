@@ -258,6 +258,8 @@ def _render_alert(item):
     category = html.escape(item["category"])
     country = html.escape(item["country"])
     confidence = html.escape(item["confidence"])
+    source_count = int(item.get("source_count", 1))
+    source_label = f"{source_count} sources recoupées" if source_count > 1 else "1 source"
     url = html.escape(item["url"], quote=True)
     st.markdown(f"""
     <div style="height:100%;min-height:255px;border:1px solid rgba(128,128,128,.35);
@@ -271,7 +273,7 @@ def _render_alert(item):
       <div style="font-size:16px;font-weight:750;line-height:1.35;margin:12px 0 8px">{title}</div>
       <div style="font-size:13px;opacity:.85;line-height:1.45;flex:1">{summary}</div>
       <div style="font-size:12px;margin-top:12px;opacity:.8">{category} · {country}</div>
-      <div style="font-size:11px;margin:5px 0 10px;opacity:.7">{source} · {confidence}</div>
+      <div style="font-size:11px;margin:5px 0 10px;opacity:.7">{source} · {confidence} · {source_label}</div>
       <a href="{url}" target="_blank" rel="noopener noreferrer"
        style="display:block;text-align:center;padding:8px;border:1px solid rgba(128,128,128,.45);
        border-radius:8px;text-decoration:none;font-weight:650">Lire la source ↗</a>
@@ -322,7 +324,7 @@ def render_critical_alerts_dashboard():
         family_items = [x for x in incidents if x["category"] == family]
         if not family_items:
             continue
-        family_items.sort(key=lambda x: (severity_order.get(x["severity"], 9), x["published"] or datetime.min.replace(tzinfo=timezone.utc)), reverse=False)
+        family_items.sort(key=lambda x: (severity_order.get(x["severity"], 9), -(x["published"].timestamp() if x["published"] else 0)))
         st.subheader(f"{family} · {len(family_items)} événement(s)")
         for start in range(0, min(len(family_items), 8), 2):
             cols = st.columns(2, gap="medium")
