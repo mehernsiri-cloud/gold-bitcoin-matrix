@@ -20,6 +20,49 @@ from typing import List, Dict, Tuple, Optional, Any
 # -------------------------------------------------------------------
 st.set_page_config(page_title="Gold & Bitcoin Dashboard", layout="wide", initial_sidebar_state="expanded")
 
+# -------------------------------------------------------------------
+# PRIVATE DASHBOARD ACCESS
+# Configure the password in Streamlit Cloud > App settings > Secrets:
+# [dashboard]
+# password = "your-long-unique-password"
+# -------------------------------------------------------------------
+def require_dashboard_password():
+    try:
+        expected_password = str(st.secrets["dashboard"]["password"])
+    except Exception:
+        st.error("🔒 Dashboard privé non configuré")
+        st.markdown(
+            "Pour activer l'accès, ajoute dans **Streamlit Cloud → Manage app → Settings → Secrets** :"
+        )
+        st.code('[dashboard]\npassword = "YOUR_LONG_UNIQUE_PASSWORD"', language="toml")
+        st.info("Aucun mot de passe n'est défini dans le code source. Configure le secret ci-dessus pour ouvrir le dashboard.")
+        st.stop()
+
+    if st.session_state.get("dashboard_authenticated", False):
+        with st.sidebar:
+            st.caption("🔒 Accès privé activé")
+            if st.button("Se déconnecter", use_container_width=True):
+                st.session_state["dashboard_authenticated"] = False
+                st.rerun()
+        return
+
+    st.title("🔐 Accès privé")
+    st.markdown("Ce dashboard est réservé aux personnes disposant du mot de passe.")
+    with st.form("dashboard_login_form", clear_on_submit=True):
+        entered_password = st.text_input("Mot de passe", type="password")
+        submitted = st.form_submit_button("Se connecter", use_container_width=True)
+    if submitted:
+        import hmac
+        if hmac.compare_digest(entered_password, expected_password):
+            st.session_state["dashboard_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Mot de passe incorrect.")
+    st.stop()
+
+
+require_dashboard_password()
+
 # --- Optional Auto Refresh Setup ---
 try:
     from streamlit_autorefresh import st_autorefresh
