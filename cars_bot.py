@@ -99,7 +99,7 @@ def _extract_reader_markdown(markdown, source_label):
     rows, seen = [], set()
     # Jina may return absolute or relative Markdown links.
     matches = list(re.finditer(
-        r"\\[([^\\]]+)\\]\\(([^)]+)\\)",
+        r"\[([^\]]+)\]\(([^)]+)\)",
         markdown, re.I
     ))
     listing_matches = []
@@ -112,13 +112,13 @@ def _extract_reader_markdown(markdown, source_label):
             continue
         block_end = listing_matches[index + 1][0].start() if index + 1 < len(listing_matches) else len(markdown)
         block = markdown[match.start():block_end]
-        combined = re.sub(r"\\s+", " ", match.group(1) + " " + block).strip()
+        combined = re.sub(r"\s+", " ", match.group(1) + " " + block).strip()
         # Keep a result if its title or card identifies the RAV4; listing URL can be opaque.
-        if not re.search(r"RAV\\s*4|RAV4|TOYOTA", combined, re.I):
+        if not re.search(r"RAV\s*4|RAV4|TOYOTA", combined, re.I):
             continue
-        price = _number(r"([\\d\\s\\u202f]+)\\s*€", combined)
-        mileage = _number(r"([\\d\\s\\u202f]+)\\s*km", combined)
-        year = _number(r"\\b(20[0-2]\\d|19\\d\\d)\\b", combined)
+        price = _number(r"([\d\s\u202f]+)\s*€", combined)
+        mileage = _number(r"([\d\s\u202f]+)\s*km", combined)
+        year = _number(r"\b(20[0-2]\d|19\d\d)\b", combined)
         # Some rendered cards put price and mileage in separate neighboring lines;
         # accept only complete cards to avoid fabricating values.
         if not price or not mileage:
