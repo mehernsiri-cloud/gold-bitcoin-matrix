@@ -17,6 +17,10 @@ HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
 }
 MAX_PRICE_DEFAULT = 50000
+MIN_YEAR_DEFAULT = 2024
+MAX_KM_DEFAULT = 50000
+POSTAL_CODE = "78140"
+SEARCH_RADIUS_KM = 100
 
 
 def _number(pattern, text, cast=int):
@@ -182,17 +186,17 @@ def _render_car(car):
 
 def cars_dashboard():
     st.title("🚗 Cars – La Centrale")
-    st.markdown("Suivi des annonces d’occasion **Toyota RAV4**, avec priorité aux versions hybrides et AWD-i. Budget maximum : **50 000 €**.")
+    st.markdown("Suivi des annonces d’occasion **Toyota RAV4**, avec priorité aux versions hybrides et AWD-i. Recherche **RAV4 hybride rechargeable**, jusqu’à **50 000 €**, à partir de **2024**, **50 000 km maximum**, code postal **78140** (rayon **100 km**).")
     c1, c2, c3 = st.columns(3)
     c1.metric("Budget maximum", "50 000 €")
-    c2.metric("Modèle prioritaire", "Toyota RAV4")
-    c3.metric("Boîte", "Automatique")
+    c2.metric("Recherche", "RAV4 PHEV · 2024+")
+    c3.metric("Zone", "78140 · 100 km")
 
     with st.sidebar:
         st.markdown("### Filtres Cars")
         max_price = st.number_input("Budget maximum (€)", min_value=10000, max_value=100000, value=MAX_PRICE_DEFAULT, step=1000, key="cars_max_price_v2")
-        max_km = st.number_input("Kilométrage maximum", min_value=10000, max_value=300000, value=180000, step=10000, key="cars_max_km")
-        min_year = st.number_input("Année minimum", min_value=2005, max_value=datetime.now().year, value=2016, step=1, key="cars_min_year")
+        max_km = st.number_input("Kilométrage maximum", min_value=10000, max_value=300000, value=MAX_KM_DEFAULT, step=5000, key="cars_max_km_v2")
+        min_year = st.number_input("Année minimum", min_value=2005, max_value=datetime.now().year, value=MIN_YEAR_DEFAULT, step=1, key="cars_min_year_v2")
         only_awd = st.checkbox("Prioriser / filtrer les 4x4 AWD-i", value=False, key="cars_only_awd")
         refresh = st.button("🔄 Actualiser les annonces", use_container_width=True, key="cars_refresh")
     if refresh:
@@ -200,7 +204,7 @@ def cars_dashboard():
 
     with st.spinner("Récupération des annonces Toyota RAV4 sur La Centrale…"):
         listings, statuses = fetch_cars()
-    filtered = [x for x in listings if x["price"] <= max_price and x["mileage"] <= max_km and (not x["year"] or x["year"] >= min_year)]
+    filtered = [x for x in listings if x["price"] <= max_price and x["mileage"] <= max_km and x["year"] is not None and x["year"] >= min_year and x["energy"] == "Hybride rechargeable"]
     if only_awd:
         filtered = [x for x in filtered if "4x4 / AWD-i" in x["drivetrain"]]
     # Keep RAV4 listings under budget; order by AWD-i relevance then year/mileage.
