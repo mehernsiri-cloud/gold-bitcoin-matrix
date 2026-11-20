@@ -93,7 +93,7 @@ def _extract_reader_markdown(markdown, source_label):
     """Parse text-rendered result pages where listing details may span several lines."""
     rows, seen = [], set()
     matches = list(re.finditer(
-        r"\\[([^\\]]+)\\]\\((https?://[^)]+auto-occasion-annonce-[^)]+)\\)",
+        r"\[([^\]]+)\]\((https?://[^)]+auto-occasion-annonce-[^)]+)\)",
         markdown, re.I
     ))
     for index, match in enumerate(matches):
@@ -101,12 +101,12 @@ def _extract_reader_markdown(markdown, source_label):
         if href in seen:
             continue
         block_end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
-        combined = re.sub(r"\\s+", " ", title + " " + markdown[match.start():block_end]).strip()
-        if not re.search(r"RAV\\s*4|RAV4", combined, re.I):
+        combined = re.sub(r"\s+", " ", title + " " + markdown[match.start():block_end]).strip()
+        if not re.search(r"RAV\s*4|RAV4", combined, re.I):
             continue
-        price = _number(r"([\\d\\s\\u202f]+)\\s*€", combined)
-        mileage = _number(r"([\\d\\s\\u202f]+)\\s*km", combined)
-        year = _number(r"\\b(20[0-2]\\d|19\\d\\d)\\b", combined)
+        price = _number(r"([\d\s\u202f]+)\s*€", combined)
+        mileage = _number(r"([\d\s\u202f]+)\s*km", combined)
+        year = _number(r"\b(20[0-2]\d|19\d\d)\b", combined)
         if not price or not mileage:
             continue
         seen.add(href)
