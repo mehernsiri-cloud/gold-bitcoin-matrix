@@ -86,20 +86,71 @@ def _extract(html, source_label):
     return rows
 
 
+def _extract_reader_markdown(markdown, source_label):
+    """Fallback parser for a text-rendered copy of the public search page."""
+    rows, seen = [], set()
+    for line in markdown.splitlines():
+        links = re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", line)
+        for title, href in links:
+            if "auto-occasion-annonce-" not in href or href in seen:
+                continue
+            combined = re.sub(r"\s+", " ", title + " " + line).strip()
+            if not re.search(r"RAV\s*4|RAV4", combined, re.I):
+                continue
+            price = _number(r"([\d\s\u202f]+)\s*€", combined)
+            mileage = _number(r"([\d\s\u202f]+)\s*km", combined)
+            year = _number(r"\b(20[0-2]\d|19\d\d)\b", combined)
+            if not price or not mileage:
+                continue
+            seen.add(href)
+            lower = combined.lower()
+            rows.append({
+                "title": title[:180], "price": price, "mileage": mileage,
+                "year": year,
+                "energy": "Hybride rechargeable" if ("rechargeable" in lower or "phev" in lower or "306" in lower) else "Hybride",
+                "drivetrain": "4x4 / AWD-i" if re.search(r"4x4|awd.?i|4 roues motrices", lower) else "Non précisé / 2 roues motrices",
+                "url": href, "image": "", "source": source_label + " (lecture texte)",
+                "details": combined[:450],
+            })
+    return rows
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_cars():
     cars, statuses = [], {}
     for label, url in SEARCHES.items():
+        direct_error = None
         try:
             response = requests.get(url, headers=HEADERS, timeout=(6, 20))
             response.raise_for_status()
             extracted = _extract(response.text, label)
             cars.extend(extracted)
-            statuses[label] = f"Page accessible · {len(extracted)} annonce(s) extraite(s)"
+            if extracted:
+                statuses[label] = f"OK · {len(extracted)} annonce(s) extraite(s) via HTML"
+                continue
+            statuses[label] = f"HTML reçu (HTTP {response.status_code}) mais aucune carte reconnue"
         except requests.RequestException as exc:
-            statuses[label] = f"Accès refusé ou indisponible · {type(exc).__name__}"
-        except Exception as exc:
-            statuses[label] = f"Erreur d’extraction · {type(exc).__name__}"
+            direct_error = exc
+            code = getattr(getattr(exc, "response", None), "status_code", None)
+            statuses[label] = f"Accès direct échoué (HTTP {code if code else 'réseau'})"
+
+        # Fallback: fetch a text-rendered public page; no credentials or session cookies.
+        try:
+            reader_url = "https://r.jina.ai/" + url
+            reader = requests.get(reader_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "text/plain"}, timeout=(8, 30))
+            reader.raise_for_status()
+            extracted = _extract_reader_markdown(reader.text, label)
+            cars.extend(extracted)
+            statuses[label] = (
+                f"Repli texte · {len(extracted)} annonce(s) extraite(s)"
+                if extracted else
+                f"Repli texte accessible (HTTP {reader.status_code}) · aucune annonce reconnue"
+            )
+        except requests.RequestException as fallback_exc:
+            code = getattr(getattr(fallback_exc, "response", None), "status_code", None)
+            previous = statuses.get(label, "Accès direct échoué")
+            statuses[label] = f"{previous} · repli texte indisponible (HTTP {code if code else 'réseau'})"
+
     unique = {}
     for car in cars:
         unique.setdefault(car["url"], car)
@@ -162,7 +213,7 @@ def cars_dashboard():
                 with col:
                     _render_car(car)
     else:
-        st.warning("Aucune annonce n’a été extraite pour le moment. La Centrale peut bloquer l’accès automatisé ou modifier sa page. Les liens de recherche directs restent accessibles ci-dessous.")
+        st.warning("Aucune annonce n’a pu être récupérée automatiquement. Consulte les recherches La Centrale directement ; le statut ci-dessus précise si le site ou la méthode de repli a refusé l’accès.")
     with st.expander("État des recherches automatiques", expanded=True):
         for label, status in statuses.items():
             st.write(f"**{label}** : {status}")
