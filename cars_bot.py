@@ -8,9 +8,14 @@ import streamlit as st
 from bs4 import BeautifulSoup
 
 BASE = "https://www.lacentrale.fr"
-SEARCHES = {
-    "RAV4 hybride rechargeable": f"{BASE}/voiture-occasion/hybride_rechargeable/modele-toyota-rav%2B4.html",
-}
+SEARCH_URL = (
+    f"{BASE}/listing?customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE"
+    "&dptCp=78140&energies=plug_hyb"
+    "&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL"
+    "&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204"
+    "&mileageMax=50000&priceMax=50000&yearMin=2024"
+)
+SEARCHES = {"RAV4 rechargeable · critères La Centrale": SEARCH_URL}
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
@@ -90,30 +95,40 @@ def _extract(html, source_label):
 
 
 def _extract_reader_markdown(markdown, source_label):
-    """Parse text-rendered result pages where listing details may span several lines."""
+    """Extract listing cards from Jina's text rendering; details may span multiple lines."""
     rows, seen = [], set()
+    # Jina may return absolute or relative Markdown links.
     matches = list(re.finditer(
-        r"\[([^\]]+)\]\((https?://[^)]+auto-occasion-annonce-[^)]+)\)",
+        r"\\[([^\\]]+)\\]\\(([^)]+)\\)",
         markdown, re.I
     ))
-    for index, match in enumerate(matches):
-        title, href = match.group(1).strip(), match.group(2).strip()
+    listing_matches = []
+    for match in matches:
+        href = urljoin(BASE, match.group(2).strip())
+        if "auto-occasion-annonce-" in href:
+            listing_matches.append((match, href))
+    for index, (match, href) in enumerate(listing_matches):
         if href in seen:
             continue
-        block_end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
-        combined = re.sub(r"\s+", " ", title + " " + markdown[match.start():block_end]).strip()
-        if not re.search(r"RAV\s*4|RAV4", combined, re.I):
+        block_end = listing_matches[index + 1][0].start() if index + 1 < len(listing_matches) else len(markdown)
+        block = markdown[match.start():block_end]
+        combined = re.sub(r"\\s+", " ", match.group(1) + " " + block).strip()
+        # Keep a result if its title or card identifies the RAV4; listing URL can be opaque.
+        if not re.search(r"RAV\\s*4|RAV4|TOYOTA", combined, re.I):
             continue
-        price = _number(r"([\d\s\u202f]+)\s*€", combined)
-        mileage = _number(r"([\d\s\u202f]+)\s*km", combined)
-        year = _number(r"\b(20[0-2]\d|19\d\d)\b", combined)
+        price = _number(r"([\\d\\s\\u202f]+)\\s*€", combined)
+        mileage = _number(r"([\\d\\s\\u202f]+)\\s*km", combined)
+        year = _number(r"\\b(20[0-2]\\d|19\\d\\d)\\b", combined)
+        # Some rendered cards put price and mileage in separate neighboring lines;
+        # accept only complete cards to avoid fabricating values.
         if not price or not mileage:
             continue
         seen.add(href)
         lower = combined.lower()
         rows.append({
-            "title": title[:180], "price": price, "mileage": mileage, "year": year,
-            "energy": "Hybride rechargeable" if ("rechargeable" in lower or "phev" in lower or "306" in lower) else "Hybride",
+            "title": match.group(1).strip()[:180] or "Toyota RAV4 hybride rechargeable",
+            "price": price, "mileage": mileage, "year": year,
+            "energy": "Hybride rechargeable" if ("rechargeable" in lower or "phev" in lower or "plug-in" in lower or "plug_hyb" in lower or "306" in lower) else "Hybride",
             "drivetrain": "4x4 / AWD-i" if re.search(r"4x4|awd.?i|4 roues motrices", lower) else "Non précisé / 2 roues motrices",
             "url": href, "image": "", "source": source_label + " (lecture texte)",
             "details": combined[:450],
