@@ -98,6 +98,12 @@ except Exception:
     def real_estate_dashboard():
         st.warning("real_estate_bot not found — Real Estate Bot unavailable.")
 
+try:
+    from cars_bot import cars_dashboard
+except Exception as cars_import_error:
+    def cars_dashboard():
+        st.warning(f"Cars menu unavailable: {cars_import_error}")
+
 from newsletter_app import newsletter_dashboard
 
 from market_forecast import render_market_forecast_dashboard
@@ -802,7 +808,7 @@ def generate_summary(asset_df: pd.DataFrame, asset_name: str) -> str:
 # -------------------------------------------------------------------
 menu = st.sidebar.radio(
     "📊 Navigation principale",
-    ["🚨 Critical Alerts", "Financial Intelligence", "Gold & Bitcoin & Devises", "Jobs", "Real Estate Bot", "Newsletter"],
+    ["🚨 Critical Alerts", "Financial Intelligence", "Gold & Bitcoin & Devises", "Jobs", "Real Estate Bot", "Cars", "Newsletter"],
     index=0
 )
 
@@ -845,6 +851,15 @@ elif menu == "Real Estate Bot":
         real_estate_dashboard()
     except Exception as e:
         st.error(f"Error running real_estate_dashboard(): {e}")
+# -------------------------------------------------------------------
+# CARS MENU
+# -------------------------------------------------------------------
+elif menu == "Cars":
+    try:
+        cars_dashboard()
+    except Exception as e:
+        st.error(f"Error running cars_dashboard(): {e}")
+
 # Newesletter
 # -------------------------------------------------------------------
 elif menu == "Newsletter":
