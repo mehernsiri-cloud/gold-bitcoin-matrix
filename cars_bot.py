@@ -204,6 +204,7 @@ def _render_car(car):
 def cars_dashboard():
     st.title("🚗 Cars – La Centrale")
     st.markdown("Suivi des annonces d’occasion **Toyota RAV4**, avec priorité aux versions hybrides et AWD-i. Recherche **RAV4 hybride rechargeable**, jusqu’à **50 000 €**, à partir de **2024**, **50 000 km maximum**, code postal **78140** (rayon **100 km**).")
+    st.link_button("Ouvrir directement la recherche La Centrale avec ces filtres ↗", SEARCH_URL, use_container_width=True)
     c1, c2, c3 = st.columns(3)
     c1.metric("Budget maximum", "50 000 €")
     c2.metric("Recherche", "RAV4 PHEV · 2024+")
