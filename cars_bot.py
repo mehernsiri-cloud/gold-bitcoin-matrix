@@ -16,7 +16,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
 }
-MAX_PRICE_DEFAULT = 45000
+MAX_PRICE_DEFAULT = 50000
 
 
 def _number(pattern, text, cast=int):
@@ -182,15 +182,15 @@ def _render_car(car):
 
 def cars_dashboard():
     st.title("🚗 Cars – La Centrale")
-    st.markdown("Suivi des annonces d’occasion **Toyota RAV4**, avec priorité aux versions hybrides et AWD-i. Budget maximum : **45 000 €**.")
+    st.markdown("Suivi des annonces d’occasion **Toyota RAV4**, avec priorité aux versions hybrides et AWD-i. Budget maximum : **50 000 €**.")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Budget maximum", "45 000 €")
+    c1.metric("Budget maximum", "50 000 €")
     c2.metric("Modèle prioritaire", "Toyota RAV4")
     c3.metric("Boîte", "Automatique")
 
     with st.sidebar:
         st.markdown("### Filtres Cars")
-        max_price = st.number_input("Budget maximum (€)", min_value=10000, max_value=100000, value=MAX_PRICE_DEFAULT, step=1000, key="cars_max_price")
+        max_price = st.number_input("Budget maximum (€)", min_value=10000, max_value=100000, value=MAX_PRICE_DEFAULT, step=1000, key="cars_max_price_v2")
         max_km = st.number_input("Kilométrage maximum", min_value=10000, max_value=300000, value=180000, step=10000, key="cars_max_km")
         min_year = st.number_input("Année minimum", min_value=2005, max_value=datetime.now().year, value=2016, step=1, key="cars_min_year")
         only_awd = st.checkbox("Prioriser / filtrer les 4x4 AWD-i", value=False, key="cars_only_awd")
