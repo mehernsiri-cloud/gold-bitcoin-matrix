@@ -100,9 +100,9 @@ except Exception:
 
 try:
     from cars_bot import cars_dashboard
-except Exception as cars_import_error:
+except Exception:
     def cars_dashboard():
-        st.warning(f"Cars menu unavailable: {cars_import_error}")
+        st.warning("Cars menu unavailable: cars_bot.py could not be imported.")
 
 from newsletter_app import newsletter_dashboard
 
