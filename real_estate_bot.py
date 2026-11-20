@@ -57,10 +57,10 @@ def _price_tnd(text):
     Some classifieds concatenate an 8-digit Tunisian phone number with the
     actual price (e.g. 99958728 + 95000 -> 9995872895000 TND).
     """
-    value = _norm(text).replace("\\u202f", " ").replace("\\xa0", " ")
+    value = _norm(text).replace("\u202f", " ").replace("\xa0", " ")
     patterns = [
-        r"(\\d[\\d\\s.,]*\\d|\\d)\\s*(?:dt|tnd)\\b",
-        r"(\\d+(?:[.,]\\d+)?)\\s*md\\b",
+        r"(\d[\d\s.,]*\d|\d)\s*(?:dt|tnd)\b",
+        r"(\d+(?:[.,]\d+)?)\s*md\b",
     ]
     for pattern in patterns:
         for match in re.finditer(pattern, value):
@@ -70,7 +70,7 @@ def _price_tnd(text):
                     number = float(raw) * 1000
                 else:
                     # Strip punctuation only after retaining decimal MD notation.
-                    digits = re.sub(r"\\D", "", raw)
+                    digits = re.sub(r"\D", "", raw)
                     number = int(digits) if digits else 0
                     # Repair the common Tunisia listing bug: 8 phone digits
                     # accidentally prepended to a five/six-digit price.
