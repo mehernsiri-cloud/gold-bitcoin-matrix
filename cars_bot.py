@@ -9,7 +9,6 @@ from bs4 import BeautifulSoup
 
 BASE = "https://www.lacentrale.fr"
 SEARCHES = {
-    "RAV4 hybride": f"{BASE}/voiture-occasion/hybride/modele-toyota-rav%2B4.html",
     "RAV4 hybride rechargeable": f"{BASE}/voiture-occasion/hybride_rechargeable/modele-toyota-rav%2B4.html",
 }
 HEADERS = {
@@ -91,31 +90,34 @@ def _extract(html, source_label):
 
 
 def _extract_reader_markdown(markdown, source_label):
-    """Fallback parser for a text-rendered copy of the public search page."""
+    """Parse text-rendered result pages where listing details may span several lines."""
     rows, seen = [], set()
-    for line in markdown.splitlines():
-        links = re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", line)
-        for title, href in links:
-            if "auto-occasion-annonce-" not in href or href in seen:
-                continue
-            combined = re.sub(r"\s+", " ", title + " " + line).strip()
-            if not re.search(r"RAV\s*4|RAV4", combined, re.I):
-                continue
-            price = _number(r"([\d\s\u202f]+)\s*€", combined)
-            mileage = _number(r"([\d\s\u202f]+)\s*km", combined)
-            year = _number(r"\b(20[0-2]\d|19\d\d)\b", combined)
-            if not price or not mileage:
-                continue
-            seen.add(href)
-            lower = combined.lower()
-            rows.append({
-                "title": title[:180], "price": price, "mileage": mileage,
-                "year": year,
-                "energy": "Hybride rechargeable" if ("rechargeable" in lower or "phev" in lower or "306" in lower) else "Hybride",
-                "drivetrain": "4x4 / AWD-i" if re.search(r"4x4|awd.?i|4 roues motrices", lower) else "Non précisé / 2 roues motrices",
-                "url": href, "image": "", "source": source_label + " (lecture texte)",
-                "details": combined[:450],
-            })
+    matches = list(re.finditer(
+        r"\\[([^\\]]+)\\]\\((https?://[^)]+auto-occasion-annonce-[^)]+)\\)",
+        markdown, re.I
+    ))
+    for index, match in enumerate(matches):
+        title, href = match.group(1).strip(), match.group(2).strip()
+        if href in seen:
+            continue
+        block_end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        combined = re.sub(r"\\s+", " ", title + " " + markdown[match.start():block_end]).strip()
+        if not re.search(r"RAV\\s*4|RAV4", combined, re.I):
+            continue
+        price = _number(r"([\\d\\s\\u202f]+)\\s*€", combined)
+        mileage = _number(r"([\\d\\s\\u202f]+)\\s*km", combined)
+        year = _number(r"\\b(20[0-2]\\d|19\\d\\d)\\b", combined)
+        if not price or not mileage:
+            continue
+        seen.add(href)
+        lower = combined.lower()
+        rows.append({
+            "title": title[:180], "price": price, "mileage": mileage, "year": year,
+            "energy": "Hybride rechargeable" if ("rechargeable" in lower or "phev" in lower or "306" in lower) else "Hybride",
+            "drivetrain": "4x4 / AWD-i" if re.search(r"4x4|awd.?i|4 roues motrices", lower) else "Non précisé / 2 roues motrices",
+            "url": href, "image": "", "source": source_label + " (lecture texte)",
+            "details": combined[:450],
+        })
     return rows
 
 
@@ -216,8 +218,10 @@ def cars_dashboard():
             for col, car in zip(cols, filtered[start:start + 3]):
                 with col:
                     _render_car(car)
+    elif not listings:
+        st.warning("La Centrale n’a transmis aucune annonce exploitable au scraper. Cela ne signifie pas qu’il n’existe aucune annonce : vérifie l’état d’accès ci-dessous ou ouvre la recherche La Centrale.")
     else:
-        st.warning("Aucune annonce n’a pu être récupérée automatiquement. Consulte les recherches La Centrale directement ; le statut ci-dessus précise si le site ou la méthode de repli a refusé l’accès.")
+        st.info(f"{len(listings)} annonce(s) récupérée(s), mais aucune ne passe les filtres locaux (année, énergie, prix ou kilométrage).")
     with st.expander("État des recherches automatiques", expanded=True):
         for label, status in statuses.items():
             st.write(f"**{label}** : {status}")
