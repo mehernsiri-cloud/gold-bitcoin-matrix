@@ -20,7 +20,7 @@ HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
 }
 COASTAL_TOWNS = {
-    "Nabeul": ["nabeul"],
+    "Nabeul": ["nabeul", "bir chalouf", "sidi el mahrsi", "sidi mahrsi", "sidi mahersi"],
     "Hammamet": ["hammamet", "yasmine hammamet", "hammamet sud", "hammamet nord"],
     "Kélibia": ["kelibia", "kélibia", "mansourah", "dar allouche", "kerkouane"],
     "Korba": ["korba"],
@@ -111,15 +111,20 @@ def _is_eligible(text, sale_context=False):
     return is_sale and has_house_or_villa and not has_excluded_type
 
 def _candidate_container(anchor):
+    """Find the complete listing card, not just the title link wrapper."""
     node = anchor
-    for _ in range(5):
-        if node is None or getattr(node, "parent", None) is None:
+    best = anchor.parent or anchor
+    for _ in range(9):
+        if node is None:
             break
         text = node.get_text(" ", strip=True)
-        if 45 <= len(text) <= 1400:
-            return node
-        node = node.parent
-    return anchor.parent or anchor
+        if 45 <= len(text) <= 2600:
+            best = node
+            # A real card normally contains both a price and location/details.
+            if _price_tnd(text) is not None and len(text) >= 90:
+                return node
+        node = getattr(node, "parent", None)
+    return best
 
 def _extract_cards(html_text, base_url, source):
     soup = BeautifulSoup(html_text, "html.parser")
@@ -131,7 +136,7 @@ def _extract_cards(html_text, base_url, source):
             continue
         if source == "Tayara" and "/item/maisons-et-villas/" not in href:
             continue
-        if source != "Tayara" and not any(x in href.lower() for x in ("/annonce", "/bien", "/vente/", "/maison", "/villa", "/property", "/listing", "/immobilier")):
+        if source != "Tayara" and not any(x in href.lower() for x in ("/annonce", "/bien", "/vente/", "/maison", "/villa", "/property", "/listing", "/immobilier", "/fr/a/")):
             continue
         seen.add(href)
         card = _candidate_container(anchor)
@@ -158,12 +163,12 @@ def _extract_cards(html_text, base_url, source):
             if not image_url and image.get("srcset"):
                 image_url = image["srcset"].split(",")[0].strip().split(" ")[0]
         if not image_url:
-            og = card.find("meta", property="og:image") or soup.find("meta", property="og:image")
+            og = card.find("meta", property="og:image")
             if og:
                 image_url = og.get("content", "")
         image_url = urljoin(base_url, image_url) if image_url else ""
-        if not image_url or image_url.startswith("data:"):
-            continue
+        if image_url.startswith("data:"):
+            image_url = ""
         found.append({
             "title": title[:180], "town": town, "price": price,
             "url": href, "source": source, "image": image_url,
@@ -225,8 +230,7 @@ def _render_listing(item):
             margin-bottom:16px; background:var(--secondary-background-color);
         ">
           <div style="height:180px; min-height:180px; overflow:hidden; background:rgba(128,128,128,.12)">
-            <img src="{image_url}" alt="Photo du bien"
-                 style="width:100%;height:180px;object-fit:cover;display:block">
+            {f'<img src="{image_url}" alt="Photo du bien" style="width:100%;height:180px;object-fit:cover;display:block">' if image_url else '<div style="height:180px;display:flex;align-items:center;justify-content:center;opacity:.65">Photo non disponible</div>'}
           </div>
           <div style="padding:13px;display:flex;flex:1;min-height:0;flex-direction:column">
             <div style="
@@ -285,14 +289,15 @@ def real_estate_dashboard():
         if item["town"] in selected_towns
         and MIN_PRICE_DEFAULT_TND <= item["price"] <= MAX_PRICE_TND
     ]
+    with_photo = sum(1 for item in filtered if item.get("image"))
     st.subheader(
-        f"{len(filtered)} annonce(s) avec photo · 300 000 à 1 000 000 TND"
+        f"{len(filtered)} annonce(s) · {with_photo} avec photo · 300 000 à 1 000 000 TND"
     )
     if not filtered:
         st.warning(
-            "Aucune annonce avec photo n’a été récupérée pour ces critères. "
-            "Cela ne signifie pas qu’il n’existe aucun bien : certains portails bloquent "
-            "l’extraction automatique ou chargent les annonces par JavaScript."
+            "Aucune annonce n’a été extraite automatiquement pour ces critères. "
+            "Consulte les liens directs des portails ci-dessous : certains chargent leurs annonces "
+            "par JavaScript ou modifient régulièrement leur structure."
         )
     else:
         for start in range(0, len(filtered), 3):
@@ -305,8 +310,8 @@ def real_estate_dashboard():
         for source, status in statuses.items():
             st.write(f"**{source}** : {status}")
         st.caption(
-            "Une annonce n'est affichée que si elle correspond à une maison ou villa, si son prix corrigé "
-            "est compris entre 300 000 et 1 000 000 TND, si sa localité et au moins une photo sont détectées. "
+            "Une annonce est affichée si elle correspond à une maison ou villa, si son prix corrigé "
+            "est compris entre 300 000 et 1 000 000 TND et si sa localité est détectée. La photo est facultative. "
             "Les portails peuvent limiter l'accès automatique ; les liens ci-dessous permettent de consulter "
             "leurs résultats directement. Vérifie toujours la disponibilité, le titre foncier et les autorisations."
         )
