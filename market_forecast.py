@@ -635,6 +635,25 @@ def render_market_forecast_dashboard() -> None:
 
             st.plotly_chart(_forecast_chart({**display_result, "asset": asset, "unit": display_unit, "color": market["color"]}), use_container_width=True)
 
+            st.caption(f"Modèle : {result.get('model_version', 'legacy')} · Régime détecté : {result.get('regime', 'N/D')} · Calibration indépendante par actif et horizon")
+            performance = _metrics_for_asset(asset)
+            st.subheader("Précision historique des prévisions")
+            if performance.empty:
+                st.info("Pas encore assez de prévisions v2 arrivées à échéance pour mesurer la précision. Les anciennes prévisions sont conservées, mais ne contaminent pas la calibration du nouveau modèle.")
+            else:
+                display_performance = performance.copy()
+                display_performance["directional_accuracy"] = (display_performance["directional_accuracy"] * 100).round(1)
+                display_performance = display_performance.rename(columns={
+                    "horizon_days": "Horizon (jours)",
+                    "forecasts": "Prévisions évaluées",
+                    "mape_pct": "Erreur absolue moyenne (%)",
+                    "rmse_pct": "RMSE (%)",
+                    "naive_mape_pct": "Référence naïve (%)",
+                    "directional_accuracy": "Direction correcte (%)",
+                })
+                st.dataframe(display_performance.round(2), use_container_width=True, hide_index=True)
+                st.caption("La référence naïve suppose que le prix futur reste égal au cours initial. Une erreur inférieure à cette référence indique une amélioration mesurée.")
+
 
     st.divider()
     from newsletter_app import fx_chf_page
