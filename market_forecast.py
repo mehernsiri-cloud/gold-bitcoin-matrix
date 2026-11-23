@@ -21,6 +21,8 @@ import streamlit as st
 import yaml
 import yfinance as yf
 
+from forecast_engine import MODEL_VERSION, build_adaptive_forecast
+
 DATA_DIR = Path("data")
 FORECAST_FILE = DATA_DIR / "market_forecasts.csv"
 WEIGHT_FILE = Path("weight.yaml")
@@ -162,6 +164,8 @@ def _daily_resolved_sample(asset: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     done = df[(df["asset"] == asset) & (df["status"] == "resolved")].copy()
+    if "model_version" in done.columns:
+        done = done[done["model_version"].astype(str) == MODEL_VERSION].copy()
     if done.empty:
         return done
     done["issued_at"] = pd.to_datetime(done["issued_at"], errors="coerce", utc=True)
@@ -172,95 +176,30 @@ def _daily_resolved_sample(asset: str) -> pd.DataFrame:
 
 
 def _calibration_for_asset(asset: str) -> dict:
-    """Estimate historical directional bias by horizon; require 20 distinct days."""
+    """Calibrate each horizon from matured v2 forecasts only."""
     sample = _daily_resolved_sample(asset)
     result = {}
     if sample.empty:
         return result
     sample["error_pct"] = pd.to_numeric(sample["error_pct"], errors="coerce")
+    sample["actual_price"] = pd.to_numeric(sample["actual_price"], errors="coerce")
+    sample["predicted_price"] = pd.to_numeric(sample["predicted_price"], errors="coerce")
     for horizon, group in sample.groupby("horizon_days"):
-        errors = group["error_pct"].dropna()
-        bias = float(errors.mean()) / 100 if not errors.empty else 0.0
-        result[int(horizon)] = {"bias": bias, "sample": int(len(errors))}
+        group = group.dropna(subset=["error_pct", "actual_price", "predicted_price"]).sort_values("issued_at").tail(90)
+        errors = group["error_pct"].to_numpy(dtype=float)
+        residuals = ((group["actual_price"] / group["predicted_price"] - 1.0) * 100.0).to_numpy(dtype=float)
+        result[int(horizon)] = {
+            "bias_pct": float(np.mean(errors)) if len(errors) else 0.0,
+            "sample": int(len(errors)),
+            "residuals_pct": residuals.tolist(),
+        }
     return result
 
 
 def build_forecast(asset: str, current_price: float, history: pd.DataFrame, macro: dict) -> dict:
-    """Explainable ensemble: momentum, trend, mean reversion and macro score."""
-    hist = history.copy().sort_values("timestamp")
-    close = pd.to_numeric(hist["close"], errors="coerce").dropna()
-    returns = np.log(close / close.shift(1)).replace([np.inf, -np.inf], np.nan).dropna()
-    if len(close) < 60 or len(returns) < 40:
-        raise RuntimeError(f"Historique insuffisant pour {asset}: {len(close)} séances, 60 minimum recommandées.")
-
-    sma20 = float(close.tail(20).mean())
-    sma50 = float(close.tail(50).mean())
-    sma200 = float(close.tail(200).mean()) if len(close) >= 200 else float(close.mean())
-    rsi_delta = close.diff()
-    gains = rsi_delta.clip(lower=0).rolling(14).mean().iloc[-1]
-    losses = (-rsi_delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-    rsi = 50.0 if pd.isna(gains) or pd.isna(losses) else (100.0 if losses == 0 and gains > 0 else 50.0 if losses == 0 else float(100 - 100 / (1 + gains / losses)))
-
-    momentum_10 = float(returns.tail(10).mean())
-    momentum_20 = float(returns.tail(20).mean())
-    trend_20_50 = float(np.log(max(sma20, 1e-9) / max(sma50, 1e-9)) / 20)
-    mean_reversion = _clip(-np.log(max(current_price, 1e-9) / max(sma20, 1e-9)) * 0.04 / 20, -0.002, 0.002)
-    vol20 = float(returns.tail(20).std())
-    vol60 = float(returns.tail(60).std())
-    daily_vol = max(vol20 if np.isfinite(vol20) else 0.0, 0.002)
-
-    # Macro values are pre-normalized, asset-weighted contributions refreshed by update_weights.py.
-    macro_total = float(sum(macro.values())) if macro else 0.0
-    macro_daily = _clip(macro_total * 0.0015, -0.001, 0.001)
-    momentum_component = _clip(0.55 * momentum_10 + 0.45 * momentum_20, -0.004, 0.004)
-    trend_component = _clip(trend_20_50, -0.003, 0.003)
-    drift = _clip(
-        0.35 * momentum_component + 0.30 * trend_component
-        + 0.20 * mean_reversion + 0.15 * macro_daily,
-        -0.004, 0.004,
-    )
-
-    factors = {
-        "Momentum 10–20 séances": momentum_component,
-        "Tendance SMA20/SMA50": trend_component,
-        "Retour vers moyenne SMA20": mean_reversion,
-        "Facteurs macro pondérés": macro_daily,
-        "RSI 14": (rsi - 50.0) / 50.0,
-        "Volatilité 20 séances": daily_vol,
-    }
-    for macro_name, macro_value in macro.items():
-        factors[f"Macro · {macro_name}"] = float(macro_value)
+    """Compatibility wrapper around the v2 asset-specific adaptive ensemble."""
     calibration = _calibration_for_asset(asset)
-    forecasts = []
-    for horizon in HORIZONS:
-        expected = float(current_price * np.exp(drift * horizon))
-        band = 1.2816 * daily_vol * np.sqrt(horizon)
-        calibration_row = calibration.get(horizon, {"bias": 0.0, "sample": 0})
-        # Learn from the full archived error history; start cautiously after 5 resolved days.
-        calibration_correction = _clip(-calibration_row["bias"], -0.05, 0.05) if calibration_row["sample"] >= 5 else 0.0
-        expected *= (1.0 + calibration_correction)
-        lower = float(current_price * np.exp(drift * horizon - band)) * (1.0 + calibration_correction)
-        upper = float(current_price * np.exp(drift * horizon + band)) * (1.0 + calibration_correction)
-        forecasts.append({
-            "horizon_days": horizon,
-            "target_date": (_utc_now().date() + timedelta(days=horizon)).isoformat(),
-            "predicted_price": expected,
-            "p10": lower,
-            "p90": upper,
-            "expected_return_pct": (expected / current_price - 1) * 100,
-            "calibration_bias_pct": calibration_row["bias"] * 100,
-            "calibration_sample": calibration_row["sample"],
-        })
-
-    return {
-        "asset": asset, "current_price": float(current_price), "sma20": sma20,
-        "sma50": sma50, "sma200": sma200, "rsi14": rsi,
-        "momentum10_pct": (np.exp(momentum_10) - 1) * 100,
-        "momentum20_pct": (np.exp(momentum_20 * 20) - 1) * 100,
-        "volatility20_pct": daily_vol * 100, "volatility60_pct": vol60 * 100 if np.isfinite(vol60) else None,
-        "daily_drift": drift, "macro_total": macro_total, "factors": factors,
-        "forecasts": forecasts, "history": hist,
-    }
+    return build_adaptive_forecast(asset, current_price, history, macro, calibration)
 
 
 def _read_forecasts() -> pd.DataFrame:
@@ -319,7 +258,7 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
         rows.append({
             "forecast_id": forecast_id, "asset": asset, "issued_at": issued_at.isoformat(),
             "target_date": item["target_date"], "horizon_days": item["horizon_days"],
-            "model_version": "ensemble_v1", "current_price": forecast["current_price"],
+            "model_version": forecast.get("model_version", MODEL_VERSION), "current_price": forecast["current_price"],
             "predicted_price": item["predicted_price"], "p10": item["p10"], "p90": item["p90"],
             "expected_return_pct": item["expected_return_pct"], "daily_drift": forecast["daily_drift"],
             "daily_volatility": forecast["volatility20_pct"] / 100,
@@ -408,11 +347,18 @@ def _metrics_for_asset(asset: str) -> pd.DataFrame:
     done = _daily_resolved_sample(asset)
     if done.empty:
         return pd.DataFrame()
-    done["abs_error"] = pd.to_numeric(done["error_pct"], errors="coerce").abs()
+    done["error_pct"] = pd.to_numeric(done["error_pct"], errors="coerce")
+    done["abs_error"] = done["error_pct"].abs()
+    done["squared_error"] = done["error_pct"] ** 2
     done["direction_correct"] = done["direction_correct"].astype(str).str.lower().isin(["true", "1"])
+    done["actual_price"] = pd.to_numeric(done["actual_price"], errors="coerce")
+    done["current_price"] = pd.to_numeric(done["current_price"], errors="coerce")
+    done["naive_error"] = ((done["current_price"] / done["actual_price"] - 1.0) * 100.0).abs()
     return done.groupby("horizon_days").agg(
         forecasts=("forecast_id", "count"),
         mape_pct=("abs_error", "mean"),
+        rmse_pct=("squared_error", lambda values: float(np.sqrt(values.mean()))),
+        naive_mape_pct=("naive_error", "mean"),
         directional_accuracy=("direction_correct", "mean"),
     ).reset_index()
 
