@@ -215,7 +215,7 @@ def _read_forecasts() -> pd.DataFrame:
         # still contains: asset|UTC issue timestamp|horizon_days.
         repaired_dates = False
         if "forecast_id" in df.columns and "horizon_days" in df.columns:
-            parts = df["forecast_id"].astype(str).str.extract(r"^[^|]+\|([^|]+)\|(\d+)$")
+            parts = df["forecast_id"].astype(str).str.extract(r"^[^|]+\|([^|]+)\|(\d+)(?:\|[^|]+)?$")
             issue_from_id = pd.to_datetime(parts[0], errors="coerce", utc=True)
             if "issued_at" in df.columns:
                 missing_issue = df["issued_at"].isna() & issue_from_id.notna()
@@ -252,7 +252,8 @@ def save_forecasts(asset: str, forecast: dict, issued_at: datetime | None = None
     existing = _read_forecasts()
     rows = []
     for item in forecast["forecasts"]:
-        forecast_id = f"{asset.lower()}|{issue_day}|{item['horizon_days']}"
+        model_version = forecast.get("model_version", MODEL_VERSION)
+        forecast_id = f"{asset.lower()}|{issue_day}|{item['horizon_days']}|{model_version}"
         if not existing.empty and forecast_id in set(existing["forecast_id"].astype(str)):
             continue
         rows.append({
@@ -282,7 +283,11 @@ def _apply_archived_daily_forecast(result: dict, asset: str) -> dict:
         return result
     issued = pd.to_datetime(log["issued_at"], errors="coerce", utc=True)
     today = pd.Timestamp.now(tz="UTC").date()
-    mask = (log["asset"].astype(str) == asset) & (issued.dt.date == today)
+    mask = (
+        (log["asset"].astype(str) == asset)
+        & (issued.dt.date == today)
+        & (log["model_version"].astype(str) == MODEL_VERSION)
+    )
     rows = log.loc[mask].copy()
     if rows.empty:
         return result
@@ -371,7 +376,10 @@ def _recent_forecast_comparison(result: dict, days: int | None = None) -> pd.Dat
         return pd.DataFrame(columns=columns)
 
     asset = result.get("asset")
-    forecasts = log[log["asset"].astype(str).str.lower() == str(asset).lower()].copy()
+    forecasts = log[
+        (log["asset"].astype(str).str.lower() == str(asset).lower())
+        & (log["model_version"].astype(str) == MODEL_VERSION)
+    ].copy()
     if forecasts.empty:
         return pd.DataFrame(columns=columns)
 
@@ -680,6 +688,7 @@ def run_batch() -> None:
             already_published = (
                 (journal["asset"].astype(str) == asset)
                 & (issued.dt.date == today)
+                & (journal["model_version"].astype(str) == MODEL_VERSION)
             ).any()
             if already_published:
                 print(f"[market_forecast] {asset}: prévision du {today} déjà publiée; aucune réécriture.")
