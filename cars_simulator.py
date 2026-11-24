@@ -120,6 +120,25 @@ def render_rav4_simulator():
     tco_gap = phev_total - hev_total
 
 
+    # Compute the financial winner and weighted recommendation BEFORE rendering the summary.
+    cheapest = "HEV" if hev_total <= phev_total else "PHEV"
+    financial_hev = 100 if cheapest == "HEV" else 0
+    financial_phev = 100 - financial_hev
+    ev_score = 85 if home_charging and phev_ev_km >= 1000 else 65 if home_charging and phev_ev_km > 0 else 20
+    polyvalence_phev = 90 if awd_need else 78
+    polyvalence_hev = 55 if awd_need else 70
+    if priority == "Budget":
+        weight_cost, weight_use = 0.80, 0.20
+    elif priority == "Confort / polyvalence":
+        weight_cost, weight_use = 0.30, 0.70
+    else:
+        weight_cost, weight_use = 0.60, 0.40
+    hev_use = polyvalence_hev
+    phev_use = (ev_score + polyvalence_phev) / 2
+    hev_score = weight_cost * financial_hev + weight_use * hev_use
+    phev_score = weight_cost * financial_phev + weight_use * phev_use
+    overall = "PHEV" if phev_score > hev_score else "HEV"
+
     # Render the decision summary in the reserved top position, above all detailed filters.
     with summary_placeholder:
         st.markdown("---")
@@ -134,12 +153,17 @@ def render_rav4_simulator():
             st.metric("Prix d'achat", money(phev_price), f"{money(premium)} vs HEV")
             st.caption("2025 · 14 326 km · 18,1 kWh · 75 km annoncés")
         st.markdown(f"**Écart à l'achat : {money(premium)}** · soit {premium / max(1, hev_price) * 100:.1f} % de plus pour le PHEV.")
-        r1, r2, r3 = st.columns(3)
+        st.markdown("#### Coût total sur la durée de détention")
+        r1, r2 = st.columns(2)
         r1.metric(f"TCO HEV · {years} ans", money(hev_total), f"{hev_per_km:.2f} €/km")
         r2.metric(f"TCO PHEV · {years} ans", money(phev_total), f"{phev_per_km:.2f} €/km")
-        r2.caption(f"Écart TCO : {money(abs(tco_gap))} · {cheapest} moins cher")
-        r3.metric("Choix recommandé", overall, f"Score {max(hev_score, phev_score):.0f}/100")
-        st.success(f"🏁 **Meilleur choix selon tes filtres : {overall}.** Le choix financier seul est **{cheapest}**.")
+        delta_label = f"{money(abs(tco_gap))} de moins pour le {cheapest}" if abs(tco_gap) >= 1 else "Coûts totaux quasiment identiques"
+        st.markdown(f"**Écart de TCO : {delta_label}.**")
+        st.markdown("#### Verdict")
+        d1, d2 = st.columns(2)
+        d1.metric("Moins cher financièrement", cheapest)
+        d2.metric("Recommandation selon tes priorités", overall, f"Score {max(hev_score, phev_score):.0f}/100")
+        st.info(f"**Décision du simulateur : {overall}.** Le {cheapest} reste le meilleur choix sur le seul coût total. Le verdict pondéré ajoute tes critères d'usage et de polyvalence.")
         st.caption(
             f"Priorité : {priority} · Recharge domicile : {'oui' if home_charging else 'non'} · "
             f"Kilométrage : {annual_km:,} km/an · Électrique PHEV estimé : {phev_ev_km:,.0f} km/an. "
