@@ -359,7 +359,8 @@ def render_rav4_simulator():
     p3.metric("Total classique (apport inclus)", money(classic_total))
     st.caption(
         f"Crédit ballon estimé : {money(estimated_balloon_monthly)} × 35 + ballon {money(balloon_final)} "
-        f"+ reprise/apport {money(trade_contribution + cash_down)} = {money(balloon_total)} au total "
+        f"+ reprise/apport {money(trade_contribution + cash_down)} = {money(balloon_total)} au total. "
+        f"Référence de l'offre initiale Toyota : {money(balloon_monthly)}/mois avec 8 198 € d'apport et 32 792 € financés. "
         "(hors assurances et frais non indiqués)."
     )
     st.warning(
