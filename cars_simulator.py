@@ -287,7 +287,7 @@ def render_rav4_simulator():
             "Capital restant dû sur le C4 (€)", 0, 30000, 0, 250, key="cactus_loan_balance_v1"
         )
         cactus_monthly_cost = st.number_input(
-            "Coût fixe mensuel actuel (assurance + financement + parking) (€)", 0, 2000, 100, 10,
+            "Coût fixe mensuel C4 hors surcoût assurance location (€)", 0, 2000, 100, 10,
             key="cactus_monthly_cost_v1"
         )
     st.caption(
@@ -335,7 +335,7 @@ def render_rav4_simulator():
     )
     trade_contribution = max(0, trade_net) if use_trade else 0
     loan_principal = max(0, rav4_cash_price - trade_contribution - cash_down)
-    monthly_rate = loan_apr / 100 / 12
+    monthly_rate = (1 + loan_apr / 100) ** (1 / 12) - 1
     if loan_principal <= 0:
         classic_monthly = 0.0
     elif monthly_rate == 0:
@@ -343,13 +343,22 @@ def render_rav4_simulator():
     else:
         classic_monthly = loan_principal * monthly_rate / (1 - (1 + monthly_rate) ** (-loan_months))
     classic_total = classic_monthly * loan_months + trade_contribution + cash_down
-    balloon_total = trade_contribution + cash_down + balloon_monthly * 35 + balloon_final
+    balloon_principal = loan_principal
+    balloon_n = 35
+    balloon_monthly_rate = (1 + balloon_apr / 100) ** (1 / 12) - 1
+    if balloon_principal <= 0:
+        estimated_balloon_monthly = 0.0
+    elif balloon_monthly_rate == 0:
+        estimated_balloon_monthly = max(0.0, (balloon_principal - balloon_final) / balloon_n)
+    else:
+        estimated_balloon_monthly = max(0.0, (balloon_principal - balloon_final / (1 + balloon_monthly_rate) ** balloon_n) * balloon_monthly_rate / (1 - (1 + balloon_monthly_rate) ** (-balloon_n)))
+    balloon_total = trade_contribution + cash_down + estimated_balloon_monthly * balloon_n + balloon_final
     p1, p2, p3 = st.columns(3)
     p1.metric("Capital du crédit classique", money(loan_principal))
     p2.metric(f"Mensualité classique · {loan_months} mois", money(classic_monthly))
     p3.metric("Total classique (apport inclus)", money(classic_total))
     st.caption(
-        f"Crédit ballon indicatif : {money(balloon_monthly)} × 35 + ballon {money(balloon_final)} "
+        f"Crédit ballon estimé : {money(estimated_balloon_monthly)} × 35 + ballon {money(balloon_final)} "
         f"+ reprise/apport {money(trade_contribution + cash_down)} = {money(balloon_total)} au total "
         "(hors assurances et frais non indiqués)."
     )
@@ -380,7 +389,7 @@ def render_rav4_simulator():
     with r2:
         rental_insurance_month = st.number_input(
             "Surcoût assurance annuel / mois (€)", 0, 500, 0, 10, key="cactus_rental_insurance_v1",
-            help="Saisir le surcoût d'assurance personnelle ou toute couverture non déjà incluse par la plateforme."
+            help="Saisir uniquement le surcoût d'assurance non déjà inclus dans les coûts fixes C4 ni dans la couverture plateforme."
         )
         cleaning_per_rental = st.number_input(
             "Nettoyage / préparation par location (€)", 0, 100, 8, 1, key="cactus_cleaning_v1"
