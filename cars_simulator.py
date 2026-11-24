@@ -135,8 +135,8 @@ def render_rav4_simulator():
     financial_hev = 100 if cheapest == "HEV" else 0
     financial_phev = 100 - financial_hev
     ev_score = 85 if home_charging and phev_ev_km >= 1000 else 65 if home_charging and phev_ev_km > 0 else 20
-    polyvalence_phev = 90 if awd_need else 78
-    polyvalence_hev = 55 if awd_need else 70
+    polyvalence_phev = 85 if awd_need else 70
+    polyvalence_hev = 85 if awd_need else 70
     if priority == "Budget":
         weight_cost, weight_use = 0.80, 0.20
     elif priority == "Confort / polyvalence":
@@ -231,7 +231,7 @@ def render_rav4_simulator():
         st.write("Le PHEV ressort devant avec cette pondération : AWD-i, puissance, finition Collection et possibilité de rouler en électrique si tu recharges régulièrement. "
                  "Vérifie impérativement l'état de santé de la batterie et l'historique des 14 326 km.")
     if awd_need:
-        st.info("Tu as indiqué que l'AWD-i est important : le HEV de l'annonce est 2WD. Il faudrait aussi rechercher un HEV AWD-i pour une comparaison technique plus équitable.")
+        st.info("Les deux annonces de référence sont bien en AWD-i : le HEV GR SPORT comme le PHEV Collection. La transmission intégrale est donc un critère commun, pas un avantage propre au PHEV ; le score de polyvalence ne favorise aucun des deux sur ce point.")
 
     st.subheader("7. Sensibilité au prix de l'essence")
     rows = []
