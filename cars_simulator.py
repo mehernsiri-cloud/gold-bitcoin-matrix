@@ -8,6 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 LACENTRALE_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=plug_hyb%2Chyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204%3A%3ARAV%204%20(5E%20GENERATION)&mileageMax=30000&yearMin=2024"
+LACENTRALE_HEV_AWD_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&mileageMax=30000&versions=awd-i&yearMin=2024"
 
 
 def money(value):
@@ -23,6 +24,7 @@ def render_rav4_simulator():
     )
 
     st.link_button("🔎 Ouvrir directement ma recherche La Centrale (Yvelines · RAV4 HEV/PHEV)", LACENTRALE_URL, use_container_width=True)
+    st.link_button("🔎 Recherche ciblée RAV4 HEV AWD-i (Yvelines · 2024+ · ≤30 000 km)", LACENTRALE_HEV_AWD_URL, use_container_width=True)
     st.caption("Filtres du lien : professionnels/courtiers, 78 (78140), HEV ou PHEV, première main, automatique, "
                "bonnes affaires, RAV4 5e génération, moins de 30 000 km, année 2024 ou plus.")
 
