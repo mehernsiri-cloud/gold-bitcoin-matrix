@@ -255,3 +255,217 @@ def render_rav4_simulator():
         "- **Annonce PHEV :** expliquer les 14 326 km malgré la date de première mise en circulation affichée au 31/12/2025.\n"
         "- **Revente :** tester plusieurs valeurs résiduelles ; la batterie ne doit pas être considérée automatiquement comme à remplacer à 10 ou 15 ans."
     )
+
+
+    # C4 Cactus: trade-in versus keeping it for peer-to-peer daily rental.
+    st.markdown("---")
+    st.header("🚘 Arbitrage C4 Cactus — reprise ou conservation en location")
+    st.caption(
+        "Comparateur indépendant du choix HEV/PHEV : il mesure l'effet de la reprise sur le financement du RAV4 "
+        "et le revenu potentiel d'une conservation avec location journalière (Getaround). "
+        "Toutes les hypothèses sont modifiables ; les revenus de location ne sont pas garantis."
+    )
+
+    st.subheader("9. Valeur et situation actuelle du C4 Cactus")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        cactus_year = st.number_input(
+            "Année du C4 Cactus", 2008, 2026, 2016, 1, key="cactus_year_v1",
+            help="Tu as indiqué « année 2026 » : vérifie et corrige l'année réelle."
+        )
+        cactus_km = st.number_input("Kilométrage actuel", 0, 300000, 77000, 1000, key="cactus_km_v1")
+    with c2:
+        cactus_trade_value = st.number_input(
+            "Estimation de reprise concessionnaire (€)", 0, 30000, 6000, 250, key="cactus_trade_value_v1",
+            help="Valeur provisoire illustrative : remplace-la par une offre écrite du concessionnaire."
+        )
+        cactus_private_value = st.number_input(
+            "Valeur de vente entre particuliers (€)", 0, 35000, 7500, 250, key="cactus_private_value_v1"
+        )
+    with c3:
+        cactus_loan_balance = st.number_input(
+            "Capital restant dû sur le C4 (€)", 0, 30000, 0, 250, key="cactus_loan_balance_v1"
+        )
+        cactus_monthly_cost = st.number_input(
+            "Coût fixe mensuel actuel (assurance + financement + parking) (€)", 0, 2000, 100, 10,
+            key="cactus_monthly_cost_v1"
+        )
+    st.caption(
+        "Les valeurs de reprise et de vente sont des champs de simulation, pas une cote de marché. "
+        "La reprise nette tient compte du remboursement éventuel du crédit C4."
+    )
+    trade_net = cactus_trade_value - cactus_loan_balance
+    private_net = cactus_private_value - cactus_loan_balance
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Reprise nette estimée", money(trade_net))
+    k2.metric("Vente particulier nette", money(private_net), f"{money(private_net-trade_net)} vs reprise")
+    k3.metric("Kilométrage C4", f"{cactus_km:,} km".replace(",", " "))
+
+    st.subheader("10. Financer le RAV4 : reprise + crédit classique ou crédit ballon")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        rav4_cash_price = st.number_input(
+            "Prix du RAV4 retenu (€)", 20000, 80000, 40990, 250, key="rav4_cash_price_v1"
+        )
+        cash_down = st.number_input(
+            "Apport personnel complémentaire (€)", 0, 30000, 0, 250, key="rav4_cash_down_v1"
+        )
+    with c2:
+        loan_apr = st.number_input(
+            "TAEG crédit classique (%)", 0.0, 20.0, 6.5, 0.1, key="rav4_loan_apr_v1",
+            help="Hypothèse modifiable : saisir le TAEG réel du devis bancaire."
+        )
+        loan_months = st.select_slider(
+            "Durée crédit classique (mois)", options=[24, 36, 48, 60, 72, 84], value=60,
+            key="rav4_loan_months_v1"
+        )
+    with c3:
+        balloon_apr = st.number_input(
+            "TAEG crédit ballon Toyota (%)", 0.0, 20.0, 8.56, 0.01, key="rav4_balloon_apr_v1"
+        )
+        balloon_monthly = st.number_input(
+            "Mensualité ballon annoncée (€)", 0, 3000, 454, 10, key="rav4_balloon_monthly_v1"
+        )
+        balloon_final = st.number_input(
+            "Ballon final (€)", 0, 60000, 23936, 100, key="rav4_balloon_final_v1"
+        )
+
+    use_trade = st.checkbox(
+        "Utiliser la reprise du C4 comme apport sur le RAV4", value=True, key="use_cactus_trade_v1"
+    )
+    trade_contribution = max(0, trade_net) if use_trade else 0
+    loan_principal = max(0, rav4_cash_price - trade_contribution - cash_down)
+    monthly_rate = loan_apr / 100 / 12
+    if loan_principal <= 0:
+        classic_monthly = 0.0
+    elif monthly_rate == 0:
+        classic_monthly = loan_principal / loan_months
+    else:
+        classic_monthly = loan_principal * monthly_rate / (1 - (1 + monthly_rate) ** (-loan_months))
+    classic_total = classic_monthly * loan_months + trade_contribution + cash_down
+    balloon_total = trade_contribution + cash_down + balloon_monthly * 35 + balloon_final
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Capital du crédit classique", money(loan_principal))
+    p2.metric(f"Mensualité classique · {loan_months} mois", money(classic_monthly))
+    p3.metric("Total classique (apport inclus)", money(classic_total))
+    st.caption(
+        f"Crédit ballon indicatif : {money(balloon_monthly)} × 35 + ballon {money(balloon_final)} "
+        f"+ reprise/apport {money(trade_contribution + cash_down)} = {money(balloon_total)} au total "
+        "(hors assurances et frais non indiqués)."
+    )
+    st.warning(
+        "Le calcul du crédit classique est une simulation d'amortissement à taux fixe à partir du TAEG saisi ; "
+        "le TAEG n'est pas strictement équivalent à un taux nominal mensuel. Demande une offre normalisée au prêteur. "
+        "Le crédit ballon Toyota cité prévoit aussi une limite de restitution de 36 mois et 45 000 km au compteur : "
+        "vérifier le kilométrage contractuel, les frais de restitution et les conditions de remise en état."
+    )
+
+    st.subheader("11. Garder le C4 et le louer sur Getaround : simulation annuelle")
+    st.caption(
+        "Saisis un nombre réaliste de jours réellement loués (pas le nombre de jours où l'annonce est publiée). "
+        "Les commissions, assurances et règles fiscales Getaround doivent être confirmées dans ton contrat et ton espace hôte."
+    )
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        rental_daily_price = st.number_input(
+            "Prix moyen facturé par jour (€)", 15, 200, 35, 5, key="cactus_daily_price_v1"
+        )
+        rental_days = st.number_input(
+            "Jours loués par an", 0, 250, 45, 5, key="cactus_rental_days_v1"
+        )
+        platform_fee_pct = st.slider(
+            "Commission / frais plateforme (%)", 0, 50, 25, 1, key="cactus_platform_fee_v1",
+            help="Hypothèse de simulation à remplacer par le taux réellement applicable à ton compte."
+        )
+    with r2:
+        rental_insurance_month = st.number_input(
+            "Surcoût assurance annuel / mois (€)", 0, 500, 0, 10, key="cactus_rental_insurance_v1",
+            help="Saisir le surcoût d'assurance personnelle ou toute couverture non déjà incluse par la plateforme."
+        )
+        cleaning_per_rental = st.number_input(
+            "Nettoyage / préparation par location (€)", 0, 100, 8, 1, key="cactus_cleaning_v1"
+        )
+        avg_rental_days = st.number_input(
+            "Durée moyenne d'une réservation (jours)", 1, 30, 3, 1, key="cactus_avg_booking_v1"
+        )
+    with r3:
+        maintenance_per_km = st.number_input(
+            "Provision entretien/usure par km loué (€)", 0.00, 1.00, 0.12, 0.01,
+            key="cactus_maintenance_km_v1"
+        )
+        rental_km_per_day = st.number_input(
+            "Kilomètres moyens parcourus par jour loué", 20, 300, 100, 10, key="cactus_rental_km_day_v1"
+        )
+        annual_fixed_cost = st.number_input(
+            "Autres frais fixes annuels (contrôle, parking...) (€)", 0, 5000, 250, 50,
+            key="cactus_fixed_cost_v1"
+        )
+    rental_gross = rental_daily_price * rental_days
+    rental_bookings = rental_days / max(1, avg_rental_days)
+    platform_cost = rental_gross * platform_fee_pct / 100
+    cleaning_cost = rental_bookings * cleaning_per_rental
+    rental_km = rental_days * rental_km_per_day
+    wear_cost = rental_km * maintenance_per_km
+    rental_net_before_tax = (
+        rental_gross - platform_cost - cleaning_cost - wear_cost
+        - rental_insurance_month * 12 - annual_fixed_cost - cactus_monthly_cost * 12
+    )
+    st.markdown("#### Résultat annuel estimé de la location")
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("Chiffre d'affaires brut", money(rental_gross))
+    a2.metric("Frais plateforme", money(platform_cost))
+    a3.metric("Usure / entretien variable", money(wear_cost))
+    a4.metric("Net annuel avant impôts", money(rental_net_before_tax))
+    rental_costs = pd.DataFrame({
+        "Poste": ["Revenus location", "Plateforme", "Nettoyage", "Usure / entretien", "Assurance supplémentaire",
+                  "Frais fixes", "Coûts fixes C4 actuels"],
+        "Montant (€)": [rental_gross, -platform_cost, -cleaning_cost, -wear_cost,
+                        -rental_insurance_month * 12, -annual_fixed_cost, -cactus_monthly_cost * 12]
+    })
+    fig_rental = px.bar(rental_costs, x="Poste", y="Montant (€)", title="Économie annuelle estimée du C4 loué")
+    fig_rental.update_layout(height=350, xaxis_tickangle=-20)
+    st.plotly_chart(fig_rental, use_container_width=True)
+
+    rental_days_break_even = None
+    net_per_rental_day = rental_daily_price * (1 - platform_fee_pct / 100) - (
+        cleaning_per_rental / max(1, avg_rental_days)
+    ) - rental_km_per_day * maintenance_per_km
+    annual_fixed_rental_costs = rental_insurance_month * 12 + annual_fixed_cost + cactus_monthly_cost * 12
+    if net_per_rental_day > 0:
+        rental_days_break_even = annual_fixed_rental_costs / net_per_rental_day
+    if rental_days_break_even is not None:
+        st.metric("Jours loués/an pour couvrir les coûts saisis", f"{rental_days_break_even:.0f} jours")
+    st.info(
+        "Le net affiché est avant impôts et cotisations éventuelles, avant dépréciation supplémentaire liée au kilométrage, "
+        "et suppose que les frais déjà inclus par Getaround ne sont pas comptés une seconde fois. "
+        "Vérifier l'éligibilité du véhicule, les conditions d'assurance pendant et hors location, la franchise, "
+        "les sinistres, l'assistance, les périodes d'indisponibilité et les obligations fiscales."
+    )
+
+    st.subheader("12. Décision économique : vendre/reprendre ou garder pour louer")
+    rental_horizon = st.select_slider(
+        "Horizon de comparaison (années)", options=[1, 2, 3, 4, 5], value=3,
+        key="cactus_rental_horizon_v1"
+    )
+    cactus_future_value = st.number_input(
+        "Valeur estimée du C4 à la fin de l'horizon (€)", 0, 25000,
+        max(0, int(cactus_private_value * 0.65)), 250, key="cactus_future_value_v1"
+    )
+    keep_net = rental_net_before_tax * rental_horizon + cactus_future_value - cactus_private_value
+    sell_net = private_net - trade_net
+    # The private-sale premium is shown separately; compare rental cash flow with the net value forgone.
+    keep_advantage_vs_trade = rental_net_before_tax * rental_horizon + cactus_future_value - trade_net - cactus_loan_balance
+    trade_value_net_of_debt = trade_net
+    d1, d2, d3 = st.columns(3)
+    d1.metric(f"Flux location cumulé · {rental_horizon} ans", money(rental_net_before_tax * rental_horizon))
+    d2.metric("Valeur C4 estimée à terme", money(cactus_future_value))
+    d3.metric("Avantage théorique garder vs reprise", money(keep_advantage_vs_trade))
+    st.caption(
+        "Comparaison patrimoniale simplifiée : location nette cumulée + valeur future du C4, comparées à la valeur nette "
+        "de reprise aujourd'hui. Elle n'intègre pas l'impôt, le risque de sinistre, la dépréciation additionnelle incertaine "
+        "ni le coût d'opportunité du capital. Une valeur positive ne garantit pas que la location soit préférable."
+    )
+    if keep_advantage_vs_trade > 0:
+        st.success("Avec les hypothèses saisies, garder et louer le C4 ressort financièrement devant la reprise. Vérifie la faisabilité opérationnelle et fiscale.")
+    else:
+        st.warning("Avec les hypothèses saisies, la reprise ressort financièrement plus intéressante que garder et louer le C4.")
