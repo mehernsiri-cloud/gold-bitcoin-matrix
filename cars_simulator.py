@@ -119,25 +119,34 @@ def render_rav4_simulator():
         phev_ins = st.number_input("Assurance annuelle PHEV (€)", 0, 3000, 850, 50, key="sim_ins_p_v2")
         phev_battery = st.number_input("Provision risque batterie PHEV sur la période (€)", 0, 25000, 1200, 100, key="sim_batt_p_v2")
 
-    # Vehicle age is calculated from each listing's first-registration date.
+    # Vehicle age and starting odometer are both carried into the exit-value estimate.
     today = date.today()
     hev_first_reg = date(2023, 12, 26)
     phev_first_reg = date(2025, 12, 31)
     def age_years(first_reg, on_date):
         return max(0.0, (on_date - first_reg).days / 365.2425)
+    exit_date = date(today.year + years, today.month, min(today.day, 28 if today.month == 2 else today.day))
     hev_age_now = age_years(hev_first_reg, today)
     phev_age_now = age_years(phev_first_reg, today)
-    hev_age_exit = age_years(hev_first_reg, date(today.year + years, today.month, min(today.day, 28 if today.month == 2 else today.day)))
-    phev_age_exit = age_years(phev_first_reg, date(today.year + years, today.month, min(today.day, 28 if today.month == 2 else today.day)))
-    st.markdown("**Âge réel intégré à la valeur de revente**")
-    st.caption(f"À aujourd'hui : HEV {hev_age_now:.1f} ans · PHEV {phev_age_now:.1f} ans. À la revente dans {years} ans : HEV {hev_age_exit:.1f} ans · PHEV {phev_age_exit:.1f} ans.")
+    hev_age_exit = age_years(hev_first_reg, exit_date)
+    phev_age_exit = age_years(phev_first_reg, exit_date)
+    st.markdown("**Âge et kilométrage intégrés à la valeur de revente**")
+    st.caption(f"Âge aujourd'hui : HEV {hev_age_now:.1f} ans · PHEV {phev_age_now:.1f} ans. Âge à la revente dans {years} ans : HEV {hev_age_exit:.1f} ans · PHEV {phev_age_exit:.1f} ans.")
+    mileage_c1, mileage_c2, mileage_c3 = st.columns(3)
+    with mileage_c1:
+        hev_start_km = st.number_input("Kilométrage initial HEV", 0, 300000, 35407, 1000, key="sim_hev_start_km_v1")
+    with mileage_c2:
+        phev_start_km = st.number_input("Kilométrage initial PHEV", 0, 300000, 14326, 1000, key="sim_phev_start_km_v1")
+    with mileage_c3:
+        reference_km_year = st.number_input("Kilométrage de référence du marché (km/an)", 5000, 30000, 12000, 1000, key="sim_reference_km_year_v1")
     age_c1, age_c2, age_c3 = st.columns(3)
     with age_c1:
         depreciation_first5 = st.slider("Décote annuelle jusqu'à 5 ans d'âge (%)", 0.0, 20.0, 7.0, 0.5, key="sim_age_dep_first5")
     with age_c2:
         depreciation_after5 = st.slider("Décote annuelle après 5 ans d'âge (%)", 0.0, 15.0, 4.0, 0.5, key="sim_age_dep_after5")
     with age_c3:
-        st.caption("Hypothèses de simulation modifiables, appliquées année par année à partir de l'âge actuel de chaque véhicule.")
+        mileage_adjustment_per_10k = st.slider("Impact sur la revente par écart de 10 000 km (%)", 0.0, 10.0, 3.0, 0.5, key="sim_mileage_adjustment_v1")
+    st.caption("Le kilométrage de sortie = kilométrage initial de l'annonce + kilométrage annuel × durée. La valeur est ensuite ajustée par rapport à un véhicule de même âge roulant au kilométrage annuel de référence. Hypothèses modifiables, non assimilables à une cote professionnelle.")
     def age_based_resale(price, current_age, holding_years):
         value = float(price)
         for step in range(holding_years):
@@ -145,8 +154,20 @@ def render_rav4_simulator():
             rate = depreciation_first5 if age_at_step < 5 else depreciation_after5
             value *= (1 - rate / 100)
         return value
-    hev_resale = age_based_resale(hev_price, hev_age_now, years)
-    phev_resale = age_based_resale(phev_price, phev_age_now, years)
+    def mileage_adjusted_resale(age_value, starting_km, annual_distance, exit_age):
+        projected_km = starting_km + annual_distance * years
+        reference_exit_km = reference_km_year * exit_age
+        difference_10k = (projected_km - reference_exit_km) / 10000
+        adjustment_pct = max(-20.0, min(20.0, -difference_10k * mileage_adjustment_per_10k))
+        adjusted_value = age_value * (1 + adjustment_pct / 100)
+        return adjusted_value, projected_km, reference_exit_km, adjustment_pct
+    hev_age_resale = age_based_resale(hev_price, hev_age_now, years)
+    phev_age_resale = age_based_resale(phev_price, phev_age_now, years)
+    hev_resale, hev_exit_km, hev_reference_exit_km, hev_mileage_adjustment = mileage_adjusted_resale(hev_age_resale, hev_start_km, annual_km, hev_age_exit)
+    phev_resale, phev_exit_km, phev_reference_exit_km, phev_mileage_adjustment = mileage_adjusted_resale(phev_age_resale, phev_start_km, annual_km, phev_age_exit)
+    resale_c1, resale_c2 = st.columns(2)
+    resale_c1.metric("Revente HEV estimée", money(hev_resale), f"{hev_exit_km:,.0f} km à la sortie · {hev_mileage_adjustment:+.1f} % lié au km".replace(",", " "))
+    resale_c2.metric("Revente PHEV estimée", money(phev_resale), f"{phev_exit_km:,.0f} km à la sortie · {phev_mileage_adjustment:+.1f} % lié au km".replace(",", " "))
     hev_total = hev_price + years * (hev_energy_year + hev_maint + hev_ins) + hev_battery - hev_resale
     phev_total = phev_price + charger_installation_cost + years * (phev_energy_year + phev_maint + phev_ins) + phev_battery - phev_resale
     distance_total = max(1, annual_km * years)
