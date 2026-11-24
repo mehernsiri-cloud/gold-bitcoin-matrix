@@ -226,9 +226,9 @@ def render_rav4_simulator():
     )
     if overall == "HEV":
         st.write("Le HEV ressort devant avec cette pondération : prix d'achat nettement inférieur et simplicité d'utilisation. "
-                 "Le PHEV ne devient plus intéressant que si tu valorises davantage l'AWD-i, la finition Collection et la conduite électrique.")
+                 "Le PHEV ne devient plus intéressant que si tu valorises davantage sa finition Collection, sa puissance et la conduite électrique (si tu peux le recharger). L'AWD-i est commun aux deux annonces.")
     else:
-        st.write("Le PHEV ressort devant avec cette pondération : AWD-i, puissance, finition Collection et possibilité de rouler en électrique si tu recharges régulièrement. "
+        st.write("Le PHEV ressort devant avec cette pondération : puissance, finition Collection et possibilité de rouler en électrique si tu recharges régulièrement. L'AWD-i est commun aux deux annonces. "
                  "Vérifie impérativement l'état de santé de la batterie et l'historique des 14 326 km.")
     if awd_need:
         st.info("Les deux annonces de référence sont bien en AWD-i : le HEV GR SPORT comme le PHEV Collection. La transmission intégrale est donc un critère commun, pas un avantage propre au PHEV ; le score de polyvalence ne favorise aucun des deux sur ce point.")
@@ -246,7 +246,7 @@ def render_rav4_simulator():
 
     st.subheader("8. Contrôles avant décision")
     st.markdown(
-        "- **Comparabilité :** génération RAV4 V (2) / XA50 restylée ; les annonces diffèrent en finition et transmission (2WD vs AWD-i).\n"
+        "- **Comparabilité :** les deux annonces sont en AWD-i ; elles diffèrent en finition (GR SPORT / Collection), année (2023 / 2025) et kilométrage (35 407 / 14 326 km).\n"
         "- **PHEV :** demander un rapport de santé batterie, vérifier le câble et la recharge, l'historique d'entretien et la garantie applicable au VIN.\n"
         "- **HEV :** contrôler l'état de la batterie hybride et les conditions de garantie.\n"
         "- **Annonce PHEV :** expliquer les 14 326 km malgré la date de première mise en circulation affichée au 31/12/2025.\n"
