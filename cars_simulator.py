@@ -58,7 +58,7 @@ def render_rav4_simulator():
         local_km = st.number_input("Dont trajets locaux / an", 0, 20000, 1500, 100, key="sim_local_km_v2")
     with c2:
         years = st.select_slider("Durée de détention", options=[3, 4, 5, 6, 7, 8, 9, 10, 12, 15], value=8, key="sim_years_v2")
-        home_charging = st.checkbox("Recharge régulière à domicile disponible", value=False, key="sim_home_charge_v2")
+        home_charging = st.checkbox("Recharge à domicile disponible ou installation prévue", value=False, key="sim_home_charge_v3")
     with c3:
         priority = st.select_slider("Priorité de décision", options=["Budget", "Équilibrée", "Confort / polyvalence"], value="Équilibrée", key="sim_priority_v2")
         awd_need = st.checkbox("Transmission intégrale importante", value=False, key="sim_awd_v2")
@@ -80,6 +80,16 @@ def render_rav4_simulator():
         st.warning("Sans recharge régulière à domicile, le simulateur ne crédite actuellement aucune économie électrique au PHEV.")
 
     st.subheader("3. Énergie — hypothèses modifiables")
+    charger_installation_quote = st.number_input(
+        "Coût de la borne et de son installation (€)", 0, 10000, 1500, 100,
+        key="sim_charger_installation_v1",
+        help="Coût ponctuel à saisir selon le devis : borne, protections électriques, câblage et pose. Comptabilisé uniquement si la recharge à domicile est activée."
+    )
+    charger_installation_cost = charger_installation_quote if home_charging else 0
+    if home_charging:
+        st.caption(f"Le simulateur ajoute {money(charger_installation_cost)} au coût initial du PHEV.")
+    else:
+        st.caption("La recharge à domicile n'étant pas activée, aucun coût de borne ni économie électrique n'est intégré.")
     c1, c2, c3 = st.columns(3)
     with c1:
         fuel = st.number_input("Essence (€/L)", 0.80, 4.00, 1.95, 0.05, key="sim_fuel_v2")
@@ -113,7 +123,7 @@ def render_rav4_simulator():
     hev_resale = hev_price * hev_resale_pct / 100
     phev_resale = phev_price * phev_resale_pct / 100
     hev_total = hev_price + years * (hev_energy_year + hev_maint + hev_ins) + hev_battery - hev_resale
-    phev_total = phev_price + years * (phev_energy_year + phev_maint + phev_ins) + phev_battery - phev_resale
+    phev_total = phev_price + charger_installation_cost + years * (phev_energy_year + phev_maint + phev_ins) + phev_battery - phev_resale
     distance_total = max(1, annual_km * years)
     hev_per_km = hev_total / distance_total
     phev_per_km = phev_total / distance_total
@@ -153,6 +163,7 @@ def render_rav4_simulator():
             st.metric("Prix d'achat", money(phev_price), f"{money(premium)} vs HEV")
             st.caption("2025 · 14 326 km · 18,1 kWh · 75 km annoncés")
         st.markdown(f"**Écart à l'achat : {money(premium)}** · soit {premium / max(1, hev_price) * 100:.1f} % de plus pour le PHEV.")
+        st.markdown(f"**Borne + installation intégrées au PHEV : {money(charger_installation_cost)}**" if home_charging else "**Borne : non comptabilisée (recharge domicile désactivée).**")
         st.markdown("#### Coût total sur la durée de détention")
         r1, r2 = st.columns(2)
         r1.metric(f"TCO HEV · {years} ans", money(hev_total), f"{hev_per_km:.2f} €/km")
@@ -176,9 +187,9 @@ def render_rav4_simulator():
 
     st.subheader("6. Détail du coût total de possession")
     costs = pd.DataFrame({
-        "Poste": ["Achat", "Énergie", "Entretien", "Assurance", "Provision batterie", "Revente déduite"],
-        "HEV": [hev_price, years * hev_energy_year, years * hev_maint, years * hev_ins, hev_battery, -hev_resale],
-        "PHEV": [phev_price, years * phev_energy_year, years * phev_maint, years * phev_ins, phev_battery, -phev_resale],
+        "Poste": ["Achat", "Borne + installation", "Énergie", "Entretien", "Assurance", "Provision batterie", "Revente déduite"],
+        "HEV": [hev_price, 0, years * hev_energy_year, years * hev_maint, years * hev_ins, hev_battery, -hev_resale],
+        "PHEV": [phev_price, charger_installation_cost, years * phev_energy_year, years * phev_maint, years * phev_ins, phev_battery, -phev_resale],
     })
     fig = px.bar(costs.melt(id_vars="Poste", var_name="Motorisation", value_name="Coût (€)"),
                  x="Poste", y="Coût (€)", color="Motorisation", barmode="group",
@@ -227,7 +238,7 @@ def render_rav4_simulator():
         h_energy = annual_km * hev_l100 / 100 * price
         p_energy = (annual_km - phev_ev_km) * phev_hv_l100 / 100 * price + phev_ev_km * phev_kwh100 / 100 * power * (1 + losses / 100)
         h_tco = hev_price + years * (h_energy + hev_maint + hev_ins) + hev_battery - hev_resale
-        p_tco = phev_price + years * (p_energy + phev_maint + phev_ins) + phev_battery - phev_resale
+        p_tco = phev_price + charger_installation_cost + years * (p_energy + phev_maint + phev_ins) + phev_battery - phev_resale
         rows.append({"Essence €/L": price, "TCO HEV (€)": h_tco, "TCO PHEV (€)": p_tco, "Avantage HEV (€)": p_tco - h_tco})
     st.dataframe(pd.DataFrame(rows).style.format({"Essence €/L": "{:.2f}", "TCO HEV (€)": "{:,.0f}", "TCO PHEV (€)": "{:,.0f}", "Avantage HEV (€)": "{:+,.0f}"}),
                  use_container_width=True, hide_index=True)
