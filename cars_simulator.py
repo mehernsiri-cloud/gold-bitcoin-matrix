@@ -463,12 +463,62 @@ def render_rav4_simulator():
         rental_gross - platform_cost - cleaning_cost - wear_cost
         - rental_insurance_month * 12 - annual_fixed_cost - cactus_monthly_cost * 12
     )
+
+    st.markdown("#### Fiscalité française — hypothèse micro-BIC")
+    st.caption(
+        "Simulation indicative pour une location de voiture par un particulier. Le chiffre d'affaires fiscal est saisi avant "
+        "commission plateforme ; le micro-BIC applique un abattement forfaitaire de 50 % (minimum 305 €), sans déduction "
+        "séparée des frais réels. À confirmer selon le relevé fiscal Getaround et la qualification de l'activité."
+    )
+    tax_c1, tax_c2, tax_c3 = st.columns(3)
+    with tax_c1:
+        marginal_tax_rate = st.number_input("Ta tranche marginale d'imposition (%)", 0.0, 45.0, 30.0, 1.0, key="cactus_marginal_tax_rate_v1")
+        micro_bic_allowance = st.number_input("Abattement micro-BIC (%)", 0.0, 100.0, 50.0, 1.0, key="cactus_micro_bic_allowance_v1")
+    with tax_c2:
+        social_levy_rate = st.number_input("Prélèvements sociaux patrimoine (%)", 0.0, 25.0, 18.6, 0.1, key="cactus_social_levy_rate_v1")
+        urssaf_threshold = st.number_input("Seuil annuel URSSAF location de biens (€)", 0, 30000, 9612, 100, key="cactus_urssaf_threshold_v1")
+    with tax_c3:
+        urssaf_annual_amount = st.number_input(
+            "Cotisations URSSAF annuelles estimées (€)", 0, 20000, 0, 50, key="cactus_urssaf_amount_v1",
+            help="Si les recettes dépassent le seuil, reporte ici le montant obtenu avec le simulateur officiel URSSAF. Ce montant remplace les prélèvements sociaux patrimoniaux pour éviter un double comptage."
+        )
+
+    micro_bic_abatement_eur = max(305.0, rental_gross * micro_bic_allowance / 100) if rental_gross > 0 else 0.0
+    taxable_bic = max(0.0, rental_gross - micro_bic_abatement_eur)
+    estimated_income_tax = taxable_bic * marginal_tax_rate / 100
+    urssaf_required = rental_gross > urssaf_threshold
+    if urssaf_required:
+        estimated_social_charges = urssaf_annual_amount
+        social_charge_label = "Cotisations URSSAF saisies"
+        social_system_note = "Recettes au-dessus du seuil indicatif URSSAF : renseigner l'estimation URSSAF. Aucun prélèvement social patrimonial n'est ajouté ici."
+    else:
+        estimated_social_charges = taxable_bic * social_levy_rate / 100
+        social_charge_label = "Prélèvements sociaux estimés"
+        social_system_note = "Recettes sous le seuil indicatif URSSAF : estimation des prélèvements sociaux sur la base imposable."
+    rental_net_after_tax = rental_net_before_tax - estimated_income_tax - estimated_social_charges
+    st.caption(
+        f"Base imposable micro-BIC : {money(taxable_bic)} sur {money(rental_gross)} de recettes brutes "
+        f"(abattement : {money(micro_bic_abatement_eur)}). {social_system_note}"
+    )
+    tax_kpis = st.columns(4)
+    tax_kpis[0].metric("Impôt sur le revenu estimé", money(estimated_income_tax))
+    tax_kpis[1].metric(social_charge_label, money(estimated_social_charges))
+    tax_kpis[2].metric("Net après fiscalité", money(rental_net_after_tax))
+    tax_kpis[3].metric("Fiscalité / chiffre d'affaires", f"{(estimated_income_tax + estimated_social_charges) / rental_gross * 100:.1f} %" if rental_gross > 0 else "—")
+    if urssaf_required and urssaf_annual_amount == 0:
+        st.warning("Le chiffre d'affaires dépasse le seuil URSSAF indicatif, mais aucune cotisation n'est renseignée : le net après fiscalité est provisoire et surestimé. Utilise le simulateur officiel URSSAF.")
+    st.caption(
+        "En micro-BIC, la commission Getaround, le nettoyage, l'usure et les frais fixes ne sont pas déduits individuellement "
+        "de la base fiscale ; ils sont couverts forfaitairement par l'abattement. Ils restent déduits une seule fois dans le "
+        "calcul de trésorerie, puis l'impôt et les prélèvements/cotisations estimés sont retranchés."
+    )
+
     st.markdown("#### Résultat annuel estimé de la location")
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Chiffre d'affaires brut", money(rental_gross))
     a2.metric("Frais plateforme", money(platform_cost))
     a3.metric("Usure / entretien variable", money(wear_cost))
-    a4.metric("Net annuel avant impôts", money(rental_net_before_tax))
+    a4.metric("Net annuel après fiscalité", money(rental_net_after_tax), f"avant fiscalité : {money(rental_net_before_tax)}")
     rental_costs = pd.DataFrame({
         "Poste": ["Revenus location", "Plateforme", "Nettoyage", "Usure / entretien", "Assurance supplémentaire",
                   "Frais fixes", "Coûts fixes C4 actuels"],
@@ -504,13 +554,13 @@ def render_rav4_simulator():
         "Valeur estimée du C4 à la fin de l'horizon (€)", 0, 25000,
         max(0, int(cactus_private_value * 0.65)), 250, key="cactus_future_value_v1"
     )
-    keep_net = rental_net_before_tax * rental_horizon + cactus_future_value - cactus_private_value
+    keep_net = rental_net_after_tax * rental_horizon + cactus_future_value - cactus_private_value
     sell_net = private_net - trade_net
     # The private-sale premium is shown separately; compare rental cash flow with the net value forgone.
-    keep_advantage_vs_trade = rental_net_before_tax * rental_horizon + cactus_future_value - trade_net - cactus_loan_balance
+    keep_advantage_vs_trade = rental_net_after_tax * rental_horizon + cactus_future_value - trade_net - cactus_loan_balance
     trade_value_net_of_debt = trade_net
     d1, d2, d3 = st.columns(3)
-    d1.metric(f"Flux location cumulé · {rental_horizon} ans", money(rental_net_before_tax * rental_horizon))
+    d1.metric(f"Flux location cumulé net d’impôts · {rental_horizon} ans", money(rental_net_after_tax * rental_horizon))
     d2.metric("Valeur C4 estimée à terme", money(cactus_future_value))
     d3.metric("Avantage théorique garder vs reprise", money(keep_advantage_vs_trade))
     st.caption(
