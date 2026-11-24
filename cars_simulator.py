@@ -7,9 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-LACENTRALE_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=plug_hyb%2Chyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204%3A%3ARAV%204%20(5E%20GENERATION)&mileageMax=30000&yearMin=2024"
-LACENTRALE_HEV_AWD_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&mileageMax=30000&versions=awd-i&yearMin=2024"
-LACENTRALE_RAV4_V_HEV_AWD_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=not_plug_hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&versions=awd-i&yearMax=2025&yearMin=2022"
+LACENTRALE_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=not_plug_hyb%2Cplug_hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&mileageMax=36000&versions=awd-i&yearMax=2025&yearMin=2022"
 
 
 def money(value):
@@ -24,11 +22,9 @@ def render_rav4_simulator():
         "selon tes priorités. Les hypothèses sont modifiables ; le résultat n'est pas une cote ni une prévision."
     )
 
-    st.link_button("🔎 Ouvrir directement ma recherche La Centrale (Yvelines · RAV4 HEV/PHEV)", LACENTRALE_URL, use_container_width=True)
-    st.link_button("🔎 Recherche ciblée RAV4 HEV AWD-i (Yvelines · 2024+ · ≤30 000 km)", LACENTRALE_HEV_AWD_URL, use_container_width=True)
-    st.link_button("🔎 RAV4 V HEV AWD-i (2022–2025 · sans limite de kilométrage)", LACENTRALE_RAV4_V_HEV_AWD_URL, use_container_width=True)
-    st.caption("Filtres du lien : professionnels/courtiers, 78 (78140), HEV ou PHEV, première main, automatique, "
-               "bonnes affaires, RAV4 5e génération, moins de 30 000 km, année 2024 ou plus.")
+    st.link_button("🔎 Ma recherche principale La Centrale — RAV4 HEV/PHEV AWD-i · Yvelines", LACENTRALE_URL, use_container_width=True)
+    st.caption("Filtres du lien : professionnels/courtiers, secteur 78140, HEV ou PHEV, première main, automatique, "
+               "bonnes affaires, RAV4 AWD-i, jusqu'à 36 000 km, années 2022 à 2025.")
 
     # Reserve the first screen position for the decision summary; populate it once all filters are calculated.
     summary_placeholder = st.container()
@@ -36,23 +32,23 @@ def render_rav4_simulator():
     st.subheader("1. Les deux annonces de référence")
     left, right = st.columns(2)
     with left:
-        st.markdown("### HEV · 218 ch · 2WD")
-        st.markdown("**Dynamic Business**")
-        hev_price = st.number_input("Prix affiché HEV (€)", 20000, 80000, 39000, 500, key="sim_hev_price_v2")
-        st.caption("39 000 € · 20 km · 04/09/2025 · 9 CV · 126 g CO₂/km")
-        st.caption("Hybride non rechargeable · traction avant")
+        st.markdown("### HEV · 222 ch · AWD-i")
+        st.markdown("**GR SPORT · RAV4 V 2.5 Hybrid**")
+        hev_price = st.number_input("Prix affiché HEV (€)", 20000, 80000, 40990, 250, key="sim_hev_price_v2")
+        st.caption("40 990 € · 35 407 km · 26/12/2023 · 9 CV · 132 g CO₂/km")
+        st.caption("Hybride non rechargeable · AWD-i · première main · rouge / toit noir")
     with right:
         st.markdown("### PHEV · 306 ch · AWD-i")
-        st.markdown("**Collection**")
-        phev_price = st.number_input("Prix affiché PHEV (€)", 20000, 80000, 50000, 500, key="sim_phev_price_v2")
-        st.caption("50 000 € · 14 326 km · 31/12/2025 · 10 CV · 22 g CO₂/km")
-        st.caption("Rechargeable · batterie 18,1 kWh · autonomie annoncée 75 km")
+        st.markdown("**Collection · RAV4 V 2.5 Hybrid Rechargeable**")
+        phev_price = st.number_input("Prix affiché PHEV (€)", 20000, 80000, 49990, 250, key="sim_phev_price_v2")
+        st.caption("49 990 € · 14 326 km · 31/12/2025 · 10 CV · 22 g CO₂/km")
+        st.caption("Hybride rechargeable · batterie 18,1 kWh · autonomie annoncée 75 km · première main · bleu de Prusse / toit noir")
     premium = phev_price - hev_price
     st.info(
         f"Écart de prix actuel : **{money(premium)}** ({premium / max(1, hev_price) * 100:.1f} %). "
-        "Le PHEV est aussi mieux équipé (Collection) et AWD-i, alors que le HEV est Dynamic Business et 2WD. "
-        "Les 14 306 km supplémentaires du PHEV sont intégrés dans l'appréciation de l'annonce, "
-        "mais pas convertis artificiellement en coût."
+        "Les deux annonces sont en AWD-i ; le HEV est en finition GR SPORT et le PHEV en finition Collection. "
+        "Le PHEV est plus récent et affiche 21 081 km de moins. Cette différence est visible dans les fiches, "
+        "mais n'est pas convertie artificiellement en coût."
     )
 
     st.subheader("2. Filtres liés à ton usage")
@@ -159,13 +155,13 @@ def render_rav4_simulator():
         st.subheader("🧾 Synthèse de l'achat — décision en un coup d'œil")
         s1, s2 = st.columns(2)
         with s1:
-            st.markdown("**RAV4 HEV · 218 ch · 2WD Dynamic Business**")
+            st.markdown("**RAV4 HEV · 222 ch · AWD-i GR SPORT**")
             st.metric("Prix d'achat", money(hev_price))
-            st.caption("2025 · 20 km · 126 g CO₂/km · non rechargeable")
+            st.caption("26/12/2023 · 35 407 km · 132 g CO₂/km · non rechargeable")
         with s2:
             st.markdown("**RAV4 PHEV · 306 ch · AWD-i Collection**")
             st.metric("Prix d'achat", money(phev_price), f"{money(premium)} vs HEV")
-            st.caption("2025 · 14 326 km · 18,1 kWh · 75 km annoncés")
+            st.caption("31/12/2025 · 14 326 km · 18,1 kWh · 75 km annoncés · 22 g CO₂/km")
         st.markdown(f"**Écart à l'achat : {money(premium)}** · soit {premium / max(1, hev_price) * 100:.1f} % de plus pour le PHEV.")
         st.markdown(f"**Borne + installation intégrées au PHEV : {money(charger_installation_cost)}**" if home_charging else "**Borne : non comptabilisée (recharge domicile désactivée).**")
         st.markdown("#### Coût total sur la durée de détention")
@@ -185,8 +181,9 @@ def render_rav4_simulator():
             "Le verdict est calculé à partir des hypothèses visibles plus bas.".replace(",", " ")
         )
         st.warning(
-            "Comparaison non strictement équivalente : HEV en 2WD Dynamic Business contre PHEV AWD-i Collection. "
-            "Le PHEV a aussi 14 306 km de plus. Vérifier l'historique et l'état de santé de sa batterie avant achat."
+            "Comparaison entre deux RAV4 V AWD-i, mais de finitions et d'années différentes : HEV GR SPORT de 2023 "
+            "contre PHEV Collection de 2025. Le PHEV est plus récent et moins kilométré ; vérifier son historique "
+            "et l'état de santé de sa batterie avant achat."
         )
 
     st.subheader("6. Détail du coût total de possession")
