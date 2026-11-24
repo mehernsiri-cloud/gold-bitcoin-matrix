@@ -464,53 +464,97 @@ def render_rav4_simulator():
         - rental_insurance_month * 12 - annual_fixed_cost - cactus_monthly_cost * 12
     )
 
-    st.markdown("#### Fiscalité française — hypothèse micro-BIC")
+    st.markdown("#### Fiscalité française — micro-BIC ou régime réel")
     st.caption(
-        "Simulation indicative pour une location de voiture par un particulier. Le chiffre d'affaires fiscal est saisi avant "
-        "commission plateforme ; le micro-BIC applique un abattement forfaitaire de 50 % (minimum 305 €), sans déduction "
-        "séparée des frais réels. À confirmer selon le relevé fiscal Getaround et la qualification de l'activité."
+        "Le choix du régime change la base imposable : micro-BIC = recettes brutes moins abattement forfaitaire "
+        "(50 % dans cette simulation, minimum 305 €), sans déduction séparée des frais réels ; régime réel = "
+        "recettes moins charges réellement déductibles et justifiées. Le régime réel peut être choisi sur option "
+        "sous les seuils du micro-BIC. Vérifie ton éligibilité et les règles applicables à ta situation."
     )
-    tax_c1, tax_c2, tax_c3 = st.columns(3)
+    tax_c1, tax_c2 = st.columns(2)
     with tax_c1:
-        marginal_tax_rate = st.number_input("Ta tranche marginale d'imposition (%)", 0.0, 45.0, 30.0, 1.0, key="cactus_marginal_tax_rate_v1")
-        micro_bic_allowance = st.number_input("Abattement micro-BIC (%)", 0.0, 100.0, 50.0, 1.0, key="cactus_micro_bic_allowance_v1")
+        tax_regime = st.radio(
+            "Régime fiscal simulé",
+            ["Micro-BIC", "Régime réel"],
+            horizontal=True,
+            key="cactus_tax_regime_v2",
+            help="Compare les deux régimes avec les mêmes recettes. Le résultat réel dépend des charges fiscalement admises."
+        )
+        marginal_tax_rate = st.number_input(
+            "Ta tranche marginale d'imposition (%)", 0.0, 45.0, 30.0, 1.0,
+            key="cactus_marginal_tax_rate_v2"
+        )
+        micro_bic_allowance = st.number_input(
+            "Abattement micro-BIC (%)", 0.0, 100.0, 50.0, 1.0,
+            key="cactus_micro_bic_allowance_v2"
+        )
     with tax_c2:
-        social_levy_rate = st.number_input("Prélèvements sociaux patrimoine (%)", 0.0, 25.0, 18.6, 0.1, key="cactus_social_levy_rate_v1")
-        urssaf_threshold = st.number_input("Seuil annuel URSSAF location de biens (€)", 0, 30000, 9612, 100, key="cactus_urssaf_threshold_v1")
-    with tax_c3:
-        urssaf_annual_amount = st.number_input(
-            "Cotisations URSSAF annuelles estimées (€)", 0, 20000, 0, 50, key="cactus_urssaf_amount_v1",
-            help="Si les recettes dépassent le seuil, reporte ici le montant obtenu avec le simulateur officiel URSSAF. Ce montant remplace les prélèvements sociaux patrimoniaux pour éviter un double comptage."
+        fixed_cost_deductible_share = st.slider(
+            "Part des coûts fixes C4 attribuable à la location (%)",
+            0, 100, 0, 5, key="cactus_fixed_cost_share_v2",
+            help="À utiliser uniquement pour la part réellement justifiable et déductible au régime réel. 0 % par défaut pour ne pas déduire automatiquement les coûts d'usage privé."
+        )
+        other_deductible_charges = st.number_input(
+            "Autres charges réelles déductibles annuelles (€)", 0, 20000, 0, 50,
+            key="cactus_other_deductible_v2",
+            help="Saisir uniquement des dépenses justifiées, attribuables à l'activité de location et fiscalement déductibles. Ne pas inclure un amortissement sans validation comptable."
+        )
+        social_charges_estimate = st.number_input(
+            "Cotisations / prélèvements sociaux estimés annuels (€)", 0, 20000, 0, 50,
+            key="cactus_social_charges_manual_v2",
+            help="Saisie manuelle à partir de ta situation et, si nécessaire, du simulateur officiel URSSAF. L'application ne suppose pas un taux forfaitaire universel."
         )
 
     micro_bic_abatement_eur = max(305.0, rental_gross * micro_bic_allowance / 100) if rental_gross > 0 else 0.0
-    taxable_bic = max(0.0, rental_gross - micro_bic_abatement_eur)
+    micro_bic_taxable_base = max(0.0, rental_gross - micro_bic_abatement_eur)
+    real_deductible_expenses = (
+        platform_cost + cleaning_cost + wear_cost
+        + rental_insurance_month * 12 + annual_fixed_cost
+        + cactus_monthly_cost * 12 * fixed_cost_deductible_share / 100
+        + other_deductible_charges
+    )
+    real_taxable_profit = max(0.0, rental_gross - real_deductible_expenses)
+    taxable_bic = micro_bic_taxable_base if tax_regime == "Micro-BIC" else real_taxable_profit
     estimated_income_tax = taxable_bic * marginal_tax_rate / 100
-    urssaf_required = rental_gross > urssaf_threshold
-    if urssaf_required:
-        estimated_social_charges = urssaf_annual_amount
-        social_charge_label = "Cotisations URSSAF saisies"
-        social_system_note = "Recettes au-dessus du seuil indicatif URSSAF : renseigner l'estimation URSSAF. Aucun prélèvement social patrimonial n'est ajouté ici."
-    else:
-        estimated_social_charges = taxable_bic * social_levy_rate / 100
-        social_charge_label = "Prélèvements sociaux estimés"
-        social_system_note = "Recettes sous le seuil indicatif URSSAF : estimation des prélèvements sociaux sur la base imposable."
+    estimated_social_charges = social_charges_estimate
     rental_net_after_tax = rental_net_before_tax - estimated_income_tax - estimated_social_charges
+
     st.caption(
-        f"Base imposable micro-BIC : {money(taxable_bic)} sur {money(rental_gross)} de recettes brutes "
-        f"(abattement : {money(micro_bic_abatement_eur)}). {social_system_note}"
+        f"Base imposable retenue ({tax_regime}) : {money(taxable_bic)}. "
+        + (
+            f"Micro-BIC : recettes {money(rental_gross)} − abattement forfaitaire {money(micro_bic_abatement_eur)}. "
+            "Les frais réels ne sont pas déduits séparément de la base fiscale."
+            if tax_regime == "Micro-BIC"
+            else f"Régime réel : recettes {money(rental_gross)} − charges saisies et attribuées à la location {money(real_deductible_expenses)}."
+        )
     )
     tax_kpis = st.columns(4)
     tax_kpis[0].metric("Impôt sur le revenu estimé", money(estimated_income_tax))
-    tax_kpis[1].metric(social_charge_label, money(estimated_social_charges))
+    tax_kpis[1].metric("Cotisations / prélèvements sociaux", money(estimated_social_charges))
     tax_kpis[2].metric("Net après fiscalité", money(rental_net_after_tax))
-    tax_kpis[3].metric("Fiscalité / chiffre d'affaires", f"{(estimated_income_tax + estimated_social_charges) / rental_gross * 100:.1f} %" if rental_gross > 0 else "—")
-    if urssaf_required and urssaf_annual_amount == 0:
-        st.warning("Le chiffre d'affaires dépasse le seuil URSSAF indicatif, mais aucune cotisation n'est renseignée : le net après fiscalité est provisoire et surestimé. Utilise le simulateur officiel URSSAF.")
+    tax_kpis[3].metric(
+        "Fiscalité / chiffre d'affaires",
+        f"{(estimated_income_tax + estimated_social_charges) / rental_gross * 100:.1f} %" if rental_gross > 0 else "—"
+    )
     st.caption(
-        "En micro-BIC, la commission Getaround, le nettoyage, l'usure et les frais fixes ne sont pas déduits individuellement "
-        "de la base fiscale ; ils sont couverts forfaitairement par l'abattement. Ils restent déduits une seule fois dans le "
-        "calcul de trésorerie, puis l'impôt et les prélèvements/cotisations estimés sont retranchés."
+        "Les cotisations ou prélèvements sociaux sont saisis séparément : leur régime dépend notamment du niveau "
+        "de recettes, du caractère professionnel ou non de l'activité et de ta situation. Le seuil URSSAF de "
+        "9 612 € pour la location de biens en 2026 est un repère à vérifier, pas un taux de cotisation. "
+        "Ne saisis pas deux fois les mêmes prélèvements."
+    )
+    if rental_gross > 9612 and social_charges_estimate == 0:
+        st.warning(
+            "Les recettes dépassent le repère URSSAF 2026 de 9 612 € pour la location de biens : "
+            "le net après fiscalité est provisoire tant que les cotisations éventuelles ne sont pas estimées."
+        )
+    st.markdown(
+        "Références à vérifier : [impots.gouv.fr — location de biens meubles et régimes BIC](https://www.impots.gouv.fr/particulier/questions/je-loue-des-biens-comment-declarer-les-revenus-tires-de-cette-location) · "
+        "[URSSAF — simulateur de revenus de location de biens](https://mon-entreprise.urssaf.fr/simulateurs/location-de-biens)."
+    )
+    st.caption(
+        "Le chiffre d'affaires utilisé est le montant brut facturé avant commission. Les frais réellement payés "
+        "restent déduits une seule fois dans le calcul de trésorerie ; au régime réel, ils peuvent aussi réduire "
+        "le bénéfice imposable dans la limite de leur déductibilité et de leur quote-part professionnelle."
     )
 
     st.markdown("#### Résultat annuel estimé de la location")
@@ -539,7 +583,7 @@ def render_rav4_simulator():
     if rental_days_break_even is not None:
         st.metric("Jours loués/an pour couvrir les coûts saisis", f"{rental_days_break_even:.0f} jours")
     st.info(
-        "Le net affiché est avant impôts et cotisations éventuelles, avant dépréciation supplémentaire liée au kilométrage, "
+        "Le net affiché est après estimation de l’impôt et des cotisations/prélèvements saisis, avant dépréciation supplémentaire liée au kilométrage, "
         "et suppose que les frais déjà inclus par Getaround ne sont pas comptés une seconde fois. "
         "Vérifier l'éligibilité du véhicule, les conditions d'assurance pendant et hors location, la franchise, "
         "les sinistres, l'assistance, les périodes d'indisponibilité et les obligations fiscales."
@@ -564,7 +608,7 @@ def render_rav4_simulator():
     d2.metric("Valeur C4 estimée à terme", money(cactus_future_value))
     d3.metric("Avantage théorique garder vs reprise", money(keep_advantage_vs_trade))
     st.caption(
-        "Comparaison patrimoniale simplifiée : location nette cumulée + valeur future du C4, comparées à la valeur nette "
+        "Comparaison patrimoniale simplifiée : location nette après fiscalité cumulée + valeur future du C4, comparées à la valeur nette "
         "de reprise aujourd'hui. Elle n'intègre pas l'impôt, le risque de sinistre, la dépréciation additionnelle incertaine "
         "ni le coût d'opportunité du capital. Une valeur positive ne garantit pas que la location soit préférable."
     )
