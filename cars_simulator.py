@@ -26,6 +26,9 @@ def render_rav4_simulator():
     st.caption("Filtres du lien : professionnels/courtiers, 78 (78140), HEV ou PHEV, première main, automatique, "
                "bonnes affaires, RAV4 5e génération, moins de 30 000 km, année 2024 ou plus.")
 
+    # Reserve the first screen position for the decision summary; populate it once all filters are calculated.
+    summary_placeholder = st.container()
+
     st.subheader("1. Les deux annonces de référence")
     left, right = st.columns(2)
     with left:
@@ -116,15 +119,38 @@ def render_rav4_simulator():
     phev_per_km = phev_total / distance_total
     tco_gap = phev_total - hev_total
 
-    st.subheader(f"5. Résultat financier sur {years} ans")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("TCO HEV", money(hev_total), f"{hev_per_km:.2f} €/km")
-    m2.metric("TCO PHEV", money(phev_total), f"{phev_per_km:.2f} €/km")
-    m3.metric("Écart PHEV − HEV", money(tco_gap), "PHEV moins cher" if tco_gap < 0 else "HEV moins cher" if tco_gap > 0 else "Égalité")
-    cheapest = "PHEV" if phev_total < hev_total else "HEV"
-    st.success(f"🏁 **Meilleur choix financier dans ces hypothèses : {cheapest}.** Écart estimé : {money(abs(tco_gap))} sur {years} ans.")
-    st.caption("TCO = achat + énergie + entretien + assurance + provision batterie − revente estimée. Financement, fiscalité, pneus et réparations imprévues ne sont pas inclus.")
 
+    # Render the decision summary in the reserved top position, above all detailed filters.
+    with summary_placeholder:
+        st.markdown("---")
+        st.subheader("🧾 Synthèse de l'achat — décision en un coup d'œil")
+        s1, s2 = st.columns(2)
+        with s1:
+            st.markdown("**RAV4 HEV · 218 ch · 2WD Dynamic Business**")
+            st.metric("Prix d'achat", money(hev_price))
+            st.caption("2025 · 20 km · 126 g CO₂/km · non rechargeable")
+        with s2:
+            st.markdown("**RAV4 PHEV · 306 ch · AWD-i Collection**")
+            st.metric("Prix d'achat", money(phev_price), f"{money(premium)} vs HEV")
+            st.caption("2025 · 14 326 km · 18,1 kWh · 75 km annoncés")
+        st.markdown(f"**Écart à l'achat : {money(premium)}** · soit {premium / max(1, hev_price) * 100:.1f} % de plus pour le PHEV.")
+        r1, r2, r3 = st.columns(3)
+        r1.metric(f"TCO HEV · {years} ans", money(hev_total), f"{hev_per_km:.2f} €/km")
+        r2.metric(f"TCO PHEV · {years} ans", money(phev_total), f"{phev_per_km:.2f} €/km")
+        r2.caption(f"Écart TCO : {money(abs(tco_gap))} · {cheapest} moins cher")
+        r3.metric("Choix recommandé", overall, f"Score {max(hev_score, phev_score):.0f}/100")
+        st.success(f"🏁 **Meilleur choix selon tes filtres : {overall}.** Le choix financier seul est **{cheapest}**.")
+        st.caption(
+            f"Priorité : {priority} · Recharge domicile : {'oui' if home_charging else 'non'} · "
+            f"Kilométrage : {annual_km:,} km/an · Électrique PHEV estimé : {phev_ev_km:,.0f} km/an. "
+            "Le verdict est calculé à partir des hypothèses visibles plus bas.".replace(",", " ")
+        )
+        st.warning(
+            "Comparaison non strictement équivalente : HEV en 2WD Dynamic Business contre PHEV AWD-i Collection. "
+            "Le PHEV a aussi 14 306 km de plus. Vérifier l'historique et l'état de santé de sa batterie avant achat."
+        )
+
+    st.subheader("6. Détail du coût total de possession")
     costs = pd.DataFrame({
         "Poste": ["Achat", "Énergie", "Entretien", "Assurance", "Provision batterie", "Revente déduite"],
         "HEV": [hev_price, years * hev_energy_year, years * hev_maint, years * hev_ins, hev_battery, -hev_resale],
