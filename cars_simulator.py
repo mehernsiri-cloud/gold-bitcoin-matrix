@@ -51,9 +51,9 @@ def render_rav4_simulator():
     ev_share = st.slider(
         "Part des kilomètres annuels du PHEV effectuée en électrique (%)",
         min_value=0, max_value=100, value=55, step=5, key="sim_ev_share",
-        help="Dépend de la recharge à domicile, de la longueur des trajets locaux et des voyages. Les grands trajets sans recharge réduisent cette part."
+        help="Part théorique électrique, plafonnée au kilométrage local annuel saisi juste au-dessus : les grands voyages sans recharge sont donc comptés en thermique."
     )
-    phev_ev_km = annual_km * ev_share / 100
+    phev_ev_km = min(annual_km * ev_share / 100, local_km)
     st.caption(f"Kilométrage électrique PHEV simulé : {phev_ev_km:,.0f} km/an · thermique : {annual_km-phev_ev_km:,.0f} km/an".replace(",", " "))
 
     st.subheader("2. Prix de l'énergie et consommations")
