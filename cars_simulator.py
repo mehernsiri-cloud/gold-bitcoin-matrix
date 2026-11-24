@@ -542,10 +542,17 @@ def render_rav4_simulator():
         "9 612 € pour la location de biens en 2026 est un repère à vérifier, pas un taux de cotisation. "
         "Ne saisis pas deux fois les mêmes prélèvements."
     )
-    if rental_gross > 9612 and social_charges_estimate == 0:
+    if rental_gross > 0 and social_charges_estimate == 0:
         st.warning(
-            "Les recettes dépassent le repère URSSAF 2026 de 9 612 € pour la location de biens : "
-            "le net après fiscalité est provisoire tant que les cotisations éventuelles ne sont pas estimées."
+            "Aucun montant de cotisations / prélèvements sociaux n'est renseigné : le net après fiscalité "
+            "n'intègre donc que l'impôt sur le revenu estimé et reste provisoire. Vérifie le traitement social "
+            "applicable à ton activité, même si les recettes restent sous le seuil URSSAF indicatif."
+        )
+    if rental_gross > 9612:
+        st.caption(
+            "Repère 2026 : les recettes dépassent 9 612 €, seuil indiqué par l'URSSAF pour la location de biens. "
+            "Cela justifie une vérification spécifique avec le simulateur URSSAF ; ce seuil ne permet pas, à lui seul, "
+            "de calculer le montant dû."
         )
     st.markdown(
         "Références à vérifier : [impots.gouv.fr — location de biens meubles et régimes BIC](https://www.impots.gouv.fr/particulier/questions/je-loue-des-biens-comment-declarer-les-revenus-tires-de-cette-location) · "
