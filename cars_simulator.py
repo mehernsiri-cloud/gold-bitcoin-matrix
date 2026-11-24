@@ -6,6 +6,7 @@ Resale, maintenance and battery reserves are planning scenarios, not forecasts.
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from datetime import date
 
 LACENTRALE_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=not_plug_hyb%2Cplug_hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&mileageMax=36000&versions=awd-i&yearMax=2025&yearMin=2022"
 
@@ -111,17 +112,41 @@ def render_rav4_simulator():
         st.markdown("**HEV**")
         hev_maint = st.number_input("Entretien annuel HEV (€)", 0, 3000, 500, 50, key="sim_maint_h_v2")
         hev_ins = st.number_input("Assurance annuelle HEV (€)", 0, 3000, 750, 50, key="sim_ins_h_v2")
-        hev_resale_pct = st.slider("Valeur de revente HEV (% du prix)", 5, 90, 48, key="sim_resale_h_v2")
         hev_battery = st.number_input("Provision risque batterie HEV sur la période (€)", 0, 15000, 500, 100, key="sim_batt_h_v2")
     with c2:
         st.markdown("**PHEV**")
         phev_maint = st.number_input("Entretien annuel PHEV (€)", 0, 3000, 550, 50, key="sim_maint_p_v2")
         phev_ins = st.number_input("Assurance annuelle PHEV (€)", 0, 3000, 850, 50, key="sim_ins_p_v2")
-        phev_resale_pct = st.slider("Valeur de revente PHEV (% du prix)", 5, 90, 43, key="sim_resale_p_v2")
         phev_battery = st.number_input("Provision risque batterie PHEV sur la période (€)", 0, 25000, 1200, 100, key="sim_batt_p_v2")
 
-    hev_resale = hev_price * hev_resale_pct / 100
-    phev_resale = phev_price * phev_resale_pct / 100
+    # Vehicle age is calculated from each listing's first-registration date.
+    today = date.today()
+    hev_first_reg = date(2023, 12, 26)
+    phev_first_reg = date(2025, 12, 31)
+    def age_years(first_reg, on_date):
+        return max(0.0, (on_date - first_reg).days / 365.2425)
+    hev_age_now = age_years(hev_first_reg, today)
+    phev_age_now = age_years(phev_first_reg, today)
+    hev_age_exit = age_years(hev_first_reg, date(today.year + years, today.month, min(today.day, 28 if today.month == 2 else today.day)))
+    phev_age_exit = age_years(phev_first_reg, date(today.year + years, today.month, min(today.day, 28 if today.month == 2 else today.day)))
+    st.markdown("**Âge réel intégré à la valeur de revente**")
+    st.caption(f"À aujourd'hui : HEV {hev_age_now:.1f} ans · PHEV {phev_age_now:.1f} ans. À la revente dans {years} ans : HEV {hev_age_exit:.1f} ans · PHEV {phev_age_exit:.1f} ans.")
+    age_c1, age_c2, age_c3 = st.columns(3)
+    with age_c1:
+        depreciation_first5 = st.slider("Décote annuelle jusqu'à 5 ans d'âge (%)", 0.0, 20.0, 7.0, 0.5, key="sim_age_dep_first5")
+    with age_c2:
+        depreciation_after5 = st.slider("Décote annuelle après 5 ans d'âge (%)", 0.0, 15.0, 4.0, 0.5, key="sim_age_dep_after5")
+    with age_c3:
+        st.caption("Hypothèses de simulation modifiables, appliquées année par année à partir de l'âge actuel de chaque véhicule.")
+    def age_based_resale(price, current_age, holding_years):
+        value = float(price)
+        for step in range(holding_years):
+            age_at_step = current_age + step
+            rate = depreciation_first5 if age_at_step < 5 else depreciation_after5
+            value *= (1 - rate / 100)
+        return value
+    hev_resale = age_based_resale(hev_price, hev_age_now, years)
+    phev_resale = age_based_resale(phev_price, phev_age_now, years)
     hev_total = hev_price + years * (hev_energy_year + hev_maint + hev_ins) + hev_battery - hev_resale
     phev_total = phev_price + charger_installation_cost + years * (phev_energy_year + phev_maint + phev_ins) + phev_battery - phev_resale
     distance_total = max(1, annual_km * years)
