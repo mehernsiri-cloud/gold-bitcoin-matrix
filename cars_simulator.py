@@ -245,23 +245,8 @@ def render_rav4_simulator():
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("6. Verdict selon tes priorités")
-    # Transparent 0-100 suitability indicators, separate from the financial TCO.
-    financial_hev = 100 if cheapest == "HEV" else 0
-    financial_phev = 100 - financial_hev
-    ev_score = 85 if home_charging and phev_ev_km >= 1000 else 65 if home_charging and phev_ev_km > 0 else 20
-    polyvalence_phev = 90 if awd_need else 78
-    polyvalence_hev = 55 if awd_need else 70
-    if priority == "Budget":
-        weight_cost, weight_use = 0.80, 0.20
-    elif priority == "Confort / polyvalence":
-        weight_cost, weight_use = 0.30, 0.70
-    else:
-        weight_cost, weight_use = 0.60, 0.40
-    hev_use = polyvalence_hev
-    phev_use = (ev_score + polyvalence_phev) / 2
-    hev_score = weight_cost * financial_hev + weight_use * hev_use
-    phev_score = weight_cost * financial_phev + weight_use * phev_use
-    overall = "PHEV" if phev_score > hev_score else "HEV"
+    # Reuse the exact same scores calculated above for the top decision summary.
+    # Both reference vehicles are AWD-i: AWD must not create a scoring advantage for either.
     v1, v2 = st.columns(2)
     v1.metric("Score HEV", f"{hev_score:.0f}/100")
     v2.metric("Score PHEV", f"{phev_score:.0f}/100")
@@ -608,7 +593,7 @@ def render_rav4_simulator():
     keep_net = rental_net_after_tax * rental_horizon + cactus_future_value - cactus_private_value
     sell_net = private_net - trade_net
     # The private-sale premium is shown separately; compare rental cash flow with the net value forgone.
-    keep_advantage_vs_trade = rental_net_after_tax * rental_horizon + cactus_future_value - trade_net - cactus_loan_balance
+    keep_advantage_vs_trade = rental_net_after_tax * rental_horizon + cactus_future_value - trade_net
     trade_value_net_of_debt = trade_net
     d1, d2, d3 = st.columns(3)
     d1.metric(f"Flux location cumulé net d’impôts · {rental_horizon} ans", money(rental_net_after_tax * rental_horizon))
