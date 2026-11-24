@@ -245,3 +245,10 @@ def cars_dashboard():
         for label, url in SEARCHES.items():
             st.markdown(f"- [{label}]({url})")
     st.caption("L’extraction dépend de la structure publique de La Centrale et peut être limitée. Vérifie toujours l’annonce, l’historique, l’entretien de la batterie hybride et la transmission exacte auprès du vendeur.")
+
+    # Interactive HEV vs PHEV ownership-cost simulator
+    try:
+        from cars_simulator import render_rav4_simulator
+        render_rav4_simulator()
+    except Exception as exc:
+        st.error(f"Le simulateur RAV4 est temporairement indisponible : {exc}")
