@@ -115,7 +115,7 @@ def render_family_suv_comparator():
             net_depreciation = v["price"] - resale
             tco = net_depreciation + charging + usage_cost
             results.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Âge à l’achat":max(0, date.today().year-int(v["year"])),"Âge à la revente":age_exit,"TCO (€)":tco,"€/km":tco/(annual_km*years),"Dépréciation nette (€)":net_depreciation,"Coût d’usage hors achat/revente (€)":usage_cost,"Borne (€)":charging,"Note pondérée /10":score_by_name.get(v["name"], 0),"Revente estimée (€)":resale,"Km électriques/an":ev_km_year,"Km à la sortie":exit_km})
-            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Dépréciation nette (achat - revente)":net_depreciation,"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Pièces d’usure / rechange":years*v["parts"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"]})
+            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Prix d’achat (€)":v["price"],"Revente estimée (€)":resale,"Dépréciation nette (achat - revente)":net_depreciation,"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Pièces d’usure / rechange":years*v["parts"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"]})
 
     df = pd.DataFrame(results)
     st.subheader("5. Résultat — coût total à 5, 8 et 10 ans")
@@ -144,6 +144,10 @@ def render_family_suv_comparator():
     detail_df = pd.DataFrame(details)
     horizon_choice = st.selectbox("Horizon à détailler", horizons, index=1, key="family_detail_horizon")
     detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].copy()
+    st.markdown("**Prix d’achat, valeur de revente et dépréciation nette**")
+    value_table = detail[["Véhicule","Prix d’achat (€)","Revente estimée (€)","Dépréciation nette (achat - revente)"]].copy()
+    value_table = value_table.rename(columns={"Dépréciation nette (achat - revente)":"Dépréciation nette (€)"})
+    st.dataframe(value_table.style.format({"Prix d’achat (€)":"{:,.0f} €","Revente estimée (€)":"{:,.0f} €","Dépréciation nette (€)":"{:,.0f} €"}), hide_index=True, use_container_width=True)
     cost_columns = ["Dépréciation nette (achat - revente)","Borne","Énergie","Entretien","Pièces d’usure / rechange","Assurance","Provision batterie"]
     detail_long = detail.melt(id_vars=["Véhicule"], value_vars=cost_columns, var_name="Poste", value_name="Montant (€)")
     detail_long = detail_long[detail_long["Montant (€)"] > 0]
