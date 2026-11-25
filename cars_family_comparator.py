@@ -34,7 +34,10 @@ def render_family_suv_comparator():
                 maint = st.number_input("Entretien annuel (€)", 0, 4000, int(v["maint"]), 50, key=f"fam_{v['id']}_maint")
                 insurance = st.number_input("Assurance annuelle (€)", 0, 4000, int(v["insurance"]), 50, key=f"fam_{v['id']}_insurance")
                 battery = st.number_input("Provision risque batterie / électronique sur la période (€)", 0, 20000, int(v["battery"]), 100, key=f"fam_{v['id']}_battery")
-                edited.append({**v, "price":price, "km":km, "year":year, "fuel_l100":fuel_l100, "ev_km":ev_km, "ev_kwh100":ev_kwh100, "maint":maint, "insurance":insurance, "battery":battery})
+                resale5 = st.number_input("Valeur de revente à 5 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale5"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale5")
+                resale8 = st.number_input("Valeur de revente à 8 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale8"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale8")
+                resale10 = st.number_input("Valeur de revente à 10 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale10"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale10")
+                edited.append({**v, "price":price, "km":km, "year":year, "fuel_l100":fuel_l100, "ev_km":ev_km, "ev_kwh100":ev_kwh100, "maint":maint, "insurance":insurance, "battery":battery, "resale5":resale5, "resale8":resale8, "resale10":resale10})
 
     st.subheader("2. Ton usage et tes filtres")
     a,b,c = st.columns(3)
@@ -53,7 +56,7 @@ def render_family_suv_comparator():
     local_km = annual_km * local_share / 100
     st.caption("Les kilomètres électriques sont limités aux trajets locaux, à l'autonomie utile du véhicule et à la fréquence de recharge. Les longs trajets restent calculés en essence/hybride.")
     st.subheader("3. Notes pondérées — espace, motricité, confort et âge")
-    st.caption("Notes initiales indicatives sur 10, modifiables. L’âge est calculé automatiquement à partir de l’année de première mise en circulation.")
+    st.caption("Notes initiales indicatives sur 10, modifiables. L’âge est calculé automatiquement. Les valeurs de revente sont également modifiables dans chaque fiche : elles ne sont pas des cotes garanties.")
     w1, w2, w3, w4 = st.columns(4)
     with w1: weight_space = st.slider("Poids espace global (%)", 0, 100, 30, 5, key="fam_w_space")
     with w2: weight_traction = st.slider("Poids motricité 4 roues (%)", 0, 100, 20, 5, key="fam_w_traction")
