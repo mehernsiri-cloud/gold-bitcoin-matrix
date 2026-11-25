@@ -1073,7 +1073,7 @@ def render_financial_intelligence_dashboard() -> None:
     if error: st.warning(error)
     a,b,c,d=st.columns(4)
     a.metric("Total des actifs suivis",f"{live['total']:,.2f} €")
-    b.metric("Portefeuille coté",f"{live['broker_total']:,.2f} €",f"{live['perf']:+.2f}%")
+    b.metric("Portefeuille hors or",f"{live['broker_total']:,.2f} €","PRU à compléter" if live["perf"] is None else f"{live['perf']:+.2f}%")
     c.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     d.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
     st.caption("Relevé broker du 25/11/2026 à 16:41 : 1 130,93 € au total, dont 104,61 € sur la ligne Or (0,033176 XAU, achat confirmé de 100 €) et 4,75 € de solde espèces. Aucune autre exposition or n'est ajoutée. GC=F sert uniquement de benchmark de marché, pas de valorisation exacte du support détenu.")
