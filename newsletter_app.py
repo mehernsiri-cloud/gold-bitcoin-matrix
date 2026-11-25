@@ -74,9 +74,9 @@ MARKET_SYMBOLS = {
     "Thales": "HO.PA",
     "Lockheed Martin": "LMT",
     "Air Liquide": "AI.PA",
-    "Amundi S&P World Health Care (GLHL)": "GLHL.PA",
+    "Amundi S&P Global Health Care (WELS)": "WELS.PA",
     "Xtrackers MSCI World UCITS ETF (XDWD)": "XDWD.DE",
-    "iShares S&P 500 Equal Weight (EWSP)": "EWSP.PA",
+    "iShares S&P 500 Equal Weight (O4JO)": "O4JO.DE",
     "iShares World Utilities (XDWU)": "XDWU.L",
     "ASML Holding": "ASML.AS",
     "Or (futures COMEX · USD/once)": "GC=F",
@@ -387,7 +387,7 @@ def markets_page():
         market_summary_card("Bitcoin (USD)", "BTC-USD", period)
 
     st.subheader("Actions et ETF")
-    defaults = ["TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)", "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)"]
+    defaults = ["TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)", "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide", "Amundi S&P Global Health Care (WELS)", "iShares World Utilities (XDWU)", "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (O4JO)"]
     selected = st.multiselect("Actifs à comparer", list(MARKET_SYMBOLS), default=defaults, key="market_assets")
     histories, summary = [], []
     progress = st.progress(0, text="Chargement des cours…")
@@ -608,10 +608,10 @@ def market_watch_page():
         ("Thales", "HO.PA", "EUR"),
         ("Lockheed Martin", "LMT", "USD"),
         ("Air Liquide", "AI.PA", "EUR"),
-        ("Amundi S&P World Health Care (GLHL)", "GLHL.PA", "EUR"),
+        ("Amundi S&P Global Health Care (WELS)", "WELS.PA", "EUR"),
         ("World Utilities (XDWU)", "XDWU.L", "GBP"),
         ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
-        ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR"),
+        ("iShares S&P 500 Equal Weight (O4JO)", "O4JO.DE", "EUR"),
         ("ASML Holding", "ASML.AS", "EUR"),
         ("Or — benchmark COMEX (quantité en once troy)", "GC=F", "USD"),
     ]
@@ -620,7 +620,7 @@ def market_watch_page():
     st.info(
         "Pour calculer ton total automatiquement, renseigne les quantités réelles de chaque ligne. "
         "Les cellules vides signifient « quantité inconnue » ; elles ne sont pas assimilées à zéro. "
-        "La base d'exposition or suivie séparément est d'environ 2 100 € (environ 2 000 € précédemment déclarés + 100 € d'achat confirmé). "
+        "L'unique ligne d'or visible vaut 104,61 € (0,033176 XAU), pour un achat confirmé de 100 € ; elle est déjà comprise dans le total du portefeuille. "
         "Pour l'or, GC=F est coté en USD par once troy : sa valorisation dynamique nécessite la quantité détenue et reste un benchmark, hors prime/frais. "
         "Les valeurs saisies restent dans la session Streamlit en cours."
     )
@@ -715,10 +715,10 @@ def market_watch_page():
         st.caption("Valorisation indicative issue des derniers cours intraday disponibles et des taux EUR/USD et GBP/USD. Vérifier l'horodatage et les délais de la place.")
     else:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Portefeuille coté (base)", "990,64 €")
-        c2.metric("Or suivi (base indicative)", "≈ 2 100 €")
-        c3.metric("Total des actifs suivis", "≈ 3 090,64 €")
-        st.caption("Performance du portefeuille coté : +4,10 % · performance de l'or non calculée faute de PRU consolidé.")
+        c1.metric("Portefeuille total (capture)", "1 130,93 €")
+        c2.metric("Or inclus dans le total", "104,61 €")
+        c3.metric("Solde espèces", "4,75 €")
+        st.caption("Relevé du 25/11/2026 à 16:41. La ligne or correspond à 100 € investis, valorisés 104,61 €. Les performances globales ne sont pas déduites de cette capture.")
         st.warning("La valorisation dynamique totale s'affichera lorsque les quantités de toutes les lignes seront renseignées et que les cours / taux seront disponibles. Les chiffres déclarés ci-dessus ne sont qu'un dernier relevé manuel, pas un calcul en direct.")
 
     if live_rows:
@@ -752,8 +752,8 @@ def market_watch_page():
     selected = st.multiselect("Actifs à comparer", list(watch), default=[
         "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)",
         "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
-        "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)",
-        "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)",
+        "Amundi S&P Global Health Care (WELS)", "iShares World Utilities (XDWU)",
+        "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (O4JO)",
         "ASML Holding", "Or (futures COMEX · USD/once)"
     ], key="wels_market_assets_live")
     curves, summary = [], []
@@ -2418,7 +2418,7 @@ def render_drawdown_alerts():
         {"name": "ASML Holding", "ticker": "ASML.AS", "currency": "EUR", "pe": "À actualiser", "forward_pe": "À actualiser",
          "fundamentals_date": "—", "note": "Nouvelle position directe ; suivre la demande en équipements semi-conducteurs, les commandes et les marges."},
         {"name": "Or (benchmark COMEX)", "ticker": "GC=F", "currency": "USD/once", "pe": "N/A", "forward_pe": "N/A",
-         "fundamentals_date": "—", "note": "Exposition or suivie d'environ 2 100 € en base. GC=F est un benchmark futures USD/once, pas le prix exact du support détenu."}
+         "fundamentals_date": "—", "note": "Ligne Or : 0,033176 XAU, valorisée 104,61 € sur la capture du 25/11/2026. GC=F reste un benchmark futures USD/once, pas le prix exact du support détenu."}
     ]
     cols = st.columns(2)
     for idx, asset in enumerate(assets):
@@ -2892,17 +2892,17 @@ def executive_dashboard(df):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
     st.subheader("💼 Portefeuille — dernier relevé communiqué")
-    st.caption("Base consolidée indicative : environ 3 090,64 €, composée de 990,64 € de portefeuille coté (ASML inclus) et d'environ 2 100 € d'exposition or (environ 2 000 € déjà déclarés + achat confirmé de 100 €). La performance +4,10 % concerne uniquement le portefeuille coté ; le PRU de l'or n'est pas renseigné.")
+    st.caption("Relevé du 25/11/2026 à 16:41 : 1 130,93 € au total, dont 104,61 € sur la ligne Or (0,033176 XAU, achat de 100 €) et 4,75 € de solde espèces. Aucune autre exposition or n’est ajoutée.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
             ("Vanguard FTSE All-World Acc (VWCE)", "VWCE.DE", "EUR"),
             ("Frontline", "FRO", "USD"), ("FTAI Aviation", "FTAI", "USD"),
             ("Thales", "HO.PA", "EUR"), ("Lockheed Martin", "LMT", "USD"),
-            ("Air Liquide", "AI.PA", "EUR"), ("Amundi S&P World Health Care (GLHL)", "GLHL.PA", "EUR"),
+            ("Air Liquide", "AI.PA", "EUR"), ("Amundi S&P Global Health Care (WELS)", "WELS.PA", "EUR"),
             ("World Utilities (XDWU)", "XDWU.L", "GBP"),
             ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
-            ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR"),
+            ("iShares S&P 500 Equal Weight (O4JO)", "O4JO.DE", "EUR"),
             ("ASML Holding", "ASML.AS", "EUR"),
             ("Or (benchmark COMEX · once troy)", "GC=F", "USD/oz")
         ]
