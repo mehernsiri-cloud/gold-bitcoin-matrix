@@ -432,8 +432,11 @@ def _portfolio_live_snapshot():
         fx_usd=close.get("EURUSD=X")
         fx_gbp=close.get("EURGBP=X")
         for p in PORTFOLIO:
-            sym=p["symbol"]; yf_sym=YF_SYMBOLS[sym]
-            if yf_sym not in close: continue
+            sym=p["symbol"]
+            # Some broker lines (e.g. "Investissement général") are not identified securities.
+            # Keep their broker value in the portfolio, but do not attempt a Yahoo lookup.
+            yf_sym=YF_SYMBOLS.get(sym)
+            if not yf_sym or yf_sym not in close: continue
             s=close[yf_sym].dropna()
             cur=QUOTE_CURRENCY.get(sym,"EUR")
             if cur=="USD":
