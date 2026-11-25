@@ -54,7 +54,7 @@ def render_family_suv_comparator():
         ev_coverage = st.slider("Part des trajets locaux couverts par l'autonomie électrique (%)", 0, 100, 75, 5, key="family_ev_coverage")
     charge_factor = {"Quotidienne":1.0,"3 à 4 fois/semaine":0.75,"1 à 2 fois/semaine":0.45}[charge_frequency] if home_charge else 0.0
     local_km = annual_km * local_share / 100
-    st.caption("Les kilomètres électriques sont limités aux trajets locaux, à l'autonomie utile du véhicule et à la fréquence de recharge. Les longs trajets restent calculés en essence/hybride.")
+    st.caption("Les kilomètres électriques sont limités aux trajets locaux éligibles, à une recharge par jour de recharge effective et à l'autonomie utile saisie (40/60 km). C'est une approximation : les distances quotidiennes et les possibilités de recharge au travail ne sont pas modélisées. Les longs trajets restent calculés en essence/hybride.")
     st.subheader("3. Notes pondérées — espace, motricité, confort et âge")
     st.caption("Notes initiales indicatives sur 10, modifiables. L’âge est calculé automatiquement. Les valeurs de revente sont également modifiables dans chaque fiche : elles ne sont pas des cotes garanties.")
     w1, w2, w3, w4 = st.columns(4)
@@ -84,8 +84,12 @@ def render_family_suv_comparator():
     details = []
     for v in edited:
         is_phev = v["fuel"] == "PHEV"
-        ev_km_year = local_km * ev_coverage / 100 * charge_factor if is_phev else 0
-        ev_km_year = min(ev_km_year, local_km, annual_km)
+        # Electric mileage cannot exceed either the share of local trips
+        # the user expects to cover electrically or one usable battery range
+        # per effective charging day. This prevents autonomy from being ignored.
+        requested_local_ev_km = local_km * ev_coverage / 100 * charge_factor if is_phev else 0
+        annual_charge_capacity = v["ev_km"] * 365 * charge_factor if is_phev else 0
+        ev_km_year = min(requested_local_ev_km, annual_charge_capacity, annual_km)
         electric_cost_year = ev_km_year * v["ev_kwh100"] / 100 * electricity_price * 1.10
         petrol_km_year = annual_km - ev_km_year
         energy_year = petrol_km_year * v["fuel_l100"] / 100 * fuel_price + electric_cost_year
@@ -132,6 +136,6 @@ def render_family_suv_comparator():
     st.dataframe(detail.style.format(detail_format), use_container_width=True)
 
     st.subheader("7. Sensibilité et lecture des résultats")
-    st.caption("Teste notamment le prix de l'essence, le tarif électrique, la fréquence de recharge, les frais d'entretien et la valeur de revente. Les provisions batterie sont des réserves de risque paramétrables, pas une panne supposée.")
+    st.caption("Teste notamment le prix de l'essence, le tarif électrique, la fréquence de recharge, les frais d'entretien et la valeur de revente. Les kilomètres électriques sont désormais plafonnés par l'autonomie utile × le nombre de jours de recharge estimé. Les provisions batterie sont des réserves de risque paramétrables, pas une panne supposée.")
     st.warning("Les valeurs de revente, coûts d'entretien et provisions batterie sont des hypothèses de travail à personnaliser. Le modèle ne prétend pas connaître la valeur future exacte ni garantir le coût réel des réparations. Les valeurs initiales des Audi et Toyota doivent être remplacées par les annonces que tu retiendras.")
     st.markdown("**À contrôler avant achat :** historique d'entretien, garantie écrite et ses exclusions, état de santé batterie HT pour PHEV, boîte automatique, système AWD, pneus (usure homogène), et devis réel de recharge en copropriété.")
