@@ -54,7 +54,7 @@ def render_family_suv_comparator():
         ev_coverage = st.slider("Part des trajets locaux couverts par l'autonomie électrique (%)", 0, 100, 75, 5, key="family_ev_coverage")
     charge_factor = {"Quotidienne":1.0,"3 à 4 fois/semaine":0.75,"1 à 2 fois/semaine":0.45}[charge_frequency] if home_charge else 0.0
     local_km = annual_km * local_share / 100
-    st.caption("Les kilomètres électriques sont limités aux trajets locaux éligibles, à une recharge par jour de recharge effective et à l'autonomie utile saisie (40/60 km). C'est une approximation : les distances quotidiennes et les possibilités de recharge au travail ne sont pas modélisées. Les longs trajets restent calculés en essence/hybride.")
+    st.caption("Les kilomètres électriques sont limités par la part des trajets locaux, la fréquence de recharge et l'autonomie utile saisie (40/60 km par recharge). La fréquence n'est appliquée qu'une fois. C'est une approximation : les distances quotidiennes et les possibilités de recharge au travail ne sont pas modélisées. Les longs trajets restent calculés en essence/hybride.")
     st.subheader("3. Notes pondérées — espace, motricité, confort et âge")
     st.caption("Notes initiales indicatives sur 10, modifiables. L’âge est calculé automatiquement. Les valeurs de revente sont également modifiables dans chaque fiche : elles ne sont pas des cotes garanties.")
     w1, w2, w3, w4 = st.columns(4)
@@ -87,9 +87,9 @@ def render_family_suv_comparator():
         # Electric mileage cannot exceed either the share of local trips
         # the user expects to cover electrically or one usable battery range
         # per effective charging day. This prevents autonomy from being ignored.
-        requested_local_ev_km = local_km * ev_coverage / 100 * charge_factor if is_phev else 0
+        requested_local_ev_km = local_km * ev_coverage / 100 if is_phev else 0
         annual_charge_capacity = v["ev_km"] * 365 * charge_factor if is_phev else 0
-        ev_km_year = min(requested_local_ev_km, annual_charge_capacity, annual_km)
+        ev_km_year = min(requested_local_ev_km * charge_factor, annual_charge_capacity, annual_km)
         electric_cost_year = ev_km_year * v["ev_kwh100"] / 100 * electricity_price * 1.10
         petrol_km_year = annual_km - ev_km_year
         energy_year = petrol_km_year * v["fuel_l100"] / 100 * fuel_price + electric_cost_year
@@ -97,10 +97,10 @@ def render_family_suv_comparator():
             exit_km = v["km"] + annual_km * years
             age_exit = max(0, date.today().year - int(v["year"]) + years)
             resale_rate = v["resale5"] if years == 5 else v["resale8"] if years == 8 else v["resale10"]
-            # Age and mileage adjustments are explicit scenario assumptions.
-            age_factor = max(0.35, 1 - max(0, age_exit - 5) * 0.035)
-            mileage_factor = max(0.70, min(1.10, 1 - max(0, exit_km - 12000 * age_exit) / 10000 * 0.025))
-            resale = v["price"] * resale_rate * age_factor * mileage_factor
+            # The editable resale rate already represents the assumed residual
+            # value at this horizon. Do not apply a second age/mileage discount.
+            # Reflect projected age and mileage when choosing the resale rate.
+            resale = v["price"] * resale_rate
             charging = charger_cost if (is_phev and home_charge) else 0
             usage_cost = years * (energy_year + v["maint"] + v["insurance"]) + v["battery"]
             net_depreciation = v["price"] - resale
