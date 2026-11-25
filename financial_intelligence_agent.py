@@ -87,30 +87,26 @@ PORTFOLIO = [
     {"symbol":"HO","name":"Thales","value_eur":23.92,"return_pct":-1.71,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
     # New user-confirmed ASML purchase: $100 converted at ECB reference rate 1 EUR = 1.0963 USD (24 Nov 2026).
     {"symbol":"ASML","name":"ASML Holding NV","value_eur":91.22,"return_pct":0.0,"group":"Semiconductors","factors":["ai_investment","semiconductor_demand","rates","usd","equity_risk"]},
+    # User-confirmed €100 gold purchase, tracked against an EUR-converted COMEX benchmark.
+    {"symbol":"GOLD","name":"Or (benchmark indicatif)","value_eur":100.00,"return_pct":0.0,"group":"Gold / safe haven","factors":["real_rates","inflation","usd","geopolitics","liquidity","safe_haven"]},
 ]
 CASH_EUR = 4.93
-PORTFOLIO_TOTAL_EUR = 990.64
-PORTFOLIO_RETURN_PCT = 4.10
-
-# Planned purchases are shown separately and are not included in portfolio valuation until executed.
-PLANNED_BUYS = [
-    {"asset":"Or","amount_usd":100.0,"amount_eur":91.22,"status":"Prévu · non exécuté",
-     "note":"À intégrer au portefeuille après confirmation de l'achat et du support utilisé."},
-]
+PORTFOLIO_TOTAL_EUR = 1090.64
+PORTFOLIO_RETURN_PCT = 3.71
 
 # Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
 IMPACT_MAP = {
-    "Central banks & rates": {"positive":["TTE","XOM","FRO"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI","LMT","HO"],"watch":["USD exposure in US-listed holdings"],"reason":"Une hausse des taux peut peser sur les valorisations et le financement ; l'effet devise et les anticipations de croissance peuvent compenser."},
-    "Inflation, debt & economy": {"positive":["TTE","XOM"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI"],"watch":["FRO","LMT","HO"],"reason":"Une inflation persistante peut retarder les baisses de taux ; l'effet dépend de sa composante énergie/salaires et de la réaction des rendements."},
-    "Geopolitics & conflict": {"positive":["TTE","XOM","LMT","HO"],"negative":["VWCE","EWSP","FTAI"],"watch":["FRO","XDWU","GLHL","AI"],"reason":"Le canal dépend des sanctions, des flux énergétiques, des routes maritimes et des budgets de défense ; les valeurs défense ne montent pas mécaniquement."},
+    "Central banks & rates": {"positive":["TTE","XOM","FRO"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI","LMT","HO","GOLD"],"watch":["USD exposure in US-listed holdings"],"reason":"Une hausse des taux peut peser sur les valorisations et le financement ; l'effet devise et les anticipations de croissance peuvent compenser."},
+    "Inflation, debt & economy": {"positive":["TTE","XOM","GOLD"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI"],"watch":["FRO","LMT","HO"],"reason":"Une inflation persistante peut retarder les baisses de taux ; l'effet dépend de sa composante énergie/salaires et de la réaction des rendements."},
+    "Geopolitics & conflict": {"positive":["TTE","XOM","LMT","HO","GOLD"],"negative":["VWCE","EWSP","FTAI"],"watch":["FRO","XDWU","GLHL","AI"],"reason":"Le canal dépend des sanctions, des flux énergétiques, des routes maritimes et des budgets de défense ; les valeurs défense ne montent pas mécaniquement."},
     "Energy & commodities": {"positive":["TTE","XOM"],"negative":["AI","GLHL"],"watch":["FRO","VWCE","XDWU","EWSP"],"reason":"Un choc d'offre pétrolière peut soutenir les producteurs mais renchérir les coûts et peser sur la demande ; les tarifs des tankers dépendent aussi de l'offre de navires et des routes."},
-    "Financial system & liquidity": {"positive":[],"negative":["VWCE","GLHL","XDWU","EWSP","FTAI"],"watch":["TTE","XOM","FRO","AI","LMT","HO"],"reason":"Un resserrement du crédit touche d'abord les actifs risqués et les entreprises dépendantes du financement ; rechercher des signes confirmés de contagion."},
+    "Financial system & liquidity": {"positive":["GOLD"],"negative":["VWCE","GLHL","XDWU","EWSP","FTAI"],"watch":["TTE","XOM","FRO","AI","LMT","HO"],"reason":"Un resserrement du crédit touche d'abord les actifs risqués et les entreprises dépendantes du financement ; rechercher des signes confirmés de contagion."},
     "AI, electricity & infrastructure": {"positive":["XDWU","AI"],"negative":[],"watch":["VWCE","EWSP"],"reason":"La hausse des investissements réseau et de la demande électrique peut soutenir utilities et fournisseurs industriels, sous réserve de valorisations, contrats et financement."},
     "Defence & aerospace": {"positive":["LMT","HO"],"negative":[],"watch":["FTAI","VWCE","EWSP"],"reason":"Les annonces budgétaires ne deviennent un catalyseur qu'après budgets votés, contrats attribués et calendrier d'exécution."},
     "Cybersecurity": {"positive":["HO"],"negative":[],"watch":["VWCE","EWSP"],"reason":"Thales a une exposition aux activités cyber, mais l'effet boursier dépend de l'ampleur de l'incident et des contrats ; un incident n'est pas automatiquement positif."},
     "Healthcare": {"positive":["GLHL"],"negative":[],"watch":["VWCE","EWSP"],"reason":"Les décisions réglementaires et résultats cliniques peuvent toucher les composants santé ; l'ETF diversifié amortit les risques propres à une entreprise."},
     "Crypto & Bitcoin": {"positive":[],"negative":[],"watch":["VWCE","EWSP","XDWU"],"reason":"Aucune exposition directe au Bitcoin n'apparaît dans le portefeuille communiqué ; seul un effet indirect via liquidité et appétit pour le risque est possible."},
-    "FX & safe havens": {"positive":[],"negative":[],"watch":["VWCE","TTE","XOM","GLHL","EWSP","LMT"],"reason":"Les variations EUR/USD affectent la conversion en euros des actifs et revenus en dollars ; le sens dépend de la devise de cotation, couverture et revenus."},
+    "FX & safe havens": {"positive":["GOLD"],"negative":[],"watch":["VWCE","TTE","XOM","GLHL","EWSP","LMT"],"reason":"Les variations EUR/USD affectent la conversion en euros des actifs et revenus en dollars ; le sens dépend de la devise de cotation, couverture et revenus."},
     "Equity markets & companies": {"positive":[],"negative":[],"watch":["VWCE","GLHL","EWSP","XDWU","TTE","XOM","FTAI","FRO","AI","LMT","HO"],"reason":"L'impact dépend de l'entreprise ou de l'indice cité, de la surprise par rapport aux attentes et de la réaction du cours."},
 }
 
@@ -352,13 +348,13 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
     # Values are illustrative sensitivities, not forecasts or measured causal betas.
     profiles = [
         (["inflation", "cpi", "pce", "hotter than expected", "higher than expected"], "Inflation surprise",
-         {"VWCE":-0.65,"TTE":0.20,"GLHL":-0.35,"XOM":0.15,"XDWU":-0.90,"AI":-0.45,"EWSP":-0.70,"FTAI":-0.75,"FRO":0.05,"LMT":-0.15,"HO":-0.15}),
+         {"VWCE":-0.65,"TTE":0.20,"GLHL":-0.35,"XOM":0.15,"XDWU":-0.90,"AI":-0.45,"EWSP":-0.70,"FTAI":-0.75,"FRO":0.05,"LMT":-0.15,"HO":-0.15,"GOLD":0.45}),
         (["fed", "federal reserve", "rate hike", "hawkish", "higher for longer", "ecb", "interest rate"], "Taux plus élevés",
-         {"VWCE":-0.80,"TTE":-0.10,"GLHL":-0.55,"XOM":-0.10,"XDWU":-1.00,"AI":-0.65,"EWSP":-0.85,"FTAI":-0.90,"FRO":-0.10,"LMT":-0.30,"HO":-0.25}),
+         {"VWCE":-0.80,"TTE":-0.10,"GLHL":-0.55,"XOM":-0.10,"XDWU":-1.00,"AI":-0.65,"EWSP":-0.85,"FTAI":-0.90,"FRO":-0.10,"LMT":-0.30,"HO":-0.25,"GOLD":-0.65}),
         (["hormuz", "oil supply", "oil disruption", "opec", "brent", "crude", "pipeline"], "Choc d'offre énergétique",
-         {"VWCE":-0.25,"TTE":0.90,"GLHL":-0.20,"XOM":0.85,"XDWU":-0.45,"AI":-0.35,"EWSP":-0.30,"FTAI":-0.25,"FRO":0.35,"LMT":0.05,"HO":0.05}),
+         {"VWCE":-0.25,"TTE":0.90,"GLHL":-0.20,"XOM":0.85,"XDWU":-0.45,"AI":-0.35,"EWSP":-0.30,"FTAI":-0.25,"FRO":0.35,"LMT":0.05,"HO":0.05,"GOLD":0.20}),
         (["war", "invasion", "missile", "attack", "escalation", "sanction", "ceasefire"], "Choc géopolitique",
-         {"VWCE":-0.85,"TTE":0.40,"GLHL":-0.35,"XOM":0.35,"XDWU":-0.35,"AI":-0.30,"EWSP":-0.90,"FTAI":-0.65,"FRO":-0.55,"LMT":0.35,"HO":0.35}),
+         {"VWCE":-0.85,"TTE":0.40,"GLHL":-0.35,"XOM":0.35,"XDWU":-0.35,"AI":-0.30,"EWSP":-0.90,"FTAI":-0.65,"FRO":-0.55,"LMT":0.35,"HO":0.35,"GOLD":0.85}),
         (["data center", "data centre", "electricity demand", "power grid", "grid investment", "ai infrastructure"], "Investissements IA & électricité",
          {"VWCE":0.15,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.95,"AI":0.75,"EWSP":0.20,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.10}),
         (["defence budget", "defense budget", "military spending", "arms contract", "missile system", "procurement"], "Commandes & budgets défense",
@@ -368,7 +364,7 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
         (["clinical trial", "drug approval", "healthcare", "pharma"], "Catalyseur santé",
          {"VWCE":0.05,"TTE":0.00,"GLHL":0.65,"XOM":0.00,"XDWU":0.00,"AI":0.00,"EWSP":0.05,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.00}),
         (["bank failure", "liquidity", "credit crunch", "banking crisis", "default"], "Stress de liquidité / crédit",
-         {"VWCE":-1.00,"TTE":-0.45,"GLHL":-0.60,"XOM":-0.45,"XDWU":-0.70,"AI":-0.65,"EWSP":-1.10,"FTAI":-1.25,"FRO":-0.80,"LMT":-0.35,"HO":-0.35}),
+         {"VWCE":-1.00,"TTE":-0.45,"GLHL":-0.60,"XOM":-0.45,"XDWU":-0.70,"AI":-0.65,"EWSP":-1.10,"FTAI":-1.25,"FRO":-0.80,"LMT":-0.35,"HO":-0.35,"GOLD":0.75}),
     ]
     selected = next((p for p in profiles if any(k in text for k in p[0])), None)
     if not selected:
@@ -410,8 +406,8 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
             "evidence_factor":evidence_factor}
 
 
-YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS"}
-QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP"}
+YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS","GOLD":"GC=F"}
+QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP","GOLD":"USD"}
 QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline_v2.json"
 
 
@@ -1075,13 +1071,7 @@ def render_financial_intelligence_dashboard() -> None:
     a.metric("Portefeuille",f"{live['total']:,.2f} €",f"{live['perf']:+.2f}%")
     b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("Base portefeuille mise à jour avec l'achat ASML de 100 USD, converti à titre indicatif en 91,22 € au taux de référence du 24/11/2026. La performance de départ est recalculée par dilution à rendement nul sur ce nouvel apport ; les variations live restent estimatives et ne remplacent pas le PRU du courtier.")
-    if PLANNED_BUYS:
-        st.markdown("### Achats prévus · non comptabilisés")
-        planned_cols = st.columns(len(PLANNED_BUYS))
-        for planned_col, item in zip(planned_cols, PLANNED_BUYS):
-            planned_col.metric(f"{item['asset']} · {item['status']}", f"{item['amount_usd']:.0f} USD", f"≈ {item['amount_eur']:.2f} €")
-            planned_col.caption(item["note"])
+    st.caption("Base portefeuille intégrant l'achat ASML de 100 USD (≈ 91,22 € au taux de référence du 24/11/2026) et l'achat d'or confirmé de 100 €. La performance de départ est recalculée par dilution à rendement nul sur ces deux apports. L'or est suivi via le benchmark COMEX GC=F converti en euros : évolution indicative, sans prise en compte du support détenu, de la prime, des frais ou du prix d'achat exact.")
     st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
 
     # A missing or stale CSV must trigger a real collection, not a dead-end empty state.
