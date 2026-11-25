@@ -72,9 +72,17 @@ def render_family_suv_comparator():
         age_score = max(0.0, 10.0 - age_purchase * 1.25)
         score = (v["space_score"]*weight_space + v["traction_score"]*weight_traction + v["comfort_score"]*weight_comfort + age_score*weight_age) / total_weight
         score_rows.append({"Véhicule":v["name"],"Espace /10":v["space_score"],"Motricité /10":v["traction_score"],"Confort /10":v["comfort_score"],"Âge à l’achat":f"{age_purchase} an(s)","Note âge /10":age_score,"Note pondérée /10":score})
-    score_df = pd.DataFrame(score_rows).sort_values("Note pondérée /10", ascending=False)
+    score_df = pd.DataFrame(score_rows).sort_values("Note pondérée /10", ascending=True)
     score_by_name = {row["Véhicule"]: row["Note pondérée /10"] for row in score_rows}
-    st.dataframe(score_df.style.format({"Espace /10":"{:.1f}","Motricité /10":"{:.1f}","Confort /10":"{:.1f}","Note âge /10":"{:.1f}","Note pondérée /10":"{:.2f}"}), use_container_width=True, hide_index=True)
+    score_long = score_df.melt(id_vars=["Véhicule"], value_vars=["Espace /10","Motricité /10","Confort /10","Note âge /10"], var_name="Critère", value_name="Note")
+    score_chart = px.bar(score_long, x="Note", y="Véhicule", color="Critère", barmode="group", orientation="h", text="Note", range_x=[0,10], title="Comparaison des véhicules par critère (sur 10)")
+    score_chart.update_traces(texttemplate="%{text:.1f}", textposition="outside", cliponaxis=False)
+    score_chart.update_layout(height=430, xaxis_title="Note sur 10", yaxis_title="", legend_title="Critère", margin=dict(r=50))
+    st.plotly_chart(score_chart, use_container_width=True)
+    overall_chart = px.bar(score_df, x="Note pondérée /10", y="Véhicule", orientation="h", text="Note pondérée /10", range_x=[0,10], title="Score global pondéré")
+    overall_chart.update_traces(texttemplate="%{text:.2f}/10", textposition="outside", cliponaxis=False)
+    overall_chart.update_layout(height=260, xaxis_title="Score sur 10", yaxis_title="", margin=dict(r=65))
+    st.plotly_chart(overall_chart, use_container_width=True)
 
     st.subheader("4. Horizons de détention")
     horizons = [5,8,10]
@@ -116,24 +124,30 @@ def render_family_suv_comparator():
         baseline_tco = float(baseline_rows.iloc[0]["TCO (€)"]) if not baseline_rows.empty else float(sub["TCO (€)"].min())
         sub["Surcoût vs HEV 2WD (€)"] = sub["TCO (€)"] - baseline_tco
         sub["Surcoût annuel vs HEV 2WD (€)"] = sub["Surcoût vs HEV 2WD (€)"] / years
-        sub = sub.sort_values("TCO (€)")
+        sub = sub.sort_values("TCO (€)", ascending=True)
         winner = sub.iloc[0]
-        st.markdown(f"**À {years} ans : {winner['Véhicule']} ressort le moins cher** — {winner['TCO (€)']:,.0f} € ({winner['€/km']:.3f} €/km).".replace(",", " "))
-        st.caption("Le surcoût vs RAV4 HEV 2WD chiffre ce que tu paies en plus pour passer à une autre motorisation ou transmission. Il ne signifie pas automatiquement que cette version est moins intéressante.")
-        display_cols = ["Véhicule","Note pondérée /10","Âge à l’achat","Âge à la revente","TCO (€)","Surcoût vs HEV 2WD (€)","Surcoût annuel vs HEV 2WD (€)","Dépréciation nette (€)","Coût d’usage hors achat/revente (€)","€/km"]
-        st.dataframe(sub[display_cols].style.format({"Note pondérée /10":"{:.2f}","TCO (€)":"{:,.0f} €","Surcoût vs HEV 2WD (€)":"{:+,.0f} €","Surcoût annuel vs HEV 2WD (€)":"{:+,.0f} €/an","Dépréciation nette (€)":"{:,.0f} €","Coût d’usage hors achat/revente (€)":"{:,.0f} €","€/km":"{:.3f} €"}), use_container_width=True, hide_index=True)
-
-    chart = px.bar(df, x="Véhicule", y="TCO (€)", color="Horizon", barmode="group", title="Coût total estimé selon la durée de détention")
-    chart.update_layout(height=460, xaxis_tickangle=-20)
-    st.plotly_chart(chart, use_container_width=True)
+        st.markdown(f"**À {years} ans : {winner['Véhicule']} — {winner['TCO (€)']:,.0f} € au total, soit {winner['€/km']:.3f} €/km.**".replace(",", " "))
+        tco_chart = px.bar(sub, x="TCO (€)", y="Véhicule", orientation="h", text="TCO (€)", title=f"TCO total à {years} ans — comparaison directe")
+        tco_chart.update_traces(texttemplate="%{text:,.0f} €", textposition="outside", cliponaxis=False)
+        tco_chart.update_layout(height=330, xaxis_title="Coût total (€)", yaxis_title="", margin=dict(r=90))
+        st.plotly_chart(tco_chart, use_container_width=True)
+        premium_chart = px.bar(sub, x="Surcoût vs HEV 2WD (€)", y="Véhicule", orientation="h", text="Surcoût vs HEV 2WD (€)", title=f"Écart de coût face au RAV4 HEV 2WD — {years} ans")
+        premium_chart.update_traces(texttemplate="%{text:+,.0f} €", textposition="outside", cliponaxis=False)
+        premium_chart.update_layout(height=300, xaxis_title="Surcoût / économie (€) — négatif = moins cher que le HEV 2WD", yaxis_title="", margin=dict(r=90))
+        st.plotly_chart(premium_chart, use_container_width=True)
+        st.caption("Le graphique du surcoût isole le prix à payer (ou l'économie réalisée) pour passer à une autre motorisation ou transmission. Il ne signifie pas automatiquement que la version la moins chère est le meilleur choix.")
 
     st.subheader("6. Décomposition du coût")
     detail_df = pd.DataFrame(details)
     horizon_choice = st.selectbox("Horizon à détailler", horizons, index=1, key="family_detail_horizon")
-    detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].set_index("Véhicule")
-    # Apply currency formatting only to numeric columns (never to vehicle-name strings).
-    detail_format = {col: "{:,.0f} €" for col in detail.select_dtypes(include="number").columns}
-    st.dataframe(detail.style.format(detail_format), use_container_width=True)
+    detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].copy()
+    detail_long = detail.melt(id_vars=["Véhicule"], var_name="Poste", value_name="Montant (€)")
+    detail_long["Montant affiché"] = detail_long["Montant (€)"].map(lambda x: f"{x:,.0f} €".replace(",", " "))
+    breakdown = px.bar(detail_long, x="Véhicule", y="Montant (€)", color="Poste", barmode="relative", text="Montant affiché", title=f"Décomposition du TCO sur {horizon_choice} ans")
+    breakdown.update_traces(textposition="inside", insidetextanchor="middle")
+    breakdown.update_layout(height=500, xaxis_title="", yaxis_title="Montant cumulé (€)", legend_title="Poste de coût")
+    st.plotly_chart(breakdown, use_container_width=True)
+    st.caption("La revente apparaît en négatif : elle vient réduire le coût total. Les barres positives représentent les dépenses cumulées.")
 
     st.subheader("7. Sensibilité et lecture des résultats")
     st.caption("Teste notamment le prix de l'essence, le tarif électrique, la fréquence de recharge, les frais d'entretien et la valeur de revente. Les kilomètres électriques sont désormais plafonnés par l'autonomie utile × le nombre de jours de recharge estimé. Les provisions batterie sont des réserves de risque paramétrables, pas une panne supposée.")
