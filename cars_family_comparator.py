@@ -6,10 +6,10 @@ import streamlit as st
 
 
 VEHICLES = [
-    {"id":"rav4_hev_2wd","name":"Toyota RAV4 HEV 2WD","group":"RAV4 HEV 2WD","fuel":"HEV","drive":"2WD","price":33990,"km":45499,"year":2023,"fuel_l100":5.5,"ev_km":0,"ev_kwh100":0,"maint":500,"insurance":750,"battery":500,"resale5":0.58,"resale8":0.40,"resale10":0.30,"space_score":8.5,"traction_score":4.5,"comfort_score":7.5,"note":"Hybride auto-rechargeable, traction avant"},
-    {"id":"rav4_hev_awd","name":"Toyota RAV4 HEV AWD-i","group":"RAV4 HEV AWD-i","fuel":"HEV","drive":"AWD-i","price":39999,"km":19163,"year":2024,"fuel_l100":5.8,"ev_km":0,"ev_kwh100":0,"maint":525,"insurance":800,"battery":600,"resale5":0.60,"resale8":0.42,"resale10":0.31,"space_score":8.5,"traction_score":8.0,"comfort_score":7.5,"note":"Hybride auto-rechargeable, transmission intégrale AWD-i"},
-    {"id":"rav4_phev_awd","name":"Toyota RAV4 PHEV AWD-i","group":"RAV4 PHEV AWD-i","fuel":"PHEV","drive":"AWD-i","price":49990,"km":14326,"year":2025,"fuel_l100":6.3,"ev_km":60,"ev_kwh100":19.0,"maint":575,"insurance":900,"battery":1200,"resale5":0.56,"resale8":0.37,"resale10":0.26,"space_score":8.0,"traction_score":8.5,"comfort_score":7.8,"note":"Rechargeable, 306 ch, AWD-i, autonomie électrique dépendante de l'usage"},
-    {"id":"q5_phev","name":"Audi Q5 50 TFSI e quattro","group":"Audi Q5 PHEV quattro","fuel":"PHEV","drive":"quattro","price":36900,"km":44252,"year":2022,"fuel_l100":7.0,"ev_km":40,"ev_kwh100":22.0,"maint":850,"insurance":1050,"battery":2000,"resale5":0.48,"resale8":0.31,"resale10":0.21,"space_score":7.8,"traction_score":9.0,"comfort_score":8.8,"note":"PHEV 299 ch quattro, annonce Business Executive à 36 900 €"},
+    {"id":"rav4_hev_2wd","name":"Toyota RAV4 HEV 2WD","group":"RAV4 HEV 2WD","fuel":"HEV","drive":"2WD","price":33990,"km":45499,"year":2023,"fuel_l100":5.5,"ev_km":0,"ev_kwh100":0,"maint":500,"parts":350,"insurance":750,"battery":500,"resale5":0.58,"resale8":0.40,"resale10":0.30,"space_score":8.5,"traction_score":4.5,"comfort_score":7.5,"note":"Hybride auto-rechargeable, traction avant"},
+    {"id":"rav4_hev_awd","name":"Toyota RAV4 HEV AWD-i","group":"RAV4 HEV AWD-i","fuel":"HEV","drive":"AWD-i","price":39999,"km":19163,"year":2024,"fuel_l100":5.8,"ev_km":0,"ev_kwh100":0,"maint":525,"parts":400,"insurance":800,"battery":600,"resale5":0.60,"resale8":0.42,"resale10":0.31,"space_score":8.5,"traction_score":8.0,"comfort_score":7.5,"note":"Hybride auto-rechargeable, transmission intégrale AWD-i"},
+    {"id":"rav4_phev_awd","name":"Toyota RAV4 PHEV AWD-i","group":"RAV4 PHEV AWD-i","fuel":"PHEV","drive":"AWD-i","price":49990,"km":14326,"year":2025,"fuel_l100":6.3,"ev_km":60,"ev_kwh100":19.0,"maint":575,"parts":450,"insurance":900,"battery":1200,"resale5":0.56,"resale8":0.37,"resale10":0.26,"space_score":8.0,"traction_score":8.5,"comfort_score":7.8,"note":"Rechargeable, 306 ch, AWD-i, autonomie électrique dépendante de l'usage"},
+    {"id":"q5_phev","name":"Audi Q5 50 TFSI e quattro","group":"Audi Q5 PHEV quattro","fuel":"PHEV","drive":"quattro","price":36900,"km":44252,"year":2022,"fuel_l100":7.0,"ev_km":40,"ev_kwh100":22.0,"maint":850,"parts":750,"insurance":1050,"battery":2000,"resale5":0.48,"resale8":0.31,"resale10":0.21,"space_score":7.8,"traction_score":9.0,"comfort_score":8.8,"note":"PHEV 299 ch quattro, annonce Business Executive à 36 900 €"},
 ]
 
 
@@ -31,13 +31,14 @@ def render_family_suv_comparator():
                 fuel_l100 = st.number_input("Consommation essence réelle (L/100 km)", 3.0, 16.0, float(v["fuel_l100"]), 0.1, key=f"fam_{v['id']}_fuel")
                 ev_km = st.number_input("Autonomie électrique utile (km)", 0, 120, int(v["ev_km"]), 5, key=f"fam_{v['id']}_evkm")
                 ev_kwh100 = st.number_input("Consommation électrique (kWh/100 km)", 0.0, 40.0, float(v["ev_kwh100"]), 0.5, key=f"fam_{v['id']}_evkwh")
-                maint = st.number_input("Entretien annuel (€)", 0, 4000, int(v["maint"]), 50, key=f"fam_{v['id']}_maint")
+                maint = st.number_input("Entretien annuel — main-d’œuvre et forfaits (€ / an)", 0, 4000, int(v["maint"]), 50, key=f"fam_{v['id']}_maint")
+                parts = st.number_input("Enveloppe pièces d’usure et rechange (€ / an)", 0, 5000, int(v["parts"]), 50, key=f"fam_{v['id']}_parts")
                 insurance = st.number_input("Assurance annuelle (€)", 0, 4000, int(v["insurance"]), 50, key=f"fam_{v['id']}_insurance")
                 battery = st.number_input("Provision risque batterie / électronique sur la période (€)", 0, 20000, int(v["battery"]), 100, key=f"fam_{v['id']}_battery")
                 resale5 = st.number_input("Valeur de revente à 5 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale5"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale5")
                 resale8 = st.number_input("Valeur de revente à 8 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale8"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale8")
                 resale10 = st.number_input("Valeur de revente à 10 ans (% du prix d’achat)", 0.0, 1.0, float(v["resale10"]), 0.01, format="%.2f", key=f"fam_{v['id']}_resale10")
-                edited.append({**v, "price":price, "km":km, "year":year, "fuel_l100":fuel_l100, "ev_km":ev_km, "ev_kwh100":ev_kwh100, "maint":maint, "insurance":insurance, "battery":battery, "resale5":resale5, "resale8":resale8, "resale10":resale10})
+                edited.append({**v, "price":price, "km":km, "year":year, "fuel_l100":fuel_l100, "ev_km":ev_km, "ev_kwh100":ev_kwh100, "maint":maint, "parts":parts, "insurance":insurance, "battery":battery, "resale5":resale5, "resale8":resale8, "resale10":resale10})
 
     st.subheader("2. Ton usage et tes filtres")
     a,b,c = st.columns(3)
@@ -75,7 +76,7 @@ def render_family_suv_comparator():
     score_df = pd.DataFrame(score_rows).sort_values("Note pondérée /10", ascending=True)
     score_by_name = {row["Véhicule"]: row["Note pondérée /10"] for row in score_rows}
     score_long = score_df.melt(id_vars=["Véhicule"], value_vars=["Espace /10","Motricité /10","Confort /10","Note âge /10"], var_name="Critère", value_name="Note")
-    score_chart = px.bar(score_long, x="Note", y="Véhicule", color="Critère", barmode="group", orientation="h", text="Note", range_x=[0,10], title="Comparaison des véhicules par critère (sur 10)")
+    score_chart = px.bar(score_long, x="Note", y="Véhicule", color="Critère", barmode="group", orientation="h", text="Note", range_x=[0,10], title="Comparaison des véhicules par critère (sur 10)", color_discrete_sequence=px.colors.qualitative.Set2)
     score_chart.update_traces(texttemplate="%{text:.1f}", textposition="outside", cliponaxis=False)
     score_chart.update_layout(height=430, xaxis_title="Note sur 10", yaxis_title="", legend_title="Critère", margin=dict(r=50))
     st.plotly_chart(score_chart, use_container_width=True)
@@ -110,11 +111,11 @@ def render_family_suv_comparator():
             # Reflect projected age and mileage when choosing the resale rate.
             resale = v["price"] * resale_rate
             charging = charger_cost if (is_phev and home_charge) else 0
-            usage_cost = years * (energy_year + v["maint"] + v["insurance"]) + v["battery"]
+            usage_cost = years * (energy_year + v["maint"] + v["parts"] + v["insurance"]) + v["battery"]
             net_depreciation = v["price"] - resale
             tco = net_depreciation + charging + usage_cost
             results.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Âge à l’achat":max(0, date.today().year-int(v["year"])),"Âge à la revente":age_exit,"TCO (€)":tco,"€/km":tco/(annual_km*years),"Dépréciation nette (€)":net_depreciation,"Coût d’usage hors achat/revente (€)":usage_cost,"Borne (€)":charging,"Note pondérée /10":score_by_name.get(v["name"], 0),"Revente estimée (€)":resale,"Km électriques/an":ev_km_year,"Km à la sortie":exit_km})
-            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Achat":v["price"],"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"],"Revente déduite":-resale})
+            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Achat":v["price"],"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Pièces d’usure / rechange":years*v["parts"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"],"Revente déduite":-resale})
 
     df = pd.DataFrame(results)
     st.subheader("5. Résultat — coût total à 5, 8 et 10 ans")
@@ -127,11 +128,11 @@ def render_family_suv_comparator():
         sub = sub.sort_values("TCO (€)", ascending=True)
         winner = sub.iloc[0]
         st.markdown(f"**À {years} ans : {winner['Véhicule']} — {winner['TCO (€)']:,.0f} € au total, soit {winner['€/km']:.3f} €/km.**".replace(",", " "))
-        tco_chart = px.bar(sub, x="TCO (€)", y="Véhicule", orientation="h", text="TCO (€)", title=f"TCO total à {years} ans — comparaison directe")
+        tco_chart = px.bar(sub, x="TCO (€)", y="Véhicule", orientation="h", text="TCO (€)", title=f"TCO total à {years} ans — comparaison directe", color="Véhicule", color_discrete_map={"Toyota RAV4 HEV 2WD":"#4C78A8","Toyota RAV4 HEV AWD-i":"#F58518","Toyota RAV4 PHEV AWD-i":"#54A24B","Audi Q5 50 TFSI e quattro":"#B279A2"})
         tco_chart.update_traces(texttemplate="%{text:,.0f} €", textposition="outside", cliponaxis=False)
         tco_chart.update_layout(height=330, xaxis_title="Coût total (€)", yaxis_title="", margin=dict(r=90))
         st.plotly_chart(tco_chart, use_container_width=True)
-        premium_chart = px.bar(sub, x="Surcoût vs HEV 2WD (€)", y="Véhicule", orientation="h", text="Surcoût vs HEV 2WD (€)", title=f"Écart de coût face au RAV4 HEV 2WD — {years} ans")
+        premium_chart = px.bar(sub, x="Surcoût vs HEV 2WD (€)", y="Véhicule", orientation="h", text="Surcoût vs HEV 2WD (€)", title=f"Écart de coût face au RAV4 HEV 2WD — {years} ans", color="Véhicule", color_discrete_map={"Toyota RAV4 HEV 2WD":"#4C78A8","Toyota RAV4 HEV AWD-i":"#F58518","Toyota RAV4 PHEV AWD-i":"#54A24B","Audi Q5 50 TFSI e quattro":"#B279A2"})
         premium_chart.update_traces(texttemplate="%{text:+,.0f} €", textposition="outside", cliponaxis=False)
         premium_chart.update_layout(height=300, xaxis_title="Surcoût / économie (€) — négatif = moins cher que le HEV 2WD", yaxis_title="", margin=dict(r=90))
         st.plotly_chart(premium_chart, use_container_width=True)
@@ -141,15 +142,17 @@ def render_family_suv_comparator():
     detail_df = pd.DataFrame(details)
     horizon_choice = st.selectbox("Horizon à détailler", horizons, index=1, key="family_detail_horizon")
     detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].copy()
-    detail_long = detail.melt(id_vars=["Véhicule"], var_name="Poste", value_name="Montant (€)")
+    detail_long = detail.melt(id_vars=["Véhicule", "Horizon"], value_vars=["Achat","Borne","Énergie","Entretien","Pièces d’usure / rechange","Assurance","Provision batterie","Revente déduite"], var_name="Poste", value_name="Montant (€)")
     detail_long["Montant affiché"] = detail_long["Montant (€)"].map(lambda x: f"{x:,.0f} €".replace(",", " "))
-    breakdown = px.bar(detail_long, x="Véhicule", y="Montant (€)", color="Poste", barmode="relative", text="Montant affiché", title=f"Décomposition du TCO sur {horizon_choice} ans")
+    breakdown = px.bar(detail_long, x="Véhicule", y="Montant (€)", color="Poste", barmode="relative", text="Montant affiché", title=f"Décomposition du TCO sur {horizon_choice} ans", color_discrete_sequence=px.colors.qualitative.Bold)
     breakdown.update_traces(textposition="inside", insidetextanchor="middle")
     breakdown.update_layout(height=500, xaxis_title="", yaxis_title="Montant cumulé (€)", legend_title="Poste de coût")
     st.plotly_chart(breakdown, use_container_width=True)
-    st.caption("La revente apparaît en négatif : elle vient réduire le coût total. Les barres positives représentent les dépenses cumulées.")
+    st.caption("La revente apparaît en négatif : elle vient réduire le coût total. Les barres positives représentent les dépenses cumulées. L’entretien couvre les forfaits et la main-d’œuvre ; l’enveloppe pièces est ajoutée séparément pour rendre visible le différentiel Audi/Toyota.")
 
-    st.subheader("7. Sensibilité et lecture des résultats")
+    st.subheader("7. Enveloppe pièces : comment l’interpréter")
+    st.caption("Les budgets initiaux de pièces sont des hypothèses annuelles de provision, pas un tarif catalogue ni une moyenne statistique vérifiée. Ils couvrent une réserve lissée pour pièces d’usure et remplacements courants (freinage, filtres, batterie 12 V, éléments de liaison au sol, capteurs et petites pièces). Les pièces spécifiques hybrides/haute tension et les grosses pannes ne sont pas incluses : elles restent dans la provision batterie / électronique. Les montants sont modifiables véhicule par véhicule. L’enveloppe Audi est volontairement supérieure, à confirmer avec des devis.")
+    st.subheader("8. Sensibilité et lecture des résultats")
     st.caption("Teste notamment le prix de l'essence, le tarif électrique, la fréquence de recharge, les frais d'entretien et la valeur de revente. Les kilomètres électriques sont désormais plafonnés par l'autonomie utile × le nombre de jours de recharge estimé. Les provisions batterie sont des réserves de risque paramétrables, pas une panne supposée.")
     st.warning("Les valeurs de revente, coûts d'entretien et provisions batterie sont des hypothèses de travail à personnaliser. Le modèle ne prétend pas connaître la valeur future exacte ni garantir le coût réel des réparations. Les valeurs initiales des Audi et Toyota doivent être remplacées par les annonces que tu retiendras.")
     st.markdown("**À contrôler avant achat :** historique d'entretien, garantie écrite et ses exclusions, état de santé batterie HT pour PHEV, boîte automatique, système AWD, pneus (usure homogène), et devis réel de recharge en copropriété.")
