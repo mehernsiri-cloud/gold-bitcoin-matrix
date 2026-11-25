@@ -85,10 +85,18 @@ PORTFOLIO = [
     {"symbol":"FRO","name":"Frontline","value_eur":35.45,"return_pct":1.02,"group":"Shipping","factors":["tanker_rates","brent","trade_routes","energy_supply"]},
     {"symbol":"LMT","name":"Lockheed Martin","value_eur":28.31,"return_pct":13.31,"group":"Defence","factors":["defence_budgets","geopolitics","rates","usd"]},
     {"symbol":"HO","name":"Thales","value_eur":23.92,"return_pct":-1.71,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
+    # New user-confirmed ASML purchase: $100 converted at ECB reference rate 1 EUR = 1.0963 USD (24 Nov 2026).
+    {"symbol":"ASML","name":"ASML Holding NV","value_eur":91.22,"return_pct":0.0,"group":"Semiconductors","factors":["ai_investment","semiconductor_demand","rates","usd","equity_risk"]},
 ]
 CASH_EUR = 4.93
-PORTFOLIO_TOTAL_EUR = 899.42
-PORTFOLIO_RETURN_PCT = 4.54
+PORTFOLIO_TOTAL_EUR = 990.64
+PORTFOLIO_RETURN_PCT = 4.10
+
+# Planned purchases are shown separately and are not included in portfolio valuation until executed.
+PLANNED_BUYS = [
+    {"asset":"Or","amount_usd":100.0,"amount_eur":91.22,"status":"Prévu · non exécuté",
+     "note":"À intégrer au portefeuille après confirmation de l'achat et du support utilisé."},
+]
 
 # Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
 IMPACT_MAP = {
@@ -402,7 +410,7 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
             "evidence_factor":evidence_factor}
 
 
-YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA"}
+YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS"}
 QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP"}
 QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline_v2.json"
 
@@ -1065,7 +1073,13 @@ def render_financial_intelligence_dashboard() -> None:
     a.metric("Portefeuille",f"{live['total']:,.2f} €",f"{live['perf']:+.2f}%")
     b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("Instantané communiqué : 899,42 € et +4,54 %. Les variations ultérieures sont estimées à partir des cours gratuits disponibles ; elles ne remplacent pas le PRU du courtier.")
+    st.caption("Base portefeuille mise à jour avec l'achat ASML de 100 USD, converti à titre indicatif en 91,22 € au taux de référence du 24/11/2026. La performance de départ est recalculée par dilution à rendement nul sur ce nouvel apport ; les variations live restent estimatives et ne remplacent pas le PRU du courtier.")
+    if PLANNED_BUYS:
+        st.markdown("### Achats prévus · non comptabilisés")
+        planned_cols = st.columns(len(PLANNED_BUYS))
+        for planned_col, item in zip(planned_cols, PLANNED_BUYS):
+            planned_col.metric(f"{item['asset']} · {item['status']}", f"{item['amount_usd']:.0f} USD", f"≈ {item['amount_eur']:.2f} €")
+            planned_col.caption(item["note"])
     st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
 
     # A missing or stale CSV must trigger a real collection, not a dead-end empty state.
