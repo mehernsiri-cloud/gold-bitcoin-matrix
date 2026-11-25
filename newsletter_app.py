@@ -620,7 +620,8 @@ def market_watch_page():
     st.info(
         "Pour calculer ton total automatiquement, renseigne les quantités réelles de chaque ligne. "
         "Les cellules vides signifient « quantité inconnue » ; elles ne sont pas assimilées à zéro. "
-        "Pour l'or, le ticker GC=F est coté en USD par once troy : sa valorisation est un benchmark, pas le prix exact de ton support ni les frais/primes d'achat. "
+        "La base d'exposition or suivie séparément est d'environ 2 100 € (environ 2 000 € précédemment déclarés + 100 € d'achat confirmé). "
+        "Pour l'or, GC=F est coté en USD par once troy : sa valorisation dynamique nécessite la quantité détenue et reste un benchmark, hors prime/frais. "
         "Les valeurs saisies restent dans la session Streamlit en cours."
     )
     seed = pd.DataFrame([
@@ -714,9 +715,10 @@ def market_watch_page():
         st.caption("Valorisation indicative issue des derniers cours intraday disponibles et des taux EUR/USD et GBP/USD. Vérifier l'horodatage et les délais de la place.")
     else:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Dernière valeur déclarée", "1 090,64 €")
-        c2.metric("Dernière performance de référence", "+3,71 %")
-        c3.metric("Lignes configurées", f"{known_qty_count}/{len(holdings)}")
+        c1.metric("Portefeuille coté (base)", "990,64 €")
+        c2.metric("Or suivi (base indicative)", "≈ 2 100 €")
+        c3.metric("Total des actifs suivis", "≈ 3 090,64 €")
+        st.caption("Performance du portefeuille coté : +4,10 % · performance de l'or non calculée faute de PRU consolidé.")
         st.warning("La valorisation dynamique totale s'affichera lorsque les quantités de toutes les lignes seront renseignées et que les cours / taux seront disponibles. Les chiffres déclarés ci-dessus ne sont qu'un dernier relevé manuel, pas un calcul en direct.")
 
     if live_rows:
@@ -2416,7 +2418,7 @@ def render_drawdown_alerts():
         {"name": "ASML Holding", "ticker": "ASML.AS", "currency": "EUR", "pe": "À actualiser", "forward_pe": "À actualiser",
          "fundamentals_date": "—", "note": "Nouvelle position directe ; suivre la demande en équipements semi-conducteurs, les commandes et les marges."},
         {"name": "Or (benchmark COMEX)", "ticker": "GC=F", "currency": "USD/once", "pe": "N/A", "forward_pe": "N/A",
-         "fundamentals_date": "—", "note": "Position détenue valorisée 100 € en base. GC=F est un benchmark futures USD/once, pas le prix exact du support détenu."}
+         "fundamentals_date": "—", "note": "Exposition or suivie d'environ 2 100 € en base. GC=F est un benchmark futures USD/once, pas le prix exact du support détenu."}
     ]
     cols = st.columns(2)
     for idx, asset in enumerate(assets):
@@ -2890,7 +2892,7 @@ def executive_dashboard(df):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
     st.subheader("💼 Portefeuille — dernier relevé communiqué")
-    st.caption("Base de référence du portefeuille : 1 090,64 € · +3,71 %, intégrant l'achat ASML de 100 USD (≈ 91,22 €) et l'achat d'or confirmé de 100 €. La performance est une base de calcul diluée à rendement nul sur ces apports, pas une synchronisation avec le courtier.")
+    st.caption("Base consolidée indicative : environ 3 090,64 €, composée de 990,64 € de portefeuille coté (ASML inclus) et d'environ 2 100 € d'exposition or (environ 2 000 € déjà déclarés + achat confirmé de 100 €). La performance +4,10 % concerne uniquement le portefeuille coté ; le PRU de l'or n'est pas renseigné.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
