@@ -1232,7 +1232,8 @@ def render_financial_intelligence_dashboard() -> None:
                         st.markdown(f"<div style='height:7px;background:#DCE8E0;border-radius:8px;margin:-5px 0 7px'><div style='height:7px;width:{width:.1f}%;background:{bar_color};border-radius:8px'></div></div>",unsafe_allow_html=True)
                 if item["loss_total"]>0.005:
                     st.caption(f"Contre-effet négatif : −{item['loss_total']:.2f} €")
-            else:                st.markdown("**Principaux facteurs de perte**")
+            else:
+                st.markdown("**Principaux facteurs de perte**")
                 assets=item["losses"].head(4)
                 bar_color="#D94B58"
                 if assets.empty:
