@@ -71,44 +71,44 @@ SOURCE_TRUST = {
     "BleepingComputer": 4,
 }
 
-# User-confirmed portfolio snapshot (13 Nov 2026). Values include €4.93 cash separately.
-# Performance percentages are broker-displayed position returns, not live quotes.
+# User-confirmed portfolio snapshot from broker screenshots (25 Nov 2026, 16:41).
+# Values are current market values shown by the broker; screenshot total includes cash.
+# Only one gold purchase is recorded: €100 invested, currently valued at €104.61.
 PORTFOLIO = [
-    {"symbol":"VWCE","name":"Vanguard FTSE All-World UCITS ETF Acc","value_eur":236.61,"return_pct":3.54,"group":"Global equities","factors":["global_growth","rates","usd","equity_risk"]},
-    {"symbol":"TTE","name":"TotalEnergies","value_eur":110.84,"return_pct":0.01,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
-    {"symbol":"GLHL","name":"Amundi S&P Global Health Care","value_eur":100.32,"return_pct":12.56,"group":"Healthcare","factors":["healthcare","rates","usd","equity_risk"]},
-    {"symbol":"XOM","name":"Exxon Mobil","value_eur":98.59,"return_pct":6.65,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
-    {"symbol":"XDWU","name":"Xtrackers MSCI World Utilities","value_eur":95.11,"return_pct":6.72,"group":"Utilities","factors":["electricity","rates","regulation","usd"]},
-    {"symbol":"AI","name":"Air Liquide","value_eur":64.84,"return_pct":14.43,"group":"Industrials","factors":["industrial_growth","energy_costs","rates","usd"]},
-    {"symbol":"EWSP","name":"iShares S&P 500 Equal Weight ETF","value_eur":51.54,"return_pct":3.07,"group":"US equities","factors":["us_growth","rates","usd","equity_risk"]},
-    {"symbol":"FTAI","name":"FTAI Aviation","value_eur":49.61,"return_pct":-9.12,"group":"Aerospace","factors":["aviation","credit","rates","industrial_growth"]},
-    {"symbol":"FRO","name":"Frontline","value_eur":35.45,"return_pct":1.02,"group":"Shipping","factors":["tanker_rates","brent","trade_routes","energy_supply"]},
-    {"symbol":"LMT","name":"Lockheed Martin","value_eur":28.31,"return_pct":13.31,"group":"Defence","factors":["defence_budgets","geopolitics","rates","usd"]},
-    {"symbol":"HO","name":"Thales","value_eur":23.92,"return_pct":-1.71,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
-    # New user-confirmed ASML purchase: $100 converted at ECB reference rate 1 EUR = 1.0963 USD (24 Nov 2026).
-    {"symbol":"ASML","name":"ASML Holding NV","value_eur":91.22,"return_pct":0.0,"group":"Semiconductors","factors":["ai_investment","semiconductor_demand","rates","usd","equity_risk"]},
-    # User-confirmed €100 gold purchase, tracked against an EUR-converted COMEX benchmark.
-    {"symbol":"GOLD","name":"Or détenu (base indicative)","value_eur":2100.00,"return_pct":0.0,"group":"Gold / safe haven","factors":["real_rates","inflation","usd","geopolitics","liquidity","safe_haven"]},
+    {"symbol":"VWCE","name":"Vanguard FTSE All-World UCITS ETF Acc","value_eur":220.18,"return_pct":0.0,"group":"Global equities","factors":["global_growth","rates","usd","equity_risk"]},
+    {"symbol":"TTE","name":"TotalEnergies SE","value_eur":105.88,"return_pct":0.0,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
+    {"symbol":"GOLD","name":"Or (0,033176 XAU)","value_eur":104.61,"cost_eur":100.00,"return_pct":4.61,"group":"Gold / safe haven","factors":["real_rates","inflation","usd","geopolitics","liquidity","safe_haven"]},
+    {"symbol":"WELS","name":"Amundi S&P Global Health Care ESG UCITS ETF","value_eur":99.20,"return_pct":0.0,"group":"Healthcare","factors":["healthcare","rates","usd","equity_risk"]},
+    {"symbol":"XDWU","name":"Xtrackers MSCI World Utilities UCITS ETF","value_eur":94.03,"return_pct":0.0,"group":"Utilities","factors":["electricity","rates","regulation","usd"]},
+    {"symbol":"XOM","name":"Exxon Mobil","value_eur":92.52,"return_pct":0.0,"group":"Energy","factors":["brent","gas","energy_supply","usd","rates"]},
+    {"symbol":"ASML","name":"ASML Holding NV","value_eur":91.50,"return_pct":0.0,"group":"Semiconductors","factors":["ai_investment","semiconductor_demand","rates","usd","equity_risk"]},
+    {"symbol":"GENERAL","name":"Investissement général (support à identifier)","value_eur":76.59,"return_pct":0.0,"group":"Other / unidentified","factors":["equity_risk","rates"]},
+    {"symbol":"AI","name":"Air Liquide S.A.","value_eur":63.08,"return_pct":0.0,"group":"Industrials","factors":["industrial_growth","energy_costs","rates","usd"]},
+    {"symbol":"O4JO","name":"iShares S&P 500 Equal Weight ETF","value_eur":49.69,"return_pct":0.0,"group":"US equities","factors":["us_growth","rates","usd","equity_risk"]},
+    {"symbol":"FTAI","name":"FTAI Aviation Ltd","value_eur":41.14,"return_pct":0.0,"group":"Aerospace","factors":["aviation","credit","rates","industrial_growth"]},
+    {"symbol":"FRO","name":"Frontline Ltd.","value_eur":35.48,"return_pct":0.0,"group":"Shipping","factors":["tanker_rates","brent","trade_routes","energy_supply"]},
+    {"symbol":"LMT","name":"Lockheed Martin","value_eur":27.95,"return_pct":0.0,"group":"Defence","factors":["defence_budgets","geopolitics","rates","usd"]},
+    {"symbol":"HO","name":"Thales","value_eur":24.33,"return_pct":0.0,"group":"Defence & technology","factors":["defence_budgets","geopolitics","cybersecurity","industrial_growth"]},
 ]
-CASH_EUR = 4.93
-# Broker portfolio after ASML; gold is tracked separately as a non-broker asset.
-PORTFOLIO_TOTAL_EUR = 990.64
-PORTFOLIO_RETURN_PCT = 4.10
+CASH_EUR = 4.75
+PORTFOLIO_TOTAL_EUR = 1130.93
+# Position-level performance is not visible in the screenshots; do not infer it.
+PORTFOLIO_RETURN_PCT = 0.0
 
 # Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
 IMPACT_MAP = {
-    "Central banks & rates": {"positive":["TTE","XOM","FRO"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI","LMT","HO","GOLD"],"watch":["USD exposure in US-listed holdings"],"reason":"Une hausse des taux peut peser sur les valorisations et le financement ; l'effet devise et les anticipations de croissance peuvent compenser."},
-    "Inflation, debt & economy": {"positive":["TTE","XOM","GOLD"],"negative":["XDWU","VWCE","GLHL","EWSP","FTAI","AI"],"watch":["FRO","LMT","HO"],"reason":"Une inflation persistante peut retarder les baisses de taux ; l'effet dépend de sa composante énergie/salaires et de la réaction des rendements."},
-    "Geopolitics & conflict": {"positive":["TTE","XOM","LMT","HO","GOLD"],"negative":["VWCE","EWSP","FTAI"],"watch":["FRO","XDWU","GLHL","AI"],"reason":"Le canal dépend des sanctions, des flux énergétiques, des routes maritimes et des budgets de défense ; les valeurs défense ne montent pas mécaniquement."},
-    "Energy & commodities": {"positive":["TTE","XOM"],"negative":["AI","GLHL"],"watch":["FRO","VWCE","XDWU","EWSP"],"reason":"Un choc d'offre pétrolière peut soutenir les producteurs mais renchérir les coûts et peser sur la demande ; les tarifs des tankers dépendent aussi de l'offre de navires et des routes."},
-    "Financial system & liquidity": {"positive":["GOLD"],"negative":["VWCE","GLHL","XDWU","EWSP","FTAI"],"watch":["TTE","XOM","FRO","AI","LMT","HO"],"reason":"Un resserrement du crédit touche d'abord les actifs risqués et les entreprises dépendantes du financement ; rechercher des signes confirmés de contagion."},
-    "AI, electricity & infrastructure": {"positive":["XDWU","AI"],"negative":[],"watch":["VWCE","EWSP"],"reason":"La hausse des investissements réseau et de la demande électrique peut soutenir utilities et fournisseurs industriels, sous réserve de valorisations, contrats et financement."},
-    "Defence & aerospace": {"positive":["LMT","HO"],"negative":[],"watch":["FTAI","VWCE","EWSP"],"reason":"Les annonces budgétaires ne deviennent un catalyseur qu'après budgets votés, contrats attribués et calendrier d'exécution."},
-    "Cybersecurity": {"positive":["HO"],"negative":[],"watch":["VWCE","EWSP"],"reason":"Thales a une exposition aux activités cyber, mais l'effet boursier dépend de l'ampleur de l'incident et des contrats ; un incident n'est pas automatiquement positif."},
-    "Healthcare": {"positive":["GLHL"],"negative":[],"watch":["VWCE","EWSP"],"reason":"Les décisions réglementaires et résultats cliniques peuvent toucher les composants santé ; l'ETF diversifié amortit les risques propres à une entreprise."},
-    "Crypto & Bitcoin": {"positive":[],"negative":[],"watch":["VWCE","EWSP","XDWU"],"reason":"Aucune exposition directe au Bitcoin n'apparaît dans le portefeuille communiqué ; seul un effet indirect via liquidité et appétit pour le risque est possible."},
-    "FX & safe havens": {"positive":["GOLD"],"negative":[],"watch":["VWCE","TTE","XOM","GLHL","EWSP","LMT"],"reason":"Les variations EUR/USD affectent la conversion en euros des actifs et revenus en dollars ; le sens dépend de la devise de cotation, couverture et revenus."},
-    "Equity markets & companies": {"positive":[],"negative":[],"watch":["VWCE","GLHL","EWSP","XDWU","TTE","XOM","FTAI","FRO","AI","LMT","HO"],"reason":"L'impact dépend de l'entreprise ou de l'indice cité, de la surprise par rapport aux attentes et de la réaction du cours."},
+    "Central banks & rates": {"positive":["TTE","XOM","FRO"],"negative":["XDWU","VWCE","WELS","O4JO","FTAI","AI","LMT","HO","GOLD"],"watch":["USD exposure in US-listed holdings"],"reason":"Une hausse des taux peut peser sur les valorisations et le financement ; l'effet devise et les anticipations de croissance peuvent compenser."},
+    "Inflation, debt & economy": {"positive":["TTE","XOM","GOLD"],"negative":["XDWU","VWCE","WELS","O4JO","FTAI","AI"],"watch":["FRO","LMT","HO"],"reason":"Une inflation persistante peut retarder les baisses de taux ; l'effet dépend de sa composante énergie/salaires et de la réaction des rendements."},
+    "Geopolitics & conflict": {"positive":["TTE","XOM","LMT","HO","GOLD"],"negative":["VWCE","O4JO","FTAI"],"watch":["FRO","XDWU","WELS","AI"],"reason":"Le canal dépend des sanctions, des flux énergétiques, des routes maritimes et des budgets de défense ; les valeurs défense ne montent pas mécaniquement."},
+    "Energy & commodities": {"positive":["TTE","XOM"],"negative":["AI","WELS"],"watch":["FRO","VWCE","XDWU","O4JO"],"reason":"Un choc d'offre pétrolière peut soutenir les producteurs mais renchérir les coûts et peser sur la demande ; les tarifs des tankers dépendent aussi de l'offre de navires et des routes."},
+    "Financial system & liquidity": {"positive":["GOLD"],"negative":["VWCE","WELS","XDWU","O4JO","FTAI"],"watch":["TTE","XOM","FRO","AI","LMT","HO"],"reason":"Un resserrement du crédit touche d'abord les actifs risqués et les entreprises dépendantes du financement ; rechercher des signes confirmés de contagion."},
+    "AI, electricity & infrastructure": {"positive":["XDWU","AI"],"negative":[],"watch":["VWCE","O4JO"],"reason":"La hausse des investissements réseau et de la demande électrique peut soutenir utilities et fournisseurs industriels, sous réserve de valorisations, contrats et financement."},
+    "Defence & aerospace": {"positive":["LMT","HO"],"negative":[],"watch":["FTAI","VWCE","O4JO"],"reason":"Les annonces budgétaires ne deviennent un catalyseur qu'après budgets votés, contrats attribués et calendrier d'exécution."},
+    "Cybersecurity": {"positive":["HO"],"negative":[],"watch":["VWCE","O4JO"],"reason":"Thales a une exposition aux activités cyber, mais l'effet boursier dépend de l'ampleur de l'incident et des contrats ; un incident n'est pas automatiquement positif."},
+    "Healthcare": {"positive":["WELS"],"negative":[],"watch":["VWCE","O4JO"],"reason":"Les décisions réglementaires et résultats cliniques peuvent toucher les composants santé ; l'ETF diversifié amortit les risques propres à une entreprise."},
+    "Crypto & Bitcoin": {"positive":[],"negative":[],"watch":["VWCE","O4JO","XDWU"],"reason":"Aucune exposition directe au Bitcoin n'apparaît dans le portefeuille communiqué ; seul un effet indirect via liquidité et appétit pour le risque est possible."},
+    "FX & safe havens": {"positive":["GOLD"],"negative":[],"watch":["VWCE","TTE","XOM","WELS","O4JO","LMT"],"reason":"Les variations EUR/USD affectent la conversion en euros des actifs et revenus en dollars ; le sens dépend de la devise de cotation, couverture et revenus."},
+    "Equity markets & companies": {"positive":[],"negative":[],"watch":["VWCE","WELS","O4JO","XDWU","TTE","XOM","FTAI","FRO","AI","LMT","HO"],"reason":"L'impact dépend de l'entreprise ou de l'indice cité, de la surprise par rapport aux attentes et de la réaction du cours."},
 }
 
 COLUMNS = ["event_id", "published_at", "collected_at", "source", "domain", "title",
@@ -349,23 +349,23 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
     # Values are illustrative sensitivities, not forecasts or measured causal betas.
     profiles = [
         (["inflation", "cpi", "pce", "hotter than expected", "higher than expected"], "Inflation surprise",
-         {"VWCE":-0.65,"TTE":0.20,"GLHL":-0.35,"XOM":0.15,"XDWU":-0.90,"AI":-0.45,"EWSP":-0.70,"FTAI":-0.75,"FRO":0.05,"LMT":-0.15,"HO":-0.15,"GOLD":0.45}),
+         {"VWCE":-0.65,"TTE":0.20,"WELS":-0.35,"XOM":0.15,"XDWU":-0.90,"AI":-0.45,"O4JO":-0.70,"FTAI":-0.75,"FRO":0.05,"LMT":-0.15,"HO":-0.15,"GOLD":0.45}),
         (["fed", "federal reserve", "rate hike", "hawkish", "higher for longer", "ecb", "interest rate"], "Taux plus élevés",
-         {"VWCE":-0.80,"TTE":-0.10,"GLHL":-0.55,"XOM":-0.10,"XDWU":-1.00,"AI":-0.65,"EWSP":-0.85,"FTAI":-0.90,"FRO":-0.10,"LMT":-0.30,"HO":-0.25,"GOLD":-0.65}),
+         {"VWCE":-0.80,"TTE":-0.10,"WELS":-0.55,"XOM":-0.10,"XDWU":-1.00,"AI":-0.65,"O4JO":-0.85,"FTAI":-0.90,"FRO":-0.10,"LMT":-0.30,"HO":-0.25,"GOLD":-0.65}),
         (["hormuz", "oil supply", "oil disruption", "opec", "brent", "crude", "pipeline"], "Choc d'offre énergétique",
-         {"VWCE":-0.25,"TTE":0.90,"GLHL":-0.20,"XOM":0.85,"XDWU":-0.45,"AI":-0.35,"EWSP":-0.30,"FTAI":-0.25,"FRO":0.35,"LMT":0.05,"HO":0.05,"GOLD":0.20}),
+         {"VWCE":-0.25,"TTE":0.90,"WELS":-0.20,"XOM":0.85,"XDWU":-0.45,"AI":-0.35,"O4JO":-0.30,"FTAI":-0.25,"FRO":0.35,"LMT":0.05,"HO":0.05,"GOLD":0.20}),
         (["war", "invasion", "missile", "attack", "escalation", "sanction", "ceasefire"], "Choc géopolitique",
-         {"VWCE":-0.85,"TTE":0.40,"GLHL":-0.35,"XOM":0.35,"XDWU":-0.35,"AI":-0.30,"EWSP":-0.90,"FTAI":-0.65,"FRO":-0.55,"LMT":0.35,"HO":0.35,"GOLD":0.85}),
+         {"VWCE":-0.85,"TTE":0.40,"WELS":-0.35,"XOM":0.35,"XDWU":-0.35,"AI":-0.30,"O4JO":-0.90,"FTAI":-0.65,"FRO":-0.55,"LMT":0.35,"HO":0.35,"GOLD":0.85}),
         (["data center", "data centre", "electricity demand", "power grid", "grid investment", "ai infrastructure"], "Investissements IA & électricité",
-         {"VWCE":0.15,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.95,"AI":0.75,"EWSP":0.20,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.10}),
+         {"VWCE":0.15,"TTE":0.00,"WELS":0.00,"XOM":0.00,"XDWU":0.95,"AI":0.75,"O4JO":0.20,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.10}),
         (["defence budget", "defense budget", "military spending", "arms contract", "missile system", "procurement"], "Commandes & budgets défense",
-         {"VWCE":0.05,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.05,"EWSP":0.05,"FTAI":0.10,"FRO":0.00,"LMT":0.85,"HO":0.75}),
+         {"VWCE":0.05,"TTE":0.00,"WELS":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.05,"O4JO":0.05,"FTAI":0.10,"FRO":0.00,"LMT":0.85,"HO":0.75}),
         (["cyberattack", "cyber attack", "ransomware", "data breach", "zero-day"], "Incident cyber",
-         {"VWCE":-0.10,"TTE":0.00,"GLHL":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.00,"EWSP":-0.10,"FTAI":0.00,"FRO":0.00,"LMT":0.15,"HO":0.65}),
+         {"VWCE":-0.10,"TTE":0.00,"WELS":0.00,"XOM":0.00,"XDWU":0.00,"AI":0.00,"O4JO":-0.10,"FTAI":0.00,"FRO":0.00,"LMT":0.15,"HO":0.65}),
         (["clinical trial", "drug approval", "healthcare", "pharma"], "Catalyseur santé",
-         {"VWCE":0.05,"TTE":0.00,"GLHL":0.65,"XOM":0.00,"XDWU":0.00,"AI":0.00,"EWSP":0.05,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.00}),
+         {"VWCE":0.05,"TTE":0.00,"WELS":0.65,"XOM":0.00,"XDWU":0.00,"AI":0.00,"O4JO":0.05,"FTAI":0.00,"FRO":0.00,"LMT":0.00,"HO":0.00}),
         (["bank failure", "liquidity", "credit crunch", "banking crisis", "default"], "Stress de liquidité / crédit",
-         {"VWCE":-1.00,"TTE":-0.45,"GLHL":-0.60,"XOM":-0.45,"XDWU":-0.70,"AI":-0.65,"EWSP":-1.10,"FTAI":-1.25,"FRO":-0.80,"LMT":-0.35,"HO":-0.35,"GOLD":0.75}),
+         {"VWCE":-1.00,"TTE":-0.45,"WELS":-0.60,"XOM":-0.45,"XDWU":-0.70,"AI":-0.65,"O4JO":-1.10,"FTAI":-1.25,"FRO":-0.80,"LMT":-0.35,"HO":-0.35,"GOLD":0.75}),
     ]
     selected = next((p for p in profiles if any(k in text for k in p[0])), None)
     if not selected:
@@ -407,8 +407,8 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
             "evidence_factor":evidence_factor}
 
 
-YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","GLHL":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","EWSP":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS","GOLD":"GC=F"}
-QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","EWSP":"GBP","GOLD":"USD"}
+YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","WELS":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","O4JO":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS","GOLD":"GC=F"}
+QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","O4JO":"GBP","GOLD":"USD"}
 QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline_v2.json"
 
 
@@ -451,9 +451,9 @@ def _portfolio_live_snapshot():
         QUOTE_BASELINE_FILE.write_text(json.dumps(baseline,indent=2),encoding="utf-8")
         # Broker-confirmed snapshot is the anchor. Live prices only move each line from this anchor.
         # Scale only broker holdings to the broker snapshot. Gold is a separate asset class
-        # (approx. €2,000 previously declared + €100 new purchase), not part of broker return.
+        # Gold is already included in the broker screenshot total at €104.61; do not add a second gold line.
         anchor_positions=sum(float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] != "GOLD")
-        scale=(PORTFOLIO_TOTAL_EUR-CASH_EUR)/anchor_positions if anchor_positions else 1.0
+        scale=(PORTFOLIO_TOTAL_EUR-CASH_EUR-104.61)/anchor_positions if anchor_positions else 1.0
         rows=[]
         for p in PORTFOLIO:
             sym=p["symbol"]
@@ -470,8 +470,8 @@ def _portfolio_live_snapshot():
         total=float(holdings.value_eur.sum()+CASH_EUR)
         broker_total=float(holdings.loc[holdings["symbol"] != "GOLD","value_eur"].sum()+CASH_EUR)
         # Return is calculated only on the broker portfolio: the gold cost basis is not known.
-        anchor_cost=PORTFOLIO_TOTAL_EUR/(1+PORTFOLIO_RETURN_PCT/100)
-        perf=(broker_total/anchor_cost-1)*100
+        anchor_cost=PORTFOLIO_TOTAL_EUR-CASH_EUR
+        perf=None  # No broker-wide PRU/performance figure is visible in the supplied screenshots.
         updated=max(s.index.max() for s in histories.values()) if histories else pd.Timestamp.now(tz="UTC")
         return {"holdings":holdings,"total":total,"broker_total":broker_total,"initial":anchor_cost,"perf":perf,"histories":histories,"updated":updated},None
     except Exception as exc:
@@ -824,7 +824,7 @@ def render_alphabet_analysis() -> None:
     # VWCE: Vanguard factsheet 31 Oct 2026, Alphabet Class A + C combined.
     # EWSP: indicative estimate for two Alphabet classes in an equal-weight S&P 500 index.
     vwce_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "VWCE"), 0.0)
-    ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "EWSP"), 0.0)
+    ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "O4JO"), 0.0)
     vwce_weight, ewsp_weight = 0.0281, 0.0040
     vwce_exposure, ewsp_exposure = vwce_value * vwce_weight, ewsp_value * ewsp_weight
     total_exposure = vwce_exposure + ewsp_exposure
@@ -1002,7 +1002,7 @@ def render_portfolio_enrichment() -> None:
                                         # EWSP tracks the S&P 500 Equal Weight; ASML is Dutch-domiciled
                                         # and is not eligible for the S&P 500's US-company universe.
                                         vwce_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "VWCE"), 0.0)
-                                        ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "EWSP"), 0.0)
+                                        ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "O4JO"), 0.0)
                                         vwce_weight = 0.0066
                                         vwce_exposure = vwce_value * vwce_weight
                                         ewsp_exposure = 0.0
