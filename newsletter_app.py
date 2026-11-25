@@ -78,6 +78,8 @@ MARKET_SYMBOLS = {
     "Xtrackers MSCI World UCITS ETF (XDWD)": "XDWD.DE",
     "iShares S&P 500 Equal Weight (EWSP)": "EWSP.PA",
     "iShares World Utilities (XDWU)": "XDWU.L",
+    "ASML Holding": "ASML.AS",
+    "Or (futures COMEX · USD/once)": "GC=F",
     "SPDR World Health Care (WHEA)": "WHEA.AS",
     "VanEck Electrification (PIKA)": "PIKA.DE",
     "Schneider Electric": "SU.PA",
@@ -610,12 +612,15 @@ def market_watch_page():
         ("World Utilities (XDWU)", "XDWU.L", "GBP"),
         ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
         ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR"),
+        ("ASML Holding", "ASML.AS", "EUR"),
+        ("Or — benchmark COMEX (quantité en once troy)", "GC=F", "USD"),
     ]
 
     st.subheader("💼 Valorisation calculée à partir des quantités détenues")
     st.info(
         "Pour calculer ton total automatiquement, renseigne les quantités réelles de chaque ligne. "
         "Les cellules vides signifient « quantité inconnue » ; elles ne sont pas assimilées à zéro. "
+        "Pour l'or, le ticker GC=F est coté en USD par once troy : sa valorisation est un benchmark, pas le prix exact de ton support ni les frais/primes d'achat. "
         "Les valeurs saisies restent dans la session Streamlit en cours."
     )
     seed = pd.DataFrame([
@@ -624,9 +629,15 @@ def market_watch_page():
     ])
     if "portfolio_positions_editor" not in st.session_state:
         st.session_state["portfolio_positions_editor"] = seed
+    else:
+        existing = st.session_state["portfolio_positions_editor"].copy()
+        known_tickers = set(existing["Ticker"].astype(str)) if "Ticker" in existing.columns else set()
+        missing = seed[~seed["Ticker"].astype(str).isin(known_tickers)]
+        if not missing.empty:
+            st.session_state["portfolio_positions_editor"] = pd.concat([existing, missing], ignore_index=True)
     edited = st.data_editor(
         st.session_state["portfolio_positions_editor"],
-        key="portfolio_positions_table",
+        key="portfolio_positions_table_v2",
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
@@ -703,8 +714,8 @@ def market_watch_page():
         st.caption("Valorisation indicative issue des derniers cours intraday disponibles et des taux EUR/USD et GBP/USD. Vérifier l'horodatage et les délais de la place.")
     else:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Dernière valeur déclarée", "897,86 €")
-        c2.metric("Dernière performance déclarée", "+4,40 %")
+        c1.metric("Dernière valeur déclarée", "1 090,64 €")
+        c2.metric("Dernière performance de référence", "+3,71 %")
         c3.metric("Lignes configurées", f"{known_qty_count}/{len(holdings)}")
         st.warning("La valorisation dynamique totale s'affichera lorsque les quantités de toutes les lignes seront renseignées et que les cours / taux seront disponibles. Les chiffres déclarés ci-dessus ne sont qu'un dernier relevé manuel, pas un calcul en direct.")
 
@@ -740,7 +751,8 @@ def market_watch_page():
         "TotalEnergies", "Exxon Mobil", "Vanguard FTSE All-World UCITS ETF Acc (VWCE)",
         "Frontline", "FTAI Aviation", "Thales", "Lockheed Martin", "Air Liquide",
         "Amundi S&P World Health Care (GLHL)", "iShares World Utilities (XDWU)",
-        "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)"
+        "Xtrackers MSCI World UCITS ETF (XDWD)", "iShares S&P 500 Equal Weight (EWSP)",
+        "ASML Holding", "Or (futures COMEX · USD/once)"
     ], key="wels_market_assets_live")
     curves, summary = [], []
     for name in selected:
@@ -2400,7 +2412,11 @@ def render_drawdown_alerts():
          "note": "Le forward P/E repose sur des estimations bénéficiaires futures, pas sur un bénéfice déjà réalisé."},
         {"name": "Lockheed Martin", "ticker": "LMT", "currency": "USD", "pe": "≈ 20,5", "forward_pe": "≈ 18",
          "fundamentals_date": "05/11/2026",
-         "note": "Valorisation indicative rapportée au 05/11/2026 ; à revalider avec les résultats et le cours du jour."}
+         "note": "Valorisation indicative rapportée au 05/11/2026 ; à revalider avec les résultats et le cours du jour."},
+        {"name": "ASML Holding", "ticker": "ASML.AS", "currency": "EUR", "pe": "À actualiser", "forward_pe": "À actualiser",
+         "fundamentals_date": "—", "note": "Nouvelle position directe ; suivre la demande en équipements semi-conducteurs, les commandes et les marges."},
+        {"name": "Or (benchmark COMEX)", "ticker": "GC=F", "currency": "USD/once", "pe": "N/A", "forward_pe": "N/A",
+         "fundamentals_date": "—", "note": "Position détenue valorisée 100 € en base. GC=F est un benchmark futures USD/once, pas le prix exact du support détenu."}
     ]
     cols = st.columns(2)
     for idx, asset in enumerate(assets):
@@ -2430,7 +2446,7 @@ def render_drawdown_alerts():
             rows_html += f"<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #D8DEE8;color:#344054'><span>{date_label}</span><b>{float(row['Cours']):,.2f} {asset['currency']}</b></div>"
         range_html = f"{low52:,.2f} – {high52:,.2f} {asset['currency']}" if low52 is not None and high52 is not None else "Indisponible"
         proximity_html = f"Position dans la fourchette : {proximity:.0f} % au-dessus du plus bas" if proximity is not None else ""
-        with cols[idx]:
+        with cols[idx % len(cols)]:
             st.markdown(f"""
             <div style="background:{bg};border:1px solid {color}80;border-radius:14px;padding:15px;margin:4px 0 10px">
               <div style="font-size:17px;font-weight:800;color:#263445">{asset['name']}</div>
@@ -2874,7 +2890,7 @@ def executive_dashboard(df):
         st.dataframe(pd.DataFrame(quote_rows), use_container_width=True, hide_index=True)
     st.caption("Source : Yahoo Finance · cache 5 min · données quotidiennes, pas un flux intraday garanti. Or : estimation EUR/g calculée depuis les futures COMEX USD/once convertis via EUR/USD, pas un fixing spot officiel. Change : percentile de la distribution sur 1 an, hors frais bancaires.")
     st.subheader("💼 Portefeuille — dernier relevé communiqué")
-    st.caption("Dernier relevé manuel : 897,86 € · +4,40 %. La valorisation calculée à partir des cours et des quantités est désormais disponible dans l'onglet « Marchés & portefeuille » après saisie des quantités détenues.")
+    st.caption("Base de référence du portefeuille : 1 090,64 € · +3,71 %, intégrant l'achat ASML de 100 USD (≈ 91,22 €) et l'achat d'or confirmé de 100 €. La performance est une base de calcul diluée à rendement nul sur ces apports, pas une synchronisation avec le courtier.")
     with st.expander("Portefeuille détenu — suivi des cours", expanded=False):
         held = [
             ("TotalEnergies", "TTE.PA", "EUR"), ("Exxon Mobil", "XOM", "USD"),
@@ -2884,7 +2900,9 @@ def executive_dashboard(df):
             ("Air Liquide", "AI.PA", "EUR"), ("Amundi S&P World Health Care (GLHL)", "GLHL.PA", "EUR"),
             ("World Utilities (XDWU)", "XDWU.L", "GBP"),
             ("Xtrackers MSCI World (XDWD)", "XDWD.DE", "EUR"),
-            ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR")
+            ("iShares S&P 500 Equal Weight (EWSP)", "EWSP.PA", "EUR"),
+            ("ASML Holding", "ASML.AS", "EUR"),
+            ("Or (benchmark COMEX · once troy)", "GC=F", "USD/oz")
         ]
         held_rows = []
         for name, symbol, currency in held:
