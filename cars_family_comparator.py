@@ -169,10 +169,14 @@ def render_family_suv_comparator():
     totals = detail[cost_columns].sum(axis=1)
     max_total = float(totals.max()) if not totals.empty else 0
     for (_, row), total in zip(detail.iterrows(), totals):
+        purchase = float(row["Prix d’achat (€)"])
+        resale_value = float(row["Revente estimée (€)"])
+        label = (f"Achat : {purchase:,.0f} €  |  Revente : {resale_value:,.0f} €  |  "
+                 f"TCO net : {total:,.0f} €").replace(",", " ")
         breakdown.add_annotation(x=float(total), y=row["Véhicule"],
-                                 text=f"TCO net : {total:,.0f} €".replace(",", " "),
+                                 text=label,
                                  showarrow=False, xshift=58, xanchor="left",
-                                 font=dict(size=12))
+                                 font=dict(size=11))
     breakdown.update_layout(height=430, xaxis_title="Coût cumulé après revente (€)", yaxis_title="",
                             legend_title="Poste de coût", margin=dict(r=150),
                             xaxis=dict(range=[0, max_total * 1.28 if max_total else 1]))
