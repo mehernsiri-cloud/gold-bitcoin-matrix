@@ -407,8 +407,8 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
             "evidence_factor":evidence_factor}
 
 
-YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","WELS":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","O4JO":"EWSP.L","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS","GOLD":"GC=F"}
-QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","O4JO":"GBP","GOLD":"USD"}
+YF_SYMBOLS={"VWCE":"VWCE.DE","TTE":"TTE.PA","WELS":"WELS.PA","XOM":"XOM","XDWU":"XDWU.DE","AI":"AI.PA","O4JO":"O4JO.DE","FTAI":"FTAI","FRO":"FRO","LMT":"LMT","HO":"HO.PA","ASML":"ASML.AS","GOLD":"GC=F"}
+QUOTE_CURRENCY={"XOM":"USD","FTAI":"USD","FRO":"USD","LMT":"USD","O4JO":"EUR","GOLD":"USD"}
 QUOTE_BASELINE_FILE=DATA_DIR/"portfolio_quote_baseline_v2.json"
 
 
@@ -1076,7 +1076,7 @@ def render_financial_intelligence_dashboard() -> None:
     b.metric("Portefeuille coté",f"{live['broker_total']:,.2f} €",f"{live['perf']:+.2f}%")
     c.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
     d.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("Base consolidée indicative : portefeuille coté de 990,64 € après l'achat ASML de 100 USD (≈ 91,22 € au taux de référence du 24/11/2026), plus environ 2 100 € d'exposition or (≈ 2 000 € déjà déclarés auparavant + nouvel achat confirmé de 100 €). L'or reste séparé du rendement boursier car son PRU et le support du dernier achat ne sont pas renseignés. Son suivi de cours utilise GC=F converti en euros : benchmark futures indicatif, hors prime, frais et écart éventuel avec le support détenu.")
+    st.caption("Relevé broker du 25/11/2026 à 16:41 : 1 130,93 € au total, dont 104,61 € sur la ligne Or (0,033176 XAU, achat confirmé de 100 €) et 4,75 € de solde espèces. Aucune autre exposition or n'est ajoutée. GC=F sert uniquement de benchmark de marché, pas de valorisation exacte du support détenu.")
     st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
 
     # A missing or stale CSV must trigger a real collection, not a dead-end empty state.
