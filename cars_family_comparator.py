@@ -115,7 +115,7 @@ def render_family_suv_comparator():
             net_depreciation = v["price"] - resale
             tco = net_depreciation + charging + usage_cost
             results.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Âge à l’achat":max(0, date.today().year-int(v["year"])),"Âge à la revente":age_exit,"TCO (€)":tco,"€/km":tco/(annual_km*years),"Dépréciation nette (€)":net_depreciation,"Coût d’usage hors achat/revente (€)":usage_cost,"Borne (€)":charging,"Note pondérée /10":score_by_name.get(v["name"], 0),"Revente estimée (€)":resale,"Km électriques/an":ev_km_year,"Km à la sortie":exit_km})
-            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Achat":v["price"],"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Pièces d’usure / rechange":years*v["parts"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"],"Revente déduite":-resale})
+            details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Dépréciation nette (achat - revente)":net_depreciation,"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Pièces d’usure / rechange":years*v["parts"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"]})
 
     df = pd.DataFrame(results)
     st.subheader("5. Résultat — coût total à 5, 8 et 10 ans")
@@ -139,18 +139,42 @@ def render_family_suv_comparator():
         st.plotly_chart(premium_chart, use_container_width=True)
         st.caption("Le graphique du surcoût isole le prix à payer (ou l'économie réalisée) pour passer à une autre motorisation ou transmission. Il ne signifie pas automatiquement que la version la moins chère est le meilleur choix.")
 
-    st.subheader("6. Décomposition du coût")
+    st.subheader("6. Décomposition du coût net après revente")
+    st.caption("Le graphique présente directement le coût réellement supporté sur la période : prix d’achat moins valeur de revente, puis ajout des dépenses d’usage. Chaque barre est donc égale au TCO final du véhicule.")
     detail_df = pd.DataFrame(details)
     horizon_choice = st.selectbox("Horizon à détailler", horizons, index=1, key="family_detail_horizon")
     detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].copy()
-    detail_long = detail.melt(id_vars=["Véhicule", "Horizon"], value_vars=["Achat","Borne","Énergie","Entretien","Pièces d’usure / rechange","Assurance","Provision batterie","Revente déduite"], var_name="Poste", value_name="Montant (€)")
+    cost_columns = ["Dépréciation nette (achat - revente)","Borne","Énergie","Entretien","Pièces d’usure / rechange","Assurance","Provision batterie"]
+    detail_long = detail.melt(id_vars=["Véhicule"], value_vars=cost_columns, var_name="Poste", value_name="Montant (€)")
+    detail_long = detail_long[detail_long["Montant (€)"] > 0]
     detail_long["Montant affiché"] = detail_long["Montant (€)"].map(lambda x: f"{x:,.0f} €".replace(",", " "))
-    breakdown = px.bar(detail_long, x="Véhicule", y="Montant (€)", color="Poste", barmode="relative", text="Montant affiché", title=f"Décomposition du TCO sur {horizon_choice} ans", color_discrete_sequence=px.colors.qualitative.Bold)
-    breakdown.update_traces(textposition="inside", insidetextanchor="middle")
-    breakdown.update_layout(height=500, xaxis_title="", yaxis_title="Montant cumulé (€)", legend_title="Poste de coût")
+    palette = {
+        "Dépréciation nette (achat - revente)":"#4C78A8",
+        "Borne":"#9D755D",
+        "Énergie":"#F2CF5B",
+        "Entretien":"#72B7B2",
+        "Pièces d’usure / rechange":"#F58518",
+        "Assurance":"#B279A2",
+        "Provision batterie":"#E45756",
+    }
+    breakdown = px.bar(detail_long, x="Montant (€)", y="Véhicule", color="Poste", barmode="stack",
+                       orientation="h", text="Montant affiché",
+                       title=f"Coût net cumulé sur {horizon_choice} ans — après revente",
+                       color_discrete_map=palette)
+    breakdown.update_traces(textposition="inside", insidetextanchor="middle", cliponaxis=False)
+    totals = detail[cost_columns].sum(axis=1)
+    max_total = float(totals.max()) if not totals.empty else 0
+    for (_, row), total in zip(detail.iterrows(), totals):
+        breakdown.add_annotation(x=float(total), y=row["Véhicule"],
+                                 text=f"TCO net : {total:,.0f} €".replace(",", " "),
+                                 showarrow=False, xshift=58, xanchor="left",
+                                 font=dict(size=12))
+    breakdown.update_layout(height=430, xaxis_title="Coût cumulé après revente (€)", yaxis_title="",
+                            legend_title="Poste de coût", margin=dict(r=150),
+                            xaxis=dict(range=[0, max_total * 1.28 if max_total else 1]))
     st.plotly_chart(breakdown, use_container_width=True)
-    st.caption("La revente apparaît en négatif : elle vient réduire le coût total. Les barres positives représentent les dépenses cumulées. L’entretien couvre les forfaits et la main-d’œuvre ; l’enveloppe pièces est ajoutée séparément pour rendre visible le différentiel Audi/Toyota.")
-
+    st.caption("La dépréciation nette correspond au prix d’achat diminué de la revente estimée. Les autres segments montrent séparément la borne, l’énergie, l’entretien, les pièces, l’assurance et la provision batterie. La somme des segments correspond au TCO affiché dans les résultats. Les coûts sont cumulés sur l’horizon sélectionné.")
+    
     st.subheader("7. Enveloppe pièces : comment l’interpréter")
     st.caption("Les budgets initiaux de pièces sont des hypothèses annuelles de provision, pas un tarif catalogue ni une moyenne statistique vérifiée. Ils couvrent une réserve lissée pour pièces d’usure et remplacements courants (freinage, filtres, batterie 12 V, éléments de liaison au sol, capteurs et petites pièces). Les pièces spécifiques hybrides/haute tension et les grosses pannes ne sont pas incluses : elles restent dans la provision batterie / électronique. Les montants sont modifiables véhicule par véhicule. L’enveloppe Audi est volontairement supérieure, à confirmer avec des devis.")
     st.subheader("8. Sensibilité et lecture des résultats")
