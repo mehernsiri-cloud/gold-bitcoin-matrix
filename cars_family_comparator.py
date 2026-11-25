@@ -95,7 +95,9 @@ def render_family_suv_comparator():
     detail_df = pd.DataFrame(details)
     horizon_choice = st.selectbox("Horizon à détailler", horizons, index=1, key="family_detail_horizon")
     detail = detail_df[detail_df["Horizon"] == f"{horizon_choice} ans"].set_index("Véhicule")
-    st.dataframe(detail.style.format("{:,.0f} €"), use_container_width=True)
+    # Apply currency formatting only to numeric columns (never to vehicle-name strings).
+    detail_format = {col: "{:,.0f} €" for col in detail.select_dtypes(include="number").columns}
+    st.dataframe(detail.style.format(detail_format), use_container_width=True)
 
     st.subheader("6. Sensibilité et lecture des résultats")
     st.caption("Teste notamment le prix de l'essence, le tarif électrique, la fréquence de recharge, les frais d'entretien et la valeur de revente. Les provisions batterie sont des réserves de risque paramétrables, pas une panne supposée.")
