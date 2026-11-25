@@ -49,6 +49,7 @@ def render_family_suv_comparator():
         home_charge = st.checkbox("Installation de recharge prévue / disponible", value=True, key="family_home_charge")
         charger_cost = st.number_input("Borne + raccordement + pose (€)", 0, 12000, 2000, 100, key="family_charger_cost")
         charge_frequency = st.selectbox("Fréquence de recharge", ["Quotidienne","3 à 4 fois/semaine","1 à 2 fois/semaine"], index=0, key="family_charge_freq")
+        ev_coverage = st.slider("Part des trajets locaux couverts par l'autonomie électrique (%)", 0, 100, 75, 5, key="family_ev_coverage")
     charge_factor = {"Quotidienne":1.0,"3 à 4 fois/semaine":0.75,"1 à 2 fois/semaine":0.45}[charge_frequency] if home_charge else 0.0
     local_km = annual_km * local_share / 100
     st.caption("Les kilomètres électriques sont limités aux trajets locaux, à l'autonomie utile du véhicule et à la fréquence de recharge. Les longs trajets restent calculés en essence/hybride.")
@@ -60,7 +61,7 @@ def render_family_suv_comparator():
     details = []
     for v in edited:
         is_phev = v["fuel"] == "PHEV"
-        ev_km_year = min(local_km, v["ev_km"] * 250 / max(1, 365)) * charge_factor if is_phev else 0
+        ev_km_year = local_km * ev_coverage / 100 * charge_factor if is_phev else 0
         ev_km_year = min(ev_km_year, local_km, annual_km)
         electric_cost_year = ev_km_year * v["ev_kwh100"] / 100 * electricity_price * 1.10
         petrol_km_year = annual_km - ev_km_year
