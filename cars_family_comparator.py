@@ -31,7 +31,7 @@ def render_family_suv_comparator():
                 year = st.number_input("Année de 1re mise en circulation", 2018, 2026, int(v["year"]), 1, key=f"fam_{v['id']}_year")
                 fuel_l100 = st.number_input("Consommation essence réelle (L/100 km)", 3.0, 16.0, float(v["fuel_l100"]), 0.1, key=f"fam_{v['id']}_fuel")
                 ev_km = st.number_input("Autonomie électrique utile (km)", 0, 120, int(v["ev_km"]), 5, key=f"fam_{v['id']}_evkm")
-                ev_kwh100 = st.number_input("Consommation électrique (kWh/100 km)", 10.0, 40.0, float(v["ev_kwh100"]), 0.5, key=f"fam_{v['id']}_evkwh")
+                ev_kwh100 = st.number_input("Consommation électrique (kWh/100 km)", 0.0, 40.0, float(v["ev_kwh100"]), 0.5, key=f"fam_{v['id']}_evkwh")
                 maint = st.number_input("Entretien annuel (€)", 0, 4000, int(v["maint"]), 50, key=f"fam_{v['id']}_maint")
                 insurance = st.number_input("Assurance annuelle (€)", 0, 4000, int(v["insurance"]), 50, key=f"fam_{v['id']}_insurance")
                 battery = st.number_input("Provision risque batterie / électronique sur la période (€)", 0, 20000, int(v["battery"]), 100, key=f"fam_{v['id']}_battery")
