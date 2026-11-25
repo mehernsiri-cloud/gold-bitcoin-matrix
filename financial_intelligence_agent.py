@@ -1008,11 +1008,13 @@ def render_portfolio_enrichment() -> None:
                                         ewsp_exposure = 0.0
                                         total_indirect = vwce_exposure + ewsp_exposure
                                         st.markdown("#### Ton exposition actuelle à ASML")
+                                        total_asml_exposure = held + total_indirect
                                         exp_a, exp_b, exp_c = st.columns(3)
                                         exp_a.metric("Via VWCE", f"{vwce_exposure:.2f} €", f"{vwce_weight*100:.2f} % du fonds")
                                         exp_b.metric("Via EWSP", f"{ewsp_exposure:.2f} €", "pas de ligne ASML dans le S&P 500")
-                                        exp_c.metric("Total indirect estimé", f"≈ {total_indirect:.2f} €", f"{total_indirect/float(PORTFOLIO_TOTAL_EUR)*100:.2f} % du portefeuille")
+                                        exp_c.metric("Exposition totale estimée", f"≈ {total_asml_exposure:.2f} €", f"{total_asml_exposure/float(PORTFOLIO_TOTAL_EUR)*100:.2f} % du portefeuille")
                                         st.caption(
+                                            "Exposition totale = position directe ASML + exposition indirecte via ETF. "
                                             "VWCE : pondération ASML de 0,66 %, dernière composition identifiée au 30/09/2026 ; "
                                             "à actualiser avec le prochain fichier de positions Vanguard. "
                                             "EWSP : 0 € ; ASML est domiciliée aux Pays-Bas, tandis que le S&P 500 retient des sociétés "
