@@ -73,6 +73,7 @@ def render_family_suv_comparator():
         score = (v["space_score"]*weight_space + v["traction_score"]*weight_traction + v["comfort_score"]*weight_comfort + age_score*weight_age) / total_weight
         score_rows.append({"Véhicule":v["name"],"Espace /10":v["space_score"],"Motricité /10":v["traction_score"],"Confort /10":v["comfort_score"],"Âge à l’achat":f"{age_purchase} an(s)","Note âge /10":age_score,"Note pondérée /10":score})
     score_df = pd.DataFrame(score_rows).sort_values("Note pondérée /10", ascending=False)
+    score_by_name = {row["Véhicule"]: row["Note pondérée /10"] for row in score_rows}
     st.dataframe(score_df.style.format({"Espace /10":"{:.1f}","Motricité /10":"{:.1f}","Confort /10":"{:.1f}","Note âge /10":"{:.1f}","Note pondérée /10":"{:.2f}"}), use_container_width=True, hide_index=True)
 
     st.subheader("4. Horizons de détention")
@@ -97,17 +98,26 @@ def render_family_suv_comparator():
             mileage_factor = max(0.70, min(1.10, 1 - max(0, exit_km - 12000 * age_exit) / 10000 * 0.025))
             resale = v["price"] * resale_rate * age_factor * mileage_factor
             charging = charger_cost if (is_phev and home_charge) else 0
-            tco = v["price"] + charging + years * (energy_year + v["maint"] + v["insurance"]) + v["battery"] - resale
-            results.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Âge à l’achat":max(0, date.today().year-int(v["year"])),"Âge à la revente":age_exit,"TCO (€)":tco,"€/km":tco/(annual_km*years),"Revente estimée (€)":resale,"Km électriques/an":ev_km_year,"Km à la sortie":exit_km})
+            usage_cost = years * (energy_year + v["maint"] + v["insurance"]) + v["battery"]
+            net_depreciation = v["price"] - resale
+            tco = net_depreciation + charging + usage_cost
+            results.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Âge à l’achat":max(0, date.today().year-int(v["year"])),"Âge à la revente":age_exit,"TCO (€)":tco,"€/km":tco/(annual_km*years),"Dépréciation nette (€)":net_depreciation,"Coût d’usage hors achat/revente (€)":usage_cost,"Borne (€)":charging,"Note pondérée /10":score_by_name.get(v["name"], 0),"Revente estimée (€)":resale,"Km électriques/an":ev_km_year,"Km à la sortie":exit_km})
             details.append({"Véhicule":v["name"],"Horizon":f"{years} ans","Achat":v["price"],"Borne":charging,"Énergie":years*energy_year,"Entretien":years*v["maint"],"Assurance":years*v["insurance"],"Provision batterie":v["battery"],"Revente déduite":-resale})
 
     df = pd.DataFrame(results)
     st.subheader("5. Résultat — coût total à 5, 8 et 10 ans")
     for years in horizons:
-        sub = df[df["Horizon"] == f"{years} ans"].sort_values("TCO (€)")
+        sub = df[df["Horizon"] == f"{years} ans"].copy()
+        baseline_rows = sub[sub["Véhicule"] == "Toyota RAV4 HEV 2WD"]
+        baseline_tco = float(baseline_rows.iloc[0]["TCO (€)"]) if not baseline_rows.empty else float(sub["TCO (€)"].min())
+        sub["Surcoût vs HEV 2WD (€)"] = sub["TCO (€)"] - baseline_tco
+        sub["Surcoût annuel vs HEV 2WD (€)"] = sub["Surcoût vs HEV 2WD (€)"] / years
+        sub = sub.sort_values("TCO (€)")
         winner = sub.iloc[0]
         st.markdown(f"**À {years} ans : {winner['Véhicule']} ressort le moins cher** — {winner['TCO (€)']:,.0f} € ({winner['€/km']:.3f} €/km).".replace(",", " "))
-        st.dataframe(sub[["Véhicule","Âge à l’achat","Âge à la revente","TCO (€)","€/km","Revente estimée (€)","Km électriques/an","Km à la sortie"]].style.format({"TCO (€)":"{:,.0f} €","€/km":"{:.3f} €","Revente estimée (€)":"{:,.0f} €","Km électriques/an":"{:,.0f} km","Km à la sortie":"{:,.0f} km"}), use_container_width=True, hide_index=True)
+        st.caption("Le surcoût vs RAV4 HEV 2WD chiffre ce que tu paies en plus pour passer à une autre motorisation ou transmission. Il ne signifie pas automatiquement que cette version est moins intéressante.")
+        display_cols = ["Véhicule","Note pondérée /10","Âge à l’achat","Âge à la revente","TCO (€)","Surcoût vs HEV 2WD (€)","Surcoût annuel vs HEV 2WD (€)","Dépréciation nette (€)","Coût d’usage hors achat/revente (€)","€/km"]
+        st.dataframe(sub[display_cols].style.format({"Note pondérée /10":"{:.2f}","TCO (€)":"{:,.0f} €","Surcoût vs HEV 2WD (€)":"{:+,.0f} €","Surcoût annuel vs HEV 2WD (€)":"{:+,.0f} €/an","Dépréciation nette (€)":"{:,.0f} €","Coût d’usage hors achat/revente (€)":"{:,.0f} €","€/km":"{:.3f} €"}), use_container_width=True, hide_index=True)
 
     chart = px.bar(df, x="Véhicule", y="TCO (€)", color="Horizon", barmode="group", title="Coût total estimé selon la durée de détention")
     chart.update_layout(height=460, xaxis_tickangle=-20)
