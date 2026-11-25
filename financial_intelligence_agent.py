@@ -88,11 +88,12 @@ PORTFOLIO = [
     # New user-confirmed ASML purchase: $100 converted at ECB reference rate 1 EUR = 1.0963 USD (24 Nov 2026).
     {"symbol":"ASML","name":"ASML Holding NV","value_eur":91.22,"return_pct":0.0,"group":"Semiconductors","factors":["ai_investment","semiconductor_demand","rates","usd","equity_risk"]},
     # User-confirmed €100 gold purchase, tracked against an EUR-converted COMEX benchmark.
-    {"symbol":"GOLD","name":"Or (benchmark indicatif)","value_eur":100.00,"return_pct":0.0,"group":"Gold / safe haven","factors":["real_rates","inflation","usd","geopolitics","liquidity","safe_haven"]},
+    {"symbol":"GOLD","name":"Or détenu (base indicative)","value_eur":2100.00,"return_pct":0.0,"group":"Gold / safe haven","factors":["real_rates","inflation","usd","geopolitics","liquidity","safe_haven"]},
 ]
 CASH_EUR = 4.93
-PORTFOLIO_TOTAL_EUR = 1090.64
-PORTFOLIO_RETURN_PCT = 3.71
+# Broker portfolio after ASML; gold is tracked separately as a non-broker asset.
+PORTFOLIO_TOTAL_EUR = 990.64
+PORTFOLIO_RETURN_PCT = 4.10
 
 # Topic-to-portfolio transmission map. Directions are conditional sensitivities, not price forecasts.
 IMPACT_MAP = {
@@ -449,12 +450,14 @@ def _portfolio_live_snapshot():
                 baseline[sym]={"price_eur":latest[sym],"anchor_value_eur":float(p["value_eur"])}
         QUOTE_BASELINE_FILE.write_text(json.dumps(baseline,indent=2),encoding="utf-8")
         # Broker-confirmed snapshot is the anchor. Live prices only move each line from this anchor.
-        anchor_positions=sum(float(p["value_eur"]) for p in PORTFOLIO)
+        # Scale only broker holdings to the broker snapshot. Gold is a separate asset class
+        # (approx. €2,000 previously declared + €100 new purchase), not part of broker return.
+        anchor_positions=sum(float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] != "GOLD")
         scale=(PORTFOLIO_TOTAL_EUR-CASH_EUR)/anchor_positions if anchor_positions else 1.0
         rows=[]
         for p in PORTFOLIO:
             sym=p["symbol"]
-            anchor=float(p["value_eur"])*scale
+            anchor=float(p["value_eur"]) if sym == "GOLD" else float(p["value_eur"])*scale
             if sym in latest and sym in baseline:
                 b=baseline[sym]
                 value=anchor*latest[sym]/float(b["price_eur"])
@@ -465,11 +468,12 @@ def _portfolio_live_snapshot():
             rows.append({"symbol":sym,"value_eur":value,"change_pct":quote_change,"anchor_value_eur":anchor,"quote_available":sym in latest})
         holdings=pd.DataFrame(rows)
         total=float(holdings.value_eur.sum()+CASH_EUR)
-        # Broker performance is the starting point; daily quote changes update the return.
+        broker_total=float(holdings.loc[holdings["symbol"] != "GOLD","value_eur"].sum()+CASH_EUR)
+        # Return is calculated only on the broker portfolio: the gold cost basis is not known.
         anchor_cost=PORTFOLIO_TOTAL_EUR/(1+PORTFOLIO_RETURN_PCT/100)
-        perf=(total/anchor_cost-1)*100
+        perf=(broker_total/anchor_cost-1)*100
         updated=max(s.index.max() for s in histories.values()) if histories else pd.Timestamp.now(tz="UTC")
-        return {"holdings":holdings,"total":total,"initial":anchor_cost,"perf":perf,"histories":histories,"updated":updated},None
+        return {"holdings":holdings,"total":total,"broker_total":broker_total,"initial":anchor_cost,"perf":perf,"histories":histories,"updated":updated},None
     except Exception as exc:
         return None,f"Erreur cours : {type(exc).__name__}: {exc}"
 
@@ -1067,11 +1071,12 @@ def render_financial_intelligence_dashboard() -> None:
     if live is None:
         st.error(error or "Données de marché indisponibles"); return
     if error: st.warning(error)
-    a,b,c=st.columns(3)
-    a.metric("Portefeuille",f"{live['total']:,.2f} €",f"{live['perf']:+.2f}%")
-    b.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
-    c.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
-    st.caption("Base portefeuille intégrant l'achat ASML de 100 USD (≈ 91,22 € au taux de référence du 24/11/2026) et l'achat d'or confirmé de 100 €. La performance de départ est recalculée par dilution à rendement nul sur ces deux apports. L'or est suivi via le benchmark COMEX GC=F converti en euros : évolution indicative, sans prise en compte du support détenu, de la prime, des frais ou du prix d'achat exact.")
+    a,b,c,d=st.columns(4)
+    a.metric("Total des actifs suivis",f"{live['total']:,.2f} €")
+    b.metric("Portefeuille coté",f"{live['broker_total']:,.2f} €",f"{live['perf']:+.2f}%")
+    c.metric("Actifs avec cours",f"{int(live['holdings']['quote_available'].sum())}/{len(PORTFOLIO)}")
+    d.metric("Cours jusqu'au",live["updated"].strftime("%d/%m/%Y"))
+    st.caption("Base consolidée indicative : portefeuille coté de 990,64 € après l'achat ASML de 100 USD (≈ 91,22 € au taux de référence du 24/11/2026), plus environ 2 100 € d'exposition or (≈ 2 000 € déjà déclarés auparavant + nouvel achat confirmé de 100 €). L'or reste séparé du rendement boursier car son PRU et le support du dernier achat ne sont pas renseignés. Son suivi de cours utilise GC=F converti en euros : benchmark futures indicatif, hors prime, frais et écart éventuel avec le support détenu.")
     st.markdown("### Événements classés selon leur impact estimé sur ton portefeuille")
 
     # A missing or stale CSV must trigger a real collection, not a dead-end empty state.
