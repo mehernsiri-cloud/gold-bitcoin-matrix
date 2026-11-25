@@ -397,8 +397,7 @@ def _event_scenario(row: pd.Series, live: dict) -> dict | None:
     adverse_delta=sum(adverse[k]-base[k] for k in base)
     return {"event_type":event_type,"rows":rows,"exposed_value":current,
             "favorable_delta":favorable_delta,"adverse_delta":adverse_delta,
-            "favorable_pct":(favorable_delta/current*100 if current else 0),
-            "adverse_pct":(adverse_delta/current*100 if current else 0),
+            "favorable_pct":(favorable_delta/current*100 if current else 0),            "adverse_pct":(adverse_delta/current*100 if current else 0),
             "baseline":baseline,"affected_count":len(rows),"intensity":intensity,
             "evidence_factor":evidence_factor}
 
@@ -797,8 +796,7 @@ def _candidate_market_data(symbol: str) -> dict:
                 "change_1m": (last / float(month.iloc[0]) - 1) * 100,
                 "high_52w": high, "drawdown_high": (last / high - 1) * 100,
                 "updated": close.index[-1]}
-    except Exception as exc:
-        return {"error": f"Historique indisponible : {type(exc).__name__}"}
+    except Exception as exc:        return {"error": f"Historique indisponible : {type(exc).__name__}"}
 
 def render_alphabet_analysis() -> None:
     st.markdown("### 🔎 Alphabet (GOOGL) · Analyse d'achat et exposition indirecte")
@@ -991,6 +989,27 @@ def render_portfolio_enrichment() -> None:
                                     st.write(row.get("reason") or "Aucune thèse fondamentale suffisamment documentée.")
                                     held = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == row["symbol"]), 0.0)
                                     st.metric("Exposition directe actuelle", f"{held:.2f} €", f"{held / PORTFOLIO_TOTAL_EUR * 100:.2f} % du portefeuille")
+                                    if row["symbol"] == "ASML":
+                                        # VWCE: ASML weight 0.66%, holdings snapshot dated 30 Sep 2026.
+                                        # EWSP tracks the S&P 500 Equal Weight; ASML is Dutch-domiciled
+                                        # and is not eligible for the S&P 500's US-company universe.
+                                        vwce_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "VWCE"), 0.0)
+                                        ewsp_value = next((float(p["value_eur"]) for p in PORTFOLIO if p["symbol"] == "EWSP"), 0.0)
+                                        vwce_weight = 0.0066
+                                        vwce_exposure = vwce_value * vwce_weight
+                                        ewsp_exposure = 0.0
+                                        total_indirect = vwce_exposure + ewsp_exposure
+                                        st.markdown("#### Ton exposition actuelle à ASML")
+                                        exp_a, exp_b, exp_c = st.columns(3)
+                                        exp_a.metric("Via VWCE", f"{vwce_exposure:.2f} €", f"{vwce_weight*100:.2f} % du fonds")
+                                        exp_b.metric("Via EWSP", f"{ewsp_exposure:.2f} €", "pas de ligne ASML dans le S&P 500")
+                                        exp_c.metric("Total indirect estimé", f"≈ {total_indirect:.2f} €", f"{total_indirect/float(PORTFOLIO_TOTAL_EUR)*100:.2f} % du portefeuille")
+                                        st.caption(
+                                            "VWCE : pondération ASML de 0,66 %, dernière composition identifiée au 30/09/2026 ; "
+                                            "à actualiser avec le prochain fichier de positions Vanguard. "
+                                            "EWSP : 0 € ; ASML est domiciliée aux Pays-Bas, tandis que le S&P 500 retient des sociétés "
+                                            "américaines. Montants calculés sur les valeurs du portefeuille communiquées, pas sur un inventaire broker en temps réel."
+                                        )
                                     if pd.notna(row.get("expected_return")):
                                         st.metric("Potentiel indicatif 12 mois", f"{float(row['expected_return']):+.1f} %", "objectif moyen analystes")
                                     if pd.notna(row.get("buy_share")) and pd.notna(row.get("ratings_total")) and float(row.get("ratings_total") or 0) > 0:
@@ -1197,8 +1216,7 @@ def render_financial_intelligence_dashboard() -> None:
                         st.markdown(f"<div style='height:7px;background:#DCE8E0;border-radius:8px;margin:-5px 0 7px'><div style='height:7px;width:{width:.1f}%;background:{bar_color};border-radius:8px'></div></div>",unsafe_allow_html=True)
                 if item["loss_total"]>0.005:
                     st.caption(f"Contre-effet négatif : −{item['loss_total']:.2f} €")
-            else:
-                st.markdown("**Principaux facteurs de perte**")
+            else:                st.markdown("**Principaux facteurs de perte**")
                 assets=item["losses"].head(4)
                 bar_color="#D94B58"
                 if assets.empty:
