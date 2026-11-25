@@ -125,6 +125,7 @@ def render_family_suv_comparator():
         baseline_tco = float(baseline_rows.iloc[0]["TCO (€)"]) if not baseline_rows.empty else float(sub["TCO (€)"].min())
         sub["Surcoût vs HEV 2WD (€)"] = sub["TCO (€)"] - baseline_tco
         sub["Surcoût annuel vs HEV 2WD (€)"] = sub["Surcoût vs HEV 2WD (€)"] / years
+        sub["Nature écart"] = sub["Surcoût vs HEV 2WD (€)"].apply(lambda x: "Économie" if x < -0.5 else "Surcoût" if x > 0.5 else "Référence")
         sub = sub.sort_values("TCO (€)", ascending=True)
         winner = sub.iloc[0]
         st.markdown(f"**À {years} ans : {winner['Véhicule']} — {winner['TCO (€)']:,.0f} € au total, soit {winner['€/km']:.3f} €/km.**".replace(",", " "))
@@ -132,7 +133,7 @@ def render_family_suv_comparator():
         tco_chart.update_traces(texttemplate="%{text:,.0f} €", textposition="outside", cliponaxis=False)
         tco_chart.update_layout(height=330, xaxis_title="Coût total (€)", yaxis_title="", margin=dict(r=90))
         st.plotly_chart(tco_chart, use_container_width=True)
-        premium_chart = px.bar(sub, x="Surcoût vs HEV 2WD (€)", y="Véhicule", orientation="h", text="Surcoût vs HEV 2WD (€)", title=f"Écart de coût face au RAV4 HEV 2WD — {years} ans", color="Véhicule", color_discrete_map={"Toyota RAV4 HEV 2WD":"#4C78A8","Toyota RAV4 HEV AWD-i":"#F58518","Toyota RAV4 PHEV AWD-i":"#54A24B","Audi Q5 50 TFSI e quattro":"#B279A2"})
+        premium_chart = px.bar(sub, x="Surcoût vs HEV 2WD (€)", y="Véhicule", orientation="h", text="Surcoût vs HEV 2WD (€)", title=f"Écart de coût face au RAV4 HEV 2WD — {years} ans", color="Nature écart", color_discrete_map={"Économie":"#2CA25F","Surcoût":"#E45756","Référence":"#9E9E9E"})
         premium_chart.update_traces(texttemplate="%{text:+,.0f} €", textposition="outside", cliponaxis=False)
         premium_chart.update_layout(height=300, xaxis_title="Surcoût / économie (€) — négatif = moins cher que le HEV 2WD", yaxis_title="", margin=dict(r=90))
         st.plotly_chart(premium_chart, use_container_width=True)
