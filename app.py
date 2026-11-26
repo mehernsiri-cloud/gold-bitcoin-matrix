@@ -53,7 +53,11 @@ def require_dashboard_password():
         submitted = st.form_submit_button("Se connecter", use_container_width=True)
     if submitted:
         import hmac
-        if hmac.compare_digest(entered_password, expected_password):
+        # compare_digest(str, str) raises TypeError when either password contains
+        # non-ASCII characters. Compare UTF-8 bytes to support accented/special chars.
+        entered_bytes = str(entered_password or "").encode("utf-8")
+        expected_bytes = str(expected_password or "").encode("utf-8")
+        if hmac.compare_digest(entered_bytes, expected_bytes):
             st.session_state["dashboard_authenticated"] = True
             st.rerun()
         else:
