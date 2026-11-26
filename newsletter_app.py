@@ -2841,7 +2841,7 @@ def executive_dashboard(df):
                         f"**{event['topic']} · {event['priority']} · Impact éditorial {int(event['impact_score'])}/100**  \n"
                         f"**{event['title']}**  \n"
                         f"<small>{date_label} · {event['source']} · confiance heuristique {int(event['confidence'])}% · {int(event['corroboration_count'])} source(s)</small>  \n"
-                        f"**Transmission portefeuille :** {channel_map.get(event['topic'], 'Impact à qualifier')}</small>  \n"
+                        f"**Transmission portefeuille :** {channel_map.get(event['topic'], 'Impact à qualifier')}  \n"
                         f"{event.get('why_it_matters', '')}  \n"
                         f"[Source]({event['url']})"
                     )
