@@ -525,8 +525,8 @@ def fetch_nvidia_leadership_news():
     if feedparser is None:
         return []
     queries = [
-        'Nvidia Jensen Huang resignation CEO Colette Kress November 2026',
-        'Nvidia shares AI chip export restrictions Jensen Huang resignation'
+        'NVIDIA Jensen Huang reinstated CEO November 23 2026 board investigation',
+        'NVIDIA export control national security committee governance November 2026'
     ]
     rows = []
     for query in queries:
@@ -552,33 +552,35 @@ def fetch_nvidia_leadership_news():
 
 
 def render_nvidia_leadership_alert():
-    st.markdown("### 🚨 Événement majeur — transition de direction chez NVIDIA")
-    st.error(
-        "**Jensen Huang a démissionné de ses fonctions de président-directeur général et du conseil "
-        "d’administration le 12 novembre 2026.** La directrice financière Colette Kress assure l’intérim ; "
-        "NVIDIA recherche un successeur permanent. Ce fait est confirmé par le communiqué officiel."
+    st.markdown("### 🧭 NVIDIA — retour de Jensen Huang, suivi de gouvernance")
+    st.info(
+        "**Mise à jour au 26 novembre 2026 :** Jensen Huang a été rétabli comme président-directeur "
+        "général et membre du conseil le 23 novembre. Colette Kress a repris ses fonctions de directrice "
+        "financière ; elle n’est plus présentée comme CEO par intérim. L’épisode de succession est donc clos."
     )
     st.markdown(
-        "**Pourquoi les marchés doivent le suivre :** risque de gouvernance et de succession, incertitude "
-        "sur l’exécution de la feuille de route IA, relations clients/partenaires et politique d’exportation "
-        "des puces vers la Chine. Effets de second tour possibles sur semi-conducteurs, fabricants de serveurs, "
-        "cloud/data centers et dépenses d’investissement IA. Cela ne signifie pas automatiquement la fin du cycle IA."
+        "**Ce qui reste à surveiller :** l’enquête indépendante concernant les informations de ciblage "
+        "étranger visant Jensen Huang se poursuit. NVIDIA a également annoncé un comité du conseil dédié "
+        "à la sécurité nationale et aux contrôles à l’exportation, ainsi que le recrutement d’un Chief "
+        "Compliance Officer. Ces sujets peuvent encore concerner la gouvernance et les ventes de puces "
+        "à l’international, mais ils ne doivent pas être interprétés comme une vacance actuelle du poste de CEO."
     )
     st.markdown(
-        "[Communiqué officiel NVIDIA](https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-CEO-Transition/default.aspx) · "
-        "[Analyse Reuters](https://www.reuters.com/business/retail-consumer/nvidia-ceo-jensen-huang-step-down-big-blow-ai-boom-he-helped-foster-2026-11-12/)"
+        "[Communiqué NVIDIA du 23 novembre — réintégration de Jensen Huang](https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Board-Reinstates-Jensen-Huang-as-President-CEO-and-Board-Director/) · "
+        "[Déclaration réglementaire SEC du 22 novembre](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000090/nvda-20261122.htm)"
     )
-    with st.expander("Dernières actualités NVIDIA — flux actualisé"):
+    with st.expander("Actualités récentes sur la gouvernance et les contrôles à l’exportation"):
         items = fetch_nvidia_leadership_news()
         if items:
             for item in items[:6]:
                 st.markdown(
-                    f"**{item['title']}**  \n"
-                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \n"
+                    f"**{item['title']}**  \\n"
+                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \\n"
                     f"[Lire l'article ↗]({item['link']})"
                 )
         else:
-            st.caption("Flux de presse temporairement indisponible ; le communiqué officiel ci-dessus reste la référence.")
+            st.caption("Flux de presse temporairement indisponible ; les communiqués officiels ci-dessus restent la référence.")
+
 
 
 def market_watch_page():
