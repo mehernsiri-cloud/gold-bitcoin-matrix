@@ -574,8 +574,8 @@ def render_nvidia_leadership_alert():
         if items:
             for item in items[:6]:
                 st.markdown(
-                    f"**{item['title']}**  \\n"
-                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \\n"
+                    f"**{item['title']}**  \n"
+                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \n"
                     f"[Lire l'article ↗]({item['link']})"
                 )
         else:
@@ -2376,7 +2376,7 @@ def ai_newsletter_page(df, errors):
         for article in articles:
             quality = article["content_quality"]
             st.markdown(
-                f"**[{article['source_id']}] {article['publisher']}** · {article['date']} · {quality}  \\n"
+                f"**[{article['source_id']}] {article['publisher']}** · {article['date']} · {quality}  \n"
                 f"[{article['title']}]({article['url']})"
             )
         st.caption(
