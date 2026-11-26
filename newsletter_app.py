@@ -2781,6 +2781,75 @@ def executive_dashboard(df):
     </div>
     """, unsafe_allow_html=True)
 
+    # Main macro events, selected for economic transmission to the user's actual holdings.
+    st.subheader("🌍 Événements majeurs — économie & portefeuille")
+    st.caption("Sélection des événements macroéconomiques et géopolitiques à impact potentiel sur les supports détenus ; les actualités de dirigeants d'entreprises non détenues ne sont pas retenues.")
+    event_file = os.path.join(os.path.dirname(__file__), "data", "financial_events.csv")
+    if os.path.exists(event_file):
+        try:
+            event_df = pd.read_csv(event_file)
+            allowed_topics = [
+                "Central banks & rates", "Inflation, debt & economy",
+                "Geopolitics & conflict", "Energy & commodities",
+                "Financial system & liquidity", "AI, electricity & infrastructure",
+                "Defence & aerospace", "Cybersecurity", "Healthcare", "FX & safe havens",
+                "Crypto & Bitcoin",
+            ]
+            if not event_df.empty:
+                event_df["published_at"] = pd.to_datetime(event_df["published_at"], errors="coerce", utc=True)
+                event_df["impact_score"] = pd.to_numeric(event_df["impact_score"], errors="coerce").fillna(0)
+                event_df["confidence"] = pd.to_numeric(event_df["confidence"], errors="coerce").fillna(0)
+                event_df["corroboration_count"] = pd.to_numeric(event_df["corroboration_count"], errors="coerce").fillna(1)
+                event_text = (event_df["title"].fillna("").astype(str) + " " + event_df["summary"].fillna("").astype(str)).str.lower()
+                excluded = event_text.str.contains(r"nvidia|jensen huang|colette kress", regex=True, na=False)
+                event_df = event_df[
+                    event_df["topic"].isin(allowed_topics)
+                    & event_df["priority"].isin(["P1", "P2", "P3"])
+                    & (event_df["impact_score"] >= 35)
+                    & ~excluded
+                ].copy()
+                # A regional political or security story is kept only when it has a plausible
+                # transmission to energy, trade routes, sanctions or strategic security.
+                strategic_terms = r"iran|kuwait|hormuz|red sea|suez|strait|oil|gas|energy|refinery|pipeline|shipping|tanker|sanction|export|trade route|russia|ukraine|taiwan|israel|nato|missile|invasion|ceasefire|military"
+                geo_mask = event_df["topic"].eq("Geopolitics & conflict")
+                relevant_geo = event_text.loc[event_df.index].str.contains(strategic_terms, regex=True, na=False)
+                event_df = event_df[~geo_mask | relevant_geo]
+                event_df = event_df.sort_values(
+                    ["impact_score", "confidence", "corroboration_count", "published_at"],
+                    ascending=[False, False, False, False],
+                ).drop_duplicates(subset=["topic"], keep="first")
+            channel_map = {
+                "Central banks & rates": "VWCE · WELS · XDWU · O4JO · ASML — taux, obligations et valorisations",
+                "Inflation, debt & economy": "Or · TTE · XOM · XDWU — inflation, énergie et taux réels",
+                "Geopolitics & conflict": "TTE · XOM · FRO · Or · LMT · Thales — énergie, routes et risque géopolitique",
+                "Energy & commodities": "TTE · XOM · FRO · Air Liquide · XDWU — prix de l'énergie et coûts",
+                "Financial system & liquidity": "VWCE · WELS · XDWU · FTAI · Or — crédit, liquidité et risque de contrepartie",
+                "AI, electricity & infrastructure": "XDWU · Air Liquide · ASML · VWCE — électricité, réseaux et capex IA",
+                "Defence & aerospace": "Thales · Lockheed Martin · FTAI — budgets, commandes et livraisons",
+                "Cybersecurity": "Thales · VWCE — infrastructures critiques et dépenses cyber",
+                "Healthcare": "WELS · VWCE — réglementation, médicaments et dépenses de santé",
+                "FX & safe havens": "Or · VWCE · XOM · TTE · positions en USD — change et actifs refuges",
+                "Crypto & Bitcoin": "Pas d'exposition directe au Bitcoin déclarée ; effet indirect possible via la liquidité",
+            }
+            if event_df.empty:
+                st.info("Aucun événement macroéconomique majeur suffisamment qualifié et relié au portefeuille dans les dernières données collectées.")
+            else:
+                for _, event in event_df.head(5).iterrows():
+                    published = event["published_at"]
+                    date_label = published.strftime("%d/%m %H:%M UTC") if pd.notna(published) else "Date indisponible"
+                    st.markdown(
+                        f"**{event['topic']} · {event['priority']} · Impact éditorial {int(event['impact_score'])}/100**  \n"
+                        f"**{event['title']}**  \n"
+                        f"<small>{date_label} · {event['source']} · confiance heuristique {int(event['confidence'])}% · {int(event['corroboration_count'])} source(s)</small>  \n"
+                        f"**Transmission portefeuille :** {channel_map.get(event['topic'], 'Impact à qualifier')}</small>  \n"
+                        f"{event.get('why_it_matters', '')}  \n"
+                        f"[Source]({event['url']})"
+                    )
+        except Exception as exc:
+            st.warning(f"Le flux d'événements macro n'est pas disponible : {type(exc).__name__}.")
+    else:
+        st.info("Le flux d'événements macro sera affiché après la prochaine collecte automatique.")
+
     # Second section: central-bank demand for gold, directly below the global risk indicator.
     render_central_bank_gold_purchases()
     render_drawdown_alerts()
