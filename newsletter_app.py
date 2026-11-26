@@ -519,70 +519,6 @@ def fetch_live_quote(symbol):
         return None, None
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_nvidia_leadership_news():
-    """Fetch fresh Nvidia leadership coverage; official release anchors the confirmed event."""
-    if feedparser is None:
-        return []
-    queries = [
-        'NVIDIA Jensen Huang reinstated CEO November 23 2026 board investigation',
-        'NVIDIA export control national security committee governance November 2026'
-    ]
-    rows = []
-    for query in queries:
-        try:
-            response = requests.get(
-                "https://news.google.com/rss/search",
-                params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
-                headers=REQUEST_HEADERS, timeout=(4, 8)
-            )
-            response.raise_for_status()
-            parsed = feedparser.parse(response.content)
-            for entry in parsed.entries[:12]:
-                title = clean_html(entry.get("title", ""))
-                link = entry.get("link", "")
-                published = parse_date(entry.get("published", entry.get("updated", "")))
-                if title and link and published:
-                    rows.append({"title": title, "link": link, "published": published,
-                                 "source": clean_html(entry.get("source", {}).get("title", ""))})
-        except Exception:
-            continue
-    unique = {item["link"]: item for item in rows}
-    return sorted(unique.values(), key=lambda x: x["published"], reverse=True)[:8]
-
-
-def render_nvidia_leadership_alert():
-    st.markdown("### 🧭 NVIDIA — retour de Jensen Huang, suivi de gouvernance")
-    st.info(
-        "**Mise à jour au 26 novembre 2026 :** Jensen Huang a été rétabli comme président-directeur "
-        "général et membre du conseil le 23 novembre. Colette Kress a repris ses fonctions de directrice "
-        "financière ; elle n’est plus présentée comme CEO par intérim. L’épisode de succession est donc clos."
-    )
-    st.markdown(
-        "**Ce qui reste à surveiller :** l’enquête indépendante concernant les informations de ciblage "
-        "étranger visant Jensen Huang se poursuit. NVIDIA a également annoncé un comité du conseil dédié "
-        "à la sécurité nationale et aux contrôles à l’exportation, ainsi que le recrutement d’un Chief "
-        "Compliance Officer. Ces sujets peuvent encore concerner la gouvernance et les ventes de puces "
-        "à l’international, mais ils ne doivent pas être interprétés comme une vacance actuelle du poste de CEO."
-    )
-    st.markdown(
-        "[Communiqué NVIDIA du 23 novembre — réintégration de Jensen Huang](https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Board-Reinstates-Jensen-Huang-as-President-CEO-and-Board-Director/) · "
-        "[Déclaration réglementaire SEC du 22 novembre](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000090/nvda-20261122.htm)"
-    )
-    with st.expander("Actualités récentes sur la gouvernance et les contrôles à l’exportation"):
-        items = fetch_nvidia_leadership_news()
-        if items:
-            for item in items[:6]:
-                st.markdown(
-                    f"**{item['title']}**  \n"
-                    f"<small>{item['source'] or 'Source média'} · {item['published'].strftime('%d/%m/%Y %H:%M UTC')}</small>  \n"
-                    f"[Lire l'article ↗]({item['link']})"
-                )
-        else:
-            st.caption("Flux de presse temporairement indisponible ; les communiqués officiels ci-dessus restent la référence.")
-
-
-
 def market_watch_page():
     st.header("📈 Marchés & portefeuille — suivi dynamique")
     st.caption("Cours intraday lorsque le fournisseur les expose ; actualisation de l’écran toutes les 60 secondes. Les places européennes restent généralement différées chez Yahoo Finance.")
@@ -595,10 +531,8 @@ def market_watch_page():
     if st.button("🔄 Actualiser maintenant", key="portfolio_force_refresh"):
         fetch_live_quote.clear()
         fetch_history.clear()
-        fetch_nvidia_leadership_news.clear()
         st.rerun()
 
-    render_nvidia_leadership_alert()
     st.divider()
 
     holdings = [
@@ -785,7 +719,6 @@ def market_watch_page():
         candidates = [
             ("Schneider Electric", "SU.PA", "Électrification / data centers"),
             ("Siemens", "SIE.DE", "Automatisation / industrie"),
-            ("NVIDIA", "NVDA", "Semi-conducteurs IA — événement de gouvernance"),
             ("VanEck Electrification (PIKA)", "PIKA.DE", "Réseaux et électrification"),
             ("SPDR World Health Care (WHEA)", "WHEA.AS", "Santé mondiale"),
         ]
@@ -2848,8 +2781,6 @@ def executive_dashboard(df):
     </div>
     """, unsafe_allow_html=True)
 
-    # Critical corporate / AI-market events belong directly in the overview risk feed.
-    render_nvidia_leadership_alert()
     # Second section: central-bank demand for gold, directly below the global risk indicator.
     render_central_bank_gold_purchases()
     render_drawdown_alerts()
