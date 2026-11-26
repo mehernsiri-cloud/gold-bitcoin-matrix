@@ -19,7 +19,18 @@ from urllib.parse import urlparse
 
 import pandas as pd
 import requests
-import streamlit as st
+
+# Streamlit is needed only by dashboard rendering. The scheduled CLI collector
+# must run in a lightweight GitHub Actions environment without installing Streamlit.
+try:
+    import streamlit as st
+except ImportError:
+    st = None
+
+def _cache_data(*args, **kwargs):
+    if st is not None:
+        return st.cache_data(*args, **kwargs)
+    return lambda function: function
 
 try:
     import feedparser
@@ -180,6 +191,10 @@ def collect_events(days: int = 4, max_per_feed: int = 30) -> tuple[pd.DataFrame,
                 if not title or not link or not urlparse(link).scheme.startswith("http") or not published or published < cutoff:
                     continue
                 summary = _clean(entry.get("summary", entry.get("description", "")))[:3000]
+                editorial_text = f"{title} {summary}".lower()
+                # NVIDIA-specific corporate stories are deliberately outside this dashboard's remit.
+                if any(term in editorial_text for term in ("nvidia", "jensen huang", "colette kress")):
+                    continue
                 domain = urlparse(link).netloc.lower().removeprefix("www.")
                 signals = classify(title, summary, source, domain)
                 rows.append({
@@ -233,6 +248,10 @@ def persist_events(new_events: pd.DataFrame) -> tuple[int, int]:
     incoming = new_events.reindex(columns=COLUMNS) if new_events is not None else pd.DataFrame(columns=COLUMNS)
     combined = pd.concat([existing.reindex(columns=COLUMNS), incoming], ignore_index=True)
     if not combined.empty:
+        # Purge stale NVIDIA stories already stored by earlier agent runs.
+        combined_text = (combined["title"].fillna("").astype(str) + " " + combined["summary"].fillna("").astype(str)).str.lower()
+        excluded = combined_text.str.contains(r"nvidia|jensen huang|colette kress", regex=True, na=False)
+        combined = combined.loc[~excluded].copy()
         combined = combined.drop_duplicates("event_id", keep="first")
         combined["published_at"] = pd.to_datetime(combined["published_at"], errors="coerce", utc=True)
         combined = combined.dropna(subset=["published_at"]).sort_values("published_at", ascending=False)
@@ -262,7 +281,13 @@ def _decision_view(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     text = (out["title"].fillna("").astype(str) + " " + out["summary"].fillna("").astype(str)).str.lower()
     noise = ["sex scandal", "celebrity", "reality tv", "dating", "royal family", "football transfer", "movie star", "pop star", "gossip", "influencer"]
-    out = out[~text.loc[out.index].apply(lambda s: any(k in s for k in noise))].copy()
+    # The dashboard is a macro/portfolio monitor, not a single-company celebrity or CEO feed.
+    excluded_names = ["nvidia", "jensen huang", "colette kress"]
+    out = out[
+        ~text.loc[out.index].apply(
+            lambda value: any(k in value for k in noise + excluded_names)
+        )
+    ].copy()
     lenses = {
         "Central banks & rates": ("Taux, obligations, devises et valorisation des actions", "Une inflexion des banques centrales peut modifier rapidement les anticipations de taux et les valorisations.", "Surveiller les rendements obligataires et les anticipations de taux ; ne pas agir sur un titre seul.", "SURVEILLER LES TAUX"),
         "Inflation, debt & economy": ("Inflation, croissance, crédit et pouvoir d'achat", "Une surprise macroéconomique peut déplacer les taux, les devises et l'appétit pour le risque.", "Attendre la donnée confirmée puis observer la réaction des taux et des indices.", "ATTENDRE CONFIRMATION"),
@@ -521,7 +546,7 @@ def _first_valid(mapping, keys):
     return None
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@_cache_data(ttl=21600, show_spinner=False)
 def _load_enrichment_data(symbol: str) -> dict:
     """Retrieve each Yahoo Finance data family independently; one failure must not erase the others."""
     result = {
@@ -760,7 +785,7 @@ def _gadget_metric(label: str, value: str, color: str, detail: str = "") -> str:
     )
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@_cache_data(ttl=3600, show_spinner=False)
 def _alphabet_market_data() -> dict:
     """Live GOOGL price history and six-month performance from Yahoo Finance."""
     try:
@@ -785,7 +810,7 @@ def _alphabet_market_data() -> dict:
         return {"error": f"Impossible de récupérer GOOGL : {type(exc).__name__}"}
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@_cache_data(ttl=3600, show_spinner=False)
 def _candidate_market_data(symbol: str) -> dict:
     """Comparable adjusted market history for recommended equities."""
     try:
