@@ -9,6 +9,7 @@ import streamlit as st
 from datetime import date
 
 LACENTRALE_URL = "https://www.lacentrale.fr/listing?autoviza=true&customerFamilyCodes=PROFESSIONNEL%2CCOURTIER_AUTOMOBILE%2CINTERMEDIAIRE&dptCp=78140&energies=not_plug_hyb%2Cplug_hyb&firstHand=true&gearbox=AUTO&goodDealBadges=VERY_GOOD_DEAL%2CGOOD_DEAL&makesModelsCommercialNames=TOYOTA%3A%3ARAV%204&mileageMax=55000&sortBy=priceAsc&versions=awd-i&yearMin=2022"
+NANTERRE_RAV4_URL = "https://www.toyota.fr/occasions/voiture.toyota-rav4-2024-break-5-portes-boite-automatique-hybride-a1ad0635-423e-44e4-bbd9-5525e7035262"
 
 
 def money(value):
@@ -23,9 +24,10 @@ def render_rav4_simulator():
         "selon tes priorités. Les hypothèses sont modifiables ; le résultat n'est pas une cote ni une prévision."
     )
 
-    st.link_button("🔎 Ma recherche principale La Centrale — RAV4 AWD-i HEV/PHEV", LACENTRALE_URL, use_container_width=True)
+    st.link_button("🔎 1. Recherche principale La Centrale — RAV4 AWD-i", LACENTRALE_URL, use_container_width=True)
+    st.link_button("🚙 2. RAV4 Toyota Nanterre — 2024 · 19 163 km · 39 999 €", NANTERRE_RAV4_URL, use_container_width=True)
     st.caption("Filtres du lien : professionnels/courtiers, HEV ou PHEV, première main, automatique, bonnes affaires, "
-               "RAV4 AWD-i, jusqu'à 55 000 km, années 2022 à 2025, tri par prix croissant.")
+               "RAV4 AWD-i, jusqu'à 55 000 km, à partir de 2022, tri par prix croissant.")
 
     # Reserve the first screen position for the decision summary; populate it once all filters are calculated.
     summary_placeholder = st.container()
